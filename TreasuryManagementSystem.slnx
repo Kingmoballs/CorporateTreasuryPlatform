@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Treasury.Api/Treasury.Api.csproj" />
+  <Project Path="Treasury.Application/Treasury.Application.csproj" />
+  <Project Path="Treasury.Domain/Treasury.Domain.csproj" />
+  <Project Path="Treasury.Infrastructure/Treasury.Infrastructure.csproj" />
+  <Project Path="Treasury.Shared/Treasury.Shared.csproj" />
+</Solution>

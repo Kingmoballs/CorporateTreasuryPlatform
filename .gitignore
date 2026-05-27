@@ -1,0 +1,26 @@
+# Build folders
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.*
+
+# Local app settings
+appsettings.Development.json
+
+# Node frontend (if applicable)
+node_modules/
