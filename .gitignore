@@ -24,3 +24,5 @@ appsettings.Development.json
 
 # Node frontend (if applicable)
 node_modules/
+
+secret.txt

@@ -1,4 +1,4 @@
-namespace Treasury.Appliction.DTOs.Auth;
+namespace Treasury.Application.DTOs.Auth;
 
 public class RegisterDto
 {

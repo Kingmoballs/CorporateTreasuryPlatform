@@ -2,6 +2,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Treasury.Domain\Treasury.Domain.csproj" />
+    <ProjectReference Include="..\Treasury.Shared\Treasury.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
   </ItemGroup>
 
   <PropertyGroup>
