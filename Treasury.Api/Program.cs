@@ -1,3 +1,4 @@
+using Microsoft.OpenApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Treasury.Infrastructure.Persistence;
 using Treasury.Application.Interfaces;
@@ -7,14 +8,67 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Treasury.Infrastructure.Authentication;
 using Treasury.Application.Services;
+using Treasury.Api.Middleware;
+using FluentValidation;
+using FluentValidation.AspNetCore;
+using Treasury.Application.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services
+    .AddFluentValidationAutoValidation();
 
 builder.Services.AddControllers();
 
 builder.Services.AddEndpointsApiExplorer();
 
-builder.Services.AddSwaggerGen();
+builder.Services.AddHttpContextAccessor();
+
+builder.Services
+    .AddValidatorsFromAssemblyContaining<
+        RegisterDtoValidator>();
+
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc(
+        "v1",
+        new OpenApiInfo
+        {
+            Title = "Treasury API",
+            Version = "v1"
+        });
+
+    options.AddSecurityDefinition(
+        "Bearer",
+        new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Enter JWT Token"
+        });
+
+    options.AddSecurityRequirement(
+        new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference    
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+
+                Array.Empty<string>()
+            }
+        });
+});
+
 
 builder.Services.AddDbContext<TreasuryDbContext>(options =>
     options.UseNpgsql(
@@ -32,6 +86,14 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IAuthService,
     AuthService>();
+
+builder.Services.AddScoped<
+    IRoleRepository,
+    RoleRepository>();
+
+builder.Services.AddScoped<
+    ICurrentUserService,
+    CurrentUserService>();
 
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
@@ -79,10 +141,22 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseMiddleware<ExceptionMiddleware>();
+
 app.UseAuthentication();
 
 app.UseAuthorization();
 
 app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    var context =
+        scope.ServiceProvider
+            .GetRequiredService<
+                TreasuryDbContext>();
+
+    await RoleSeeder.SeedRoles(context);
+}
 
 app.Run();

@@ -58,4 +58,11 @@ public class AuthController : ControllerBase
                 })
         });
     }
+
+    [Authorize(Roles = "Admin")]
+    [HttpGet("admin-test")]
+    public IActionResult AdminOnly()
+    {
+        return Ok("Admin Access Granted");
+    }
 }

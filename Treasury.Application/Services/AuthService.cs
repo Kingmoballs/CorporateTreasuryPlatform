@@ -13,14 +13,20 @@ public class AuthService : IAuthService
 
     private readonly IJwtService
         _jwtService;
+    
+    private readonly IRoleRepository
+        _roleRepository;
 
     public AuthService(
         IUserRepository userRepository,
-        IJwtService jwtService)
+        IJwtService jwtService,
+        IRoleRepository roleRepository)
     {
         _userRepository = userRepository;
 
         _jwtService = jwtService;
+
+        _roleRepository = roleRepository;
     }
 
     public async Task<AuthResponseDto>
@@ -36,6 +42,16 @@ public class AuthService : IAuthService
                 "Email already exists");
         }
 
+        var role =
+            await _roleRepository
+                .GetByName(Roles.TreasuryOfficer);
+
+        if(role == null)
+        {
+            throw new Exception(
+                "Default role not found");
+        }
+
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -49,10 +65,9 @@ public class AuthService : IAuthService
             PasswordHash = BCrypt.Net.BCrypt
                 .HashPassword(dto.Password),
 
-            Role = new Role
-            {
-                Name = Roles.TreasuryOfficer
-            }
+            RoleId = role.Id,
+
+            Role = role
         };
 
         await _userRepository.Add(user);
