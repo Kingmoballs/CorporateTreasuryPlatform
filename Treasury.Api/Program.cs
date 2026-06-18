@@ -12,9 +12,13 @@ using Treasury.Api.Middleware;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Treasury.Application.Validators;
+using Treasury.Infrastructure.Services;
 
+
+// Create a builder for the web application
 var builder = WebApplication.CreateBuilder(args);
 
+// Add services to the container.
 builder.Services
     .AddFluentValidationAutoValidation();
 
@@ -95,6 +99,18 @@ builder.Services.AddScoped<
     ICurrentUserService,
     CurrentUserService>();
 
+builder.Services.AddScoped<
+    IAccountRepository,
+    AccountRepository>();
+
+builder.Services.AddScoped<
+    IAccountTypeRepository,
+    AccountTypeRepository>();
+
+builder.Services.AddScoped<
+    IAccountService,
+    AccountService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 
@@ -129,6 +145,7 @@ builder.Services
             };
     });
 
+// Build the web application
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -137,7 +154,6 @@ if (app.Environment.IsDevelopment())
 
     app.UseSwaggerUI();
 }
-
 
 app.UseHttpsRedirection();
 
@@ -157,6 +173,8 @@ using (var scope = app.Services.CreateScope())
                 TreasuryDbContext>();
 
     await RoleSeeder.SeedRoles(context);
+
+    await AccountTypeSeeder.SeedAccountTypes(context);
 }
 
 app.Run();
