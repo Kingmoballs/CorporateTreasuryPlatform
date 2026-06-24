@@ -2,11 +2,15 @@ using Microsoft.EntityFrameworkCore;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Storage;
 
 public class AccountRepository
     : IAccountRepository
 {
     private readonly TreasuryDbContext _context;
+
+    private IDbContextTransaction?
+    _transaction;
 
     public AccountRepository(
         TreasuryDbContext context)
@@ -47,8 +51,37 @@ public class AccountRepository
                     == accountNumber);
     }
 
+    public void Update(Account account)
+    {
+        _context.Accounts.Update(account);
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();
+    }
+
+
+    public async Task BeginTransaction()
+    {
+        _transaction =
+            await _context.Database
+                .BeginTransactionAsync();
+    }
+
+    public async Task CommitTransaction()
+    {
+        if (_transaction is not null)
+        {
+            await _transaction.CommitAsync();
+        }
+    }
+
+    public async Task RollbackTransaction()
+    {
+        if (_transaction is not null)
+        {
+            await _transaction.RollbackAsync();
+        }
     }
 }

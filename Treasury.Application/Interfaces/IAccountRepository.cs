@@ -12,6 +12,14 @@ public interface IAccountRepository
 
     Task<bool> AccountNumberExists(
         string accountNumber);
+    
+    void Update(Account account);
 
     Task SaveChanges();
+
+    Task BeginTransaction();
+
+    Task CommitTransaction();
+
+    Task RollbackTransaction();
 }

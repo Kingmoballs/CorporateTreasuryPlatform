@@ -111,6 +111,14 @@ builder.Services.AddScoped<
     IAccountService,
     AccountService>();
 
+builder.Services.AddScoped<
+    ILedgerRepository,
+    LedgerRepository>();
+
+builder.Services.AddScoped<
+    ITransferService,
+    TransferService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 
