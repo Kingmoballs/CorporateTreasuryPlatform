@@ -40,4 +40,15 @@ public class AccountsController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("{id}/ledger")]
+    public async Task<IActionResult>
+        GetLedger(Guid id)
+    {
+        var result =
+            await _accountService
+                .GetAccountLedger(id);
+
+        return Ok(result);
+    }
 }

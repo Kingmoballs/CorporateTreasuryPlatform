@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.Accounts;
+using Treasury.Application.DTOs.Ledger;
 
 public interface IAccountService
 {
@@ -8,4 +9,7 @@ public interface IAccountService
 
     Task<List<AccountResponseDto>>
         GetAccounts();
+
+    Task<List<LedgerEntryDto>>
+    GetAccountLedger(Guid accountId);
 }

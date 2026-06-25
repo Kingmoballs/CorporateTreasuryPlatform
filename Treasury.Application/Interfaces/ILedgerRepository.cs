@@ -6,5 +6,8 @@ public interface ILedgerRepository
 {
     Task Add(LedgerEntry entry);
 
+    Task<List<LedgerEntry>>
+    GetByAccountId(Guid accountId);
+
     Task SaveChanges();
 }

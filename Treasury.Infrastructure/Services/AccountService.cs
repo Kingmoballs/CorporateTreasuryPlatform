@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.Accounts;
+using Treasury.Application.DTOs.Ledger;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 
@@ -10,15 +11,18 @@ public class AccountService : IAccountService
 
     private readonly IAccountTypeRepository
         _accountTypeRepository;
+    
+    private readonly ILedgerRepository
+    _ledgerRepository;
 
     public AccountService(
         IAccountRepository accountRepository,
-        IAccountTypeRepository accountTypeRepository)
+        IAccountTypeRepository accountTypeRepository,
+        ILedgerRepository ledgerRepository)
     {
         _accountRepository = accountRepository;
-
-        _accountTypeRepository =
-            accountTypeRepository;
+        _accountTypeRepository = accountTypeRepository;
+        _ledgerRepository = ledgerRepository;
     }
 
     public async Task<AccountResponseDto>
@@ -122,6 +126,34 @@ public class AccountService : IAccountService
                     Currency =
                         account.Currency
                 })
+            .ToList();
+    }
+
+    public async Task<List<LedgerEntryDto>>
+        GetAccountLedger(Guid accountId)
+    {
+        var account =
+            await _accountRepository
+                .GetById(accountId);
+
+        if (account is null)
+        {
+            throw new Exception(
+                "Account not found.");
+        }
+
+        var entries =
+            await _ledgerRepository
+                .GetByAccountId(accountId);
+
+        return entries
+            .Select(x => new LedgerEntryDto
+            {
+                Amount = x.Amount,
+                EntryType = x.EntryType,
+                Description = x.Description,
+                CreatedAt = x.CreatedAt
+            })
             .ToList();
     }
 }
