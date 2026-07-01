@@ -2,6 +2,8 @@ using Treasury.Application.DTOs.Accounts;
 using Treasury.Application.DTOs.Ledger;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Shared.Common;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -15,20 +17,85 @@ public class AccountService : IAccountService
     private readonly ILedgerRepository
     _ledgerRepository;
 
+    private readonly ITreasuryTransactionRepository
+        _transactionRepository;
+
+    private readonly ICurrentUserService
+        _currentUserService;
+
     public AccountService(
         IAccountRepository accountRepository,
-        IAccountTypeRepository accountTypeRepository,
-        ILedgerRepository ledgerRepository)
+        IAccountTypeRepository
+            accountTypeRepository,
+        ILedgerRepository ledgerRepository,
+        ITreasuryTransactionRepository
+            transactionRepository,
+        ICurrentUserService currentUserService)
     {
-        _accountRepository = accountRepository;
-        _accountTypeRepository = accountTypeRepository;
-        _ledgerRepository = ledgerRepository;
+        _accountRepository =
+            accountRepository;
+
+        _accountTypeRepository =
+            accountTypeRepository;
+
+        _ledgerRepository =
+            ledgerRepository;
+
+        _transactionRepository =
+            transactionRepository;
+
+        _currentUserService =
+            currentUserService;
+    }
+
+    private static void ValidateAccountRequest(
+        CreateAccountDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            throw new ArgumentException(
+                "Account name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(
+            dto.AccountNumber))
+        {
+            throw new ArgumentException(
+                "Account number is required.");
+        }
+
+        if (dto.OpeningBalance < 0)
+        {
+            throw new ArgumentException(
+                "Opening balance cannot be negative.");
+        }
+
+        var currency =
+            dto.Currency?.Trim();
+
+        if (string.IsNullOrWhiteSpace(currency) ||
+            currency.Length != 3 ||
+            !currency.All(char.IsLetter))
+        {
+            throw new ArgumentException(
+                "Currency must be a valid " +
+                "three-letter code.");
+        }
     }
 
     public async Task<AccountResponseDto>
         CreateAccount(CreateAccountDto dto)
     {
-        // Verify Account Type Exists
+        ValidateAccountRequest(dto);
+
+        var normalizedAccountNumber =
+            dto.AccountNumber.Trim();
+
+        var normalizedCurrency =
+            dto.Currency
+                .Trim()
+                .ToUpperInvariant();
+
         var accountType =
             await _accountTypeRepository
                 .GetById(dto.AccountTypeId);
@@ -39,11 +106,10 @@ public class AccountService : IAccountService
                 "Account type not found.");
         }
 
-        // Verify Account Number Is Unique
         var accountExists =
             await _accountRepository
                 .AccountNumberExists(
-                    dto.AccountNumber);
+                    normalizedAccountNumber);
 
         if (accountExists)
         {
@@ -51,52 +117,167 @@ public class AccountService : IAccountService
                 "Account number already exists.");
         }
 
-        // Create Account
-        var account = new Account
-        {
-            Id = Guid.NewGuid(),
-
-            Name = dto.Name,
-
-            AccountNumber =
-                dto.AccountNumber,
-
-            AccountTypeId =
-                dto.AccountTypeId,
-
-            Currency =
-                dto.Currency,
-
-            Balance =
-                dto.OpeningBalance,
-
-            IsActive = true
-        };
-
         await _accountRepository
-            .Add(account);
+            .BeginTransaction();
 
-        await _accountRepository
-            .SaveChanges();
-
-        return new AccountResponseDto
+        try
         {
-            Id = account.Id,
+            var createdAtUtc =
+                DateTime.UtcNow;
 
-            Name = account.Name,
+            var account = new Account
+            {
+                Id = Guid.NewGuid(),
 
-            AccountNumber =
-                account.AccountNumber,
+                Name = dto.Name.Trim(),
 
-            AccountType =
-                accountType.Name,
+                AccountNumber =
+                    normalizedAccountNumber,
 
-            Balance =
-                account.Balance,
+                AccountTypeId =
+                    dto.AccountTypeId,
 
-            Currency =
-                account.Currency
-        };
+                Currency =
+                    normalizedCurrency,
+
+                Balance =
+                    dto.OpeningBalance,
+
+                IsActive = true,
+
+                CreatedAt =
+                    createdAtUtc
+            };
+
+            await _accountRepository
+                .Add(account);
+
+            TreasuryTransaction?
+                openingTransaction = null;
+
+            if (dto.OpeningBalance > 0)
+            {
+                openingTransaction =
+                    new TreasuryTransaction
+                    {
+                        Id = Guid.NewGuid(),
+
+                        Reference =
+                            TransactionReferenceGenerator
+                                .Generate(),
+
+                        TransactionType =
+                            TransactionTypes
+                                .OpeningBalance,
+
+                        Status =
+                            TransactionStatuses
+                                .Completed,
+
+                        Amount =
+                            dto.OpeningBalance,
+
+                        Currency =
+                            normalizedCurrency,
+
+                        Description =
+                            $"Opening balance for " +
+                            $"{account.Name}",
+
+                        SourceAccountId =
+                            null,
+
+                        DestinationAccountId =
+                            account.Id,
+
+                        TransferRequestId =
+                            null,
+
+                        InitiatedByUserId =
+                            _currentUserService.UserId,
+
+                        CompletedByUserId =
+                            _currentUserService.UserId,
+
+                        CreatedAtUtc =
+                            createdAtUtc,
+
+                        CompletedAtUtc =
+                            createdAtUtc
+                    };
+
+                await _transactionRepository
+                    .Add(openingTransaction);
+
+                /*
+                * Increasing a cash asset is recorded as
+                * a debit in the treasury account subledger.
+                */
+                await _ledgerRepository.Add(
+                    new LedgerEntry
+                    {
+                        Id = Guid.NewGuid(),
+
+                        TreasuryTransactionId =
+                            openingTransaction.Id,
+
+                        AccountId =
+                            account.Id,
+
+                        Amount =
+                            dto.OpeningBalance,
+
+                        EntryType =
+                            "Debit",
+
+                        Description =
+                            openingTransaction
+                                .Description,
+
+                        CreatedAt =
+                            createdAtUtc
+                    });
+            }
+
+            /*
+            * The account, transaction header and ledger
+            * entry share one scoped DbContext.
+            */
+            await _accountRepository
+                .SaveChanges();
+
+            await _accountRepository
+                .CommitTransaction();
+
+            return new AccountResponseDto
+            {
+                Id = account.Id,
+
+                Name = account.Name,
+
+                AccountNumber =
+                    account.AccountNumber,
+
+                AccountType =
+                    accountType.Name,
+
+                Balance =
+                    account.Balance,
+
+                Currency =
+                    account.Currency,
+
+                OpeningBalanceTransactionReference =
+                    openingTransaction?.Reference
+            };
+        }
+        catch
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw;
+        }
     }
 
     public async Task<List<AccountResponseDto>>

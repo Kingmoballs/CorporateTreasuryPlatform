@@ -26,6 +26,68 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<TreasuryTransaction> TreasuryTransactions => Set<TreasuryTransaction>();
 
+    private void EnsureFinancialRecordsAreImmutable()
+    {
+        var changedLedgerEntries =
+            ChangeTracker
+                .Entries<LedgerEntry>()
+                .Where(entry =>
+                    entry.State ==
+                        EntityState.Modified ||
+                    entry.State ==
+                        EntityState.Deleted)
+                .ToList();
+
+        if (changedLedgerEntries.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Ledger entries are immutable and " +
+                "cannot be modified or deleted.");
+        }
+
+        var changedCompletedTransactions =
+            ChangeTracker
+                .Entries<TreasuryTransaction>()
+                .Where(entry =>
+                    entry.State ==
+                        EntityState.Modified ||
+                    entry.State ==
+                        EntityState.Deleted)
+                .Where(entry =>
+                    string.Equals(
+                        entry.Property(transaction =>
+                                transaction.Status)
+                            .OriginalValue,
+                        "Completed",
+                        StringComparison
+                            .OrdinalIgnoreCase))
+                .ToList();
+
+        if (changedCompletedTransactions.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Completed treasury transactions " +
+                "are immutable.");
+        }
+    }
+
+    public override int SaveChanges()
+    {
+        EnsureFinancialRecordsAreImmutable();
+
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(
+        CancellationToken cancellationToken =
+            default)
+    {
+        EnsureFinancialRecordsAreImmutable();
+
+        return base.SaveChangesAsync(
+            cancellationToken);
+    }
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {
@@ -105,5 +167,68 @@ public class TreasuryDbContext : DbContext
             .HasForeignKey(entry =>
                 entry.TreasuryTransactionId)
             .OnDelete(DeleteBehavior.Restrict);
+        
+        modelBuilder.Entity<Account>()
+            .HasIndex(account =>
+                account.AccountNumber)
+            .IsUnique();
+
+        modelBuilder.Entity<AccountType>()
+            .HasIndex(accountType =>
+                accountType.Name)
+            .IsUnique();
+
+        modelBuilder.Entity<Account>()
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Accounts_Balance_NonNegative",
+                    "\"Balance\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_Accounts_Currency_Length",
+                    "char_length(\"Currency\") = 3");
+            });
+
+        modelBuilder.Entity<LedgerEntry>()
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_LedgerEntries_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_LedgerEntries_EntryType",
+                    "\"EntryType\" IN ('Debit', 'Credit')");
+            });
+
+        modelBuilder.Entity<TransferRequest>()
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_TransferRequests_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_TransferRequests_Status",
+                    "\"Status\" IN " +
+                    "('Pending', 'Approved', 'Rejected')");
+            });
+
+        modelBuilder.Entity<TreasuryTransaction>()
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_TreasuryTransactions_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_TreasuryTransactions_Currency_Length",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_TreasuryTransactions_Status",
+                    "\"Status\" IN ('Completed')");
+            });
     }
 }

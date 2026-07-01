@@ -17,4 +17,8 @@ public class AccountResponseDto
 
     public string Currency { get; set; }
         = string.Empty;
+    
+    public string?
+        OpeningBalanceTransactionReference { get; set; }
+
 }

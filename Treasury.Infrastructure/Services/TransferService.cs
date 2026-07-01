@@ -3,6 +3,7 @@ using Treasury.Application.DTOs.Transfers;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
+using Treasury.Shared.Common;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -423,7 +424,7 @@ public class TransferService : ITransferService
                 Id = Guid.NewGuid(),
 
                 Reference =
-                    GenerateTransactionReference(),
+                    TransactionReferenceGenerator.Generate(),
 
                 TransactionType =
                     TransactionTypes
@@ -553,13 +554,5 @@ public class TransferService : ITransferService
                 ?? transaction.CreatedAtUtc
         };
     }
-
-    private static string
-    GenerateTransactionReference()
-    {
-        return
-            $"TRX-{DateTime.UtcNow:yyyyMMdd}-" +
-            $"{Guid.NewGuid():N}"
-                .ToUpperInvariant();
-    }
+    
 }

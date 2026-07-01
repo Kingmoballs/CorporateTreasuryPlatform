@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Treasury.Application.DTOs.Accounts;
 using Treasury.Application.Interfaces;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Api.Controllers;
 
@@ -12,6 +13,11 @@ public class AccountsController : ControllerBase
 {
     private readonly IAccountService _accountService;
 
+    private const string AccountManagerRoles =
+        Roles.Admin + "," +
+        Roles.FinanceManager + "," +
+        Roles.CFO;
+
     public AccountsController(
         IAccountService accountService)
     {
@@ -19,9 +25,9 @@ public class AccountsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = AccountManagerRoles)]
     public async Task<IActionResult>
-        CreateAccount(
-            CreateAccountDto dto)
+        CreateAccount(CreateAccountDto dto)
     {
         var result =
             await _accountService
