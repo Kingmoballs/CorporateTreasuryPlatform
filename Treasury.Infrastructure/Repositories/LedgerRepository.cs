@@ -26,8 +26,13 @@ public class LedgerRepository
     GetByAccountId(Guid accountId)
     {
         return await _context.LedgerEntries
-            .Where(x => x.AccountId == accountId)
-            .OrderByDescending(x => x.CreatedAt)
+            .AsNoTracking()
+            .Include(entry =>
+                entry.TreasuryTransaction)
+            .Where(entry =>
+                entry.AccountId == accountId)
+            .OrderByDescending(entry =>
+                entry.CreatedAt)
             .ToListAsync();
     }
 

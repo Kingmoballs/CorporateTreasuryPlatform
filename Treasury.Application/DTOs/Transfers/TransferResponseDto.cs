@@ -6,6 +6,13 @@ public class TransferResponseDto
 
     public Guid ToAccountId { get; set; }
 
+    public Guid? TransactionId { get; set; }
+
+    public string? TransactionReference { get; set; }
+
+    public string Status { get; set; }
+        = string.Empty;
+
     public decimal Amount { get; set; }
 
     public string Description { get; set; }

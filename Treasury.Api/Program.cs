@@ -127,6 +127,14 @@ builder.Services.AddScoped<
     ITreasuryReportingService,
     TreasuryReportingService>();
 
+builder.Services.AddScoped<
+    ITreasuryTransactionRepository,
+    TreasuryTransactionRepository>();
+
+builder.Services.AddScoped<
+    ITreasuryTransactionService,
+    TreasuryTransactionService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 

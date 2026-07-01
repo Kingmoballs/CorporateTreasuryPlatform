@@ -22,13 +22,18 @@ public class TransferService : ITransferService
 
     private readonly ICurrentUserService
         _currentUserService;
+    
+    private readonly ITreasuryTransactionRepository
+        _transactionRepository;
 
     public TransferService(
         IAccountRepository accountRepository,
         ILedgerRepository ledgerRepository,
         ITransferRequestRepository
             transferRequestRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ITreasuryTransactionRepository
+            transactionRepository)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
@@ -36,6 +41,8 @@ public class TransferService : ITransferService
             transferRequestRepository;
         _currentUserService =
             currentUserService;
+        _transactionRepository = 
+            transactionRepository;
     }
 
     public async Task<TransferResponseDto>
@@ -87,6 +94,12 @@ public class TransferService : ITransferService
 
                 Amount = request.Amount,
 
+                TransactionId = null,
+
+                TransactionReference = null,
+
+                Status = ApprovalStatus.Pending,
+
                 Description =
                     "Transfer pending approval.",
 
@@ -99,11 +112,15 @@ public class TransferService : ITransferService
 
         try
         {
-            await ApplyTransfer(
-                accounts.FromAccount,
-                accounts.ToAccount,
-                dto.Amount,
-                dto.Description);
+            var transaction =
+                await ApplyTransfer(
+                    accounts.FromAccount,
+                    accounts.ToAccount,
+                    dto.Amount,
+                    dto.Description,
+                    transferRequestId: null,
+                    initiatedByUserId:
+                        _currentUserService.UserId);
 
             await _accountRepository
                 .SaveChanges();
@@ -115,7 +132,8 @@ public class TransferService : ITransferService
                 accounts.FromAccount.Id,
                 accounts.ToAccount.Id,
                 dto.Amount,
-                dto.Description);
+                dto.Description,
+                transaction);
         }
         catch
         {
@@ -133,7 +151,7 @@ public class TransferService : ITransferService
             .GetPending();
     }
 
-    public async Task<string>
+    public async Task<TransferResponseDto>
         ApproveTransfer(Guid transferId)
     {
         await _accountRepository
@@ -163,11 +181,16 @@ public class TransferService : ITransferService
             var accounts =
                 await GetAndValidateAccounts(dto);
 
-            await ApplyTransfer(
-                accounts.FromAccount,
-                accounts.ToAccount,
-                request.Amount,
-                request.Description);
+            var transaction =
+                await ApplyTransfer(
+                    accounts.FromAccount,
+                    accounts.ToAccount,
+                    request.Amount,
+                    request.Description,
+                    transferRequestId:
+                        request.Id,
+                    initiatedByUserId:
+                        request.RequestedByUserId);
 
             request.Status =
                 ApprovalStatus.Approved;
@@ -198,8 +221,12 @@ public class TransferService : ITransferService
             await _accountRepository
                 .CommitTransaction();
 
-            return
-                "Transfer approved successfully.";
+            return CreateResponse(
+                accounts.FromAccount.Id,
+                accounts.ToAccount.Id,
+                request.Amount,
+                request.Description,
+                transaction);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -378,25 +405,80 @@ public class TransferService : ITransferService
             toAccount);
     }
 
-    private async Task ApplyTransfer(
-        Account fromAccount,
-        Account toAccount,
-        decimal amount,
-        string description)
+    private async Task<TreasuryTransaction>
+        ApplyTransfer(
+            Account fromAccount,
+            Account toAccount,
+            decimal amount,
+            string description,
+            Guid? transferRequestId,
+            Guid? initiatedByUserId)
     {
+        var completedAtUtc =
+            DateTime.UtcNow;
+
+        var transaction =
+            new TreasuryTransaction
+            {
+                Id = Guid.NewGuid(),
+
+                Reference =
+                    GenerateTransactionReference(),
+
+                TransactionType =
+                    TransactionTypes
+                        .InternalTransfer,
+
+                Status =
+                    TransactionStatuses.Completed,
+
+                Amount = amount,
+
+                Currency =
+                    fromAccount.Currency
+                        .Trim()
+                        .ToUpperInvariant(),
+
+                Description = description,
+
+                SourceAccountId =
+                    fromAccount.Id,
+
+                DestinationAccountId =
+                    toAccount.Id,
+
+                TransferRequestId =
+                    transferRequestId,
+
+                InitiatedByUserId =
+                    initiatedByUserId,
+
+                CompletedByUserId =
+                    _currentUserService.UserId,
+
+                CreatedAtUtc =
+                    completedAtUtc,
+
+                CompletedAtUtc =
+                    completedAtUtc
+            };
+
+        await _transactionRepository
+            .Add(transaction);
+
         fromAccount.Balance -= amount;
         toAccount.Balance += amount;
 
-        _accountRepository.Update(
-            fromAccount);
-
-        _accountRepository.Update(
-            toAccount);
+        _accountRepository.Update(fromAccount);
+        _accountRepository.Update(toAccount);
 
         await _ledgerRepository.Add(
             new LedgerEntry
             {
                 Id = Guid.NewGuid(),
+
+                TreasuryTransactionId =
+                    transaction.Id,
 
                 AccountId =
                     fromAccount.Id,
@@ -408,13 +490,16 @@ public class TransferService : ITransferService
                 Description = description,
 
                 CreatedAt =
-                    DateTime.UtcNow
+                    completedAtUtc
             });
 
         await _ledgerRepository.Add(
             new LedgerEntry
             {
                 Id = Guid.NewGuid(),
+
+                TreasuryTransactionId =
+                    transaction.Id,
 
                 AccountId =
                     toAccount.Id,
@@ -426,8 +511,10 @@ public class TransferService : ITransferService
                 Description = description,
 
                 CreatedAt =
-                    DateTime.UtcNow
+                    completedAtUtc
             });
+
+        return transaction;
     }
 
     private static TransferResponseDto
@@ -435,23 +522,44 @@ public class TransferService : ITransferService
             Guid fromAccountId,
             Guid toAccountId,
             decimal amount,
-            string description)
+            string description,
+            TreasuryTransaction transaction)
     {
         return new TransferResponseDto
         {
+            TransactionId =
+                transaction.Id,
+
+            TransactionReference =
+                transaction.Reference,
+
+            Status =
+                transaction.Status,
+
             FromAccountId =
                 fromAccountId,
 
             ToAccountId =
                 toAccountId,
 
-            Amount = amount,
+            Amount =
+                amount,
 
             Description =
                 description,
 
             Timestamp =
-                DateTime.UtcNow
+                transaction.CompletedAtUtc
+                ?? transaction.CreatedAtUtc
         };
+    }
+
+    private static string
+    GenerateTransactionReference()
+    {
+        return
+            $"TRX-{DateTime.UtcNow:yyyyMMdd}-" +
+            $"{Guid.NewGuid():N}"
+                .ToUpperInvariant();
     }
 }

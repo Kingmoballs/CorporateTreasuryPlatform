@@ -149,6 +149,7 @@ public class AccountService : IAccountService
         return entries
             .Select(x => new LedgerEntryDto
             {
+                TransactionReference = x.TreasuryTransaction?.Reference,
                 Amount = x.Amount,
                 EntryType = x.EntryType,
                 Description = x.Description,

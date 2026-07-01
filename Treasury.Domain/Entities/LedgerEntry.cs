@@ -14,5 +14,10 @@ public class LedgerEntry
 
     public string Description { get; set; } = string.Empty;
 
+    public Guid? TreasuryTransactionId { get; set; }
+
+    public TreasuryTransaction?
+        TreasuryTransaction { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -9,6 +9,8 @@ public class LedgerEntryDto
 
     public string Description { get; set; }
         = string.Empty;
+    
+    public string? TransactionReference { get; set; }
 
     public DateTime CreatedAt { get; set; }
 }

@@ -11,7 +11,7 @@ public interface ITransferService
     Task<List<TransferRequest>>
         GetPendingTransfers();
 
-    Task<string>
+    Task<TransferResponseDto>
         ApproveTransfer(Guid transferId);
 
     Task<string> RejectTransfer(
