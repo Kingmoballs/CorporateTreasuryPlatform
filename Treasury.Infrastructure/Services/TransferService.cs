@@ -7,13 +7,18 @@ public class TransferService : ITransferService
 {
     private readonly IAccountRepository _accountRepository;
     private readonly ILedgerRepository _ledgerRepository;
+    private readonly ITransferRequestRepository _transferRequestRepository;
+
+    private const decimal ApprovalThreshold = 10000000m;
 
     public TransferService(
         IAccountRepository accountRepository,
-        ILedgerRepository ledgerRepository)
+        ILedgerRepository ledgerRepository,
+        ITransferRequestRepository transferRequestRepository)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
+        _transferRequestRepository = transferRequestRepository;
     }
     
     public async Task<TransferResponseDto>
@@ -48,6 +53,35 @@ public class TransferService : ITransferService
             {
                 throw new Exception(
                     "Insufficient funds.");
+            }
+
+            if (dto.Amount > ApprovalThreshold)
+            {
+                var request = new TransferRequest
+                {
+                    Id = Guid.NewGuid(),
+                    FromAccountId = dto.FromAccountId,
+                    ToAccountId = dto.ToAccountId,
+                    Amount = dto.Amount,
+                    Description = dto.Description,
+                    Status = "Pending"
+                };
+
+                await _transferRequestRepository
+                    .Add(request);
+
+                await _transferRequestRepository
+                    .SaveChanges();
+
+                return new TransferResponseDto
+                {
+                    FromAccountId = dto.FromAccountId,
+                    ToAccountId = dto.ToAccountId,
+                    Amount = dto.Amount,
+                    Description =
+                        "Transfer pending approval.",
+                    Timestamp = DateTime.UtcNow
+                };
             }
 
             // Move balances

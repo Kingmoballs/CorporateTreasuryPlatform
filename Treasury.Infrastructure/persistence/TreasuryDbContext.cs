@@ -21,6 +21,8 @@ public class TreasuryDbContext : DbContext
     public DbSet<AccountType> AccountTypes => Set<AccountType>();
 
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
+    
+    public DbSet<TransferRequest> TransferRequests => Set<TransferRequest>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)

@@ -119,6 +119,10 @@ builder.Services.AddScoped<
     ITransferService,
     TransferService>();
 
+builder.Services.AddScoped<
+    ITransferRequestRepository,
+    TransferRequestRepository>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 
