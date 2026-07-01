@@ -1,39 +1,336 @@
+using Microsoft.EntityFrameworkCore;
 using Treasury.Application.DTOs.Transfers;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
-
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Services;
 
 public class TransferService : ITransferService
 {
-    private readonly IAccountRepository _accountRepository;
-    private readonly ILedgerRepository _ledgerRepository;
-    private readonly ITransferRequestRepository _transferRequestRepository;
+    private const decimal ApprovalThreshold =
+        10000000m;
 
-    private const decimal ApprovalThreshold = 10000000m;
+    private readonly IAccountRepository
+        _accountRepository;
+
+    private readonly ILedgerRepository
+        _ledgerRepository;
+
+    private readonly ITransferRequestRepository
+        _transferRequestRepository;
+
+    private readonly ICurrentUserService
+        _currentUserService;
 
     public TransferService(
         IAccountRepository accountRepository,
         ILedgerRepository ledgerRepository,
-        ITransferRequestRepository transferRequestRepository)
+        ITransferRequestRepository
+            transferRequestRepository,
+        ICurrentUserService currentUserService)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
-        _transferRequestRepository = transferRequestRepository;
+        _transferRequestRepository =
+            transferRequestRepository;
+        _currentUserService =
+            currentUserService;
     }
 
     public async Task<TransferResponseDto>
+        TransferFunds(CreateTransferDto dto)
+    {
+        var accounts =
+            await GetAndValidateAccounts(dto);
 
-    TransferFunds(CreateTransferDto dto)
-    {
-        return await TransferFunds(dto, false);
+        if (dto.Amount > ApprovalThreshold)
+        {
+            var request = new TransferRequest
+            {
+                Id = Guid.NewGuid(),
+
+                FromAccountId =
+                    accounts.FromAccount.Id,
+
+                ToAccountId =
+                    accounts.ToAccount.Id,
+
+                Amount = dto.Amount,
+
+                Description = dto.Description,
+
+                Status = ApprovalStatus.Pending,
+
+                RequestedByUserId =
+                    _currentUserService.UserId,
+
+                ConcurrencyToken =
+                    Guid.NewGuid(),
+
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _transferRequestRepository
+                .Add(request);
+
+            await _transferRequestRepository
+                .SaveChanges();
+
+            return new TransferResponseDto
+            {
+                FromAccountId =
+                    request.FromAccountId,
+
+                ToAccountId =
+                    request.ToAccountId,
+
+                Amount = request.Amount,
+
+                Description =
+                    "Transfer pending approval.",
+
+                Timestamp = DateTime.UtcNow
+            };
+        }
+
+        await _accountRepository
+            .BeginTransaction();
+
+        try
+        {
+            await ApplyTransfer(
+                accounts.FromAccount,
+                accounts.ToAccount,
+                dto.Amount,
+                dto.Description);
+
+            await _accountRepository
+                .SaveChanges();
+
+            await _accountRepository
+                .CommitTransaction();
+
+            return CreateResponse(
+                accounts.FromAccount.Id,
+                accounts.ToAccount.Id,
+                dto.Amount,
+                dto.Description);
+        }
+        catch
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw;
+        }
     }
-    public async Task<TransferResponseDto>
-        TransferFunds(
-            CreateTransferDto dto,
-            bool skipApproval)
+
+    public async Task<List<TransferRequest>>
+        GetPendingTransfers()
     {
+        return await _transferRequestRepository
+            .GetPending();
+    }
+
+    public async Task<string>
+        ApproveTransfer(Guid transferId)
+    {
+        await _accountRepository
+            .BeginTransaction();
+
+        try
+        {
+            var request =
+                await GetPendingRequest(
+                    transferId);
+
+            var dto = new CreateTransferDto
+            {
+                FromAccountId =
+                    request.FromAccountId,
+
+                ToAccountId =
+                    request.ToAccountId,
+
+                Amount =
+                    request.Amount,
+
+                Description =
+                    request.Description
+            };
+
+            var accounts =
+                await GetAndValidateAccounts(dto);
+
+            await ApplyTransfer(
+                accounts.FromAccount,
+                accounts.ToAccount,
+                request.Amount,
+                request.Description);
+
+            request.Status =
+                ApprovalStatus.Approved;
+
+            request.ReviewedByUserId =
+                _currentUserService.UserId;
+
+            request.ReviewedAtUtc =
+                DateTime.UtcNow;
+
+            request.RejectionReason = null;
+
+            // Rotating the token makes a concurrent update fail.
+            request.ConcurrencyToken =
+                Guid.NewGuid();
+
+            _transferRequestRepository
+                .Update(request);
+
+            /*
+             * All repositories share the same scoped
+             * TreasuryDbContext. One SaveChanges therefore
+             * saves the balances, ledger and request status.
+             */
+            await _accountRepository
+                .SaveChanges();
+
+            await _accountRepository
+                .CommitTransaction();
+
+            return
+                "Transfer approved successfully.";
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw new Exception(
+                "This transfer request was already " +
+                "processed by another user.");
+        }
+        catch
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw;
+        }
+    }
+
+    public async Task<string>
+        RejectTransfer(
+            Guid transferId,
+            string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            throw new Exception(
+                "A rejection reason is required.");
+        }
+
+        await _accountRepository
+            .BeginTransaction();
+
+        try
+        {
+            var request =
+                await GetPendingRequest(
+                    transferId);
+
+            request.Status =
+                ApprovalStatus.Rejected;
+
+            request.ReviewedByUserId =
+                _currentUserService.UserId;
+
+            request.ReviewedAtUtc =
+                DateTime.UtcNow;
+
+            request.RejectionReason =
+                reason.Trim();
+
+            request.ConcurrencyToken =
+                Guid.NewGuid();
+
+            _transferRequestRepository
+                .Update(request);
+
+            await _transferRequestRepository
+                .SaveChanges();
+
+            await _accountRepository
+                .CommitTransaction();
+
+            return
+                "Transfer rejected successfully.";
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw new Exception(
+                "This transfer request was already " +
+                "processed by another user.");
+        }
+        catch
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw;
+        }
+    }
+
+    private async Task<TransferRequest>
+        GetPendingRequest(Guid transferId)
+    {
+        var request =
+            await _transferRequestRepository
+                .GetById(transferId);
+
+        if (request is null)
+        {
+            throw new Exception(
+                "Transfer request not found.");
+        }
+
+        if (!string.Equals(
+            request.Status,
+            ApprovalStatus.Pending,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Exception(
+                "Transfer request has already " +
+                "been processed.");
+        }
+
+        return request;
+    }
+
+    private async Task<(
+        Account FromAccount,
+        Account ToAccount)>
+        GetAndValidateAccounts(
+            CreateTransferDto dto)
+    {
+        if (dto.Amount <= 0)
+        {
+            throw new Exception(
+                "Transfer amount must be " +
+                "greater than zero.");
+        }
+
+        if (dto.FromAccountId ==
+            dto.ToAccountId)
+        {
+            throw new Exception(
+                "Source and destination accounts " +
+                "must be different.");
+        }
+
         var fromAccount =
             await _accountRepository
                 .GetById(dto.FromAccountId);
@@ -49,16 +346,25 @@ public class TransferService : ITransferService
                 "Invalid account selected.");
         }
 
-        if (dto.Amount <= 0)
+        if (!fromAccount.IsActive ||
+            !toAccount.IsActive)
         {
             throw new Exception(
-                "Transfer amount must be greater than zero.");
+                "Transfers require active accounts.");
         }
 
-        if (fromAccount.Id == toAccount.Id)
+        /*
+         * Cross-currency transfers require an FX rate
+         * and must not silently move equal nominal values.
+         */
+        if (!string.Equals(
+            fromAccount.Currency,
+            toAccount.Currency,
+            StringComparison.OrdinalIgnoreCase))
         {
             throw new Exception(
-                "Source and destination accounts must be different.");
+                "Cross-currency transfers are not " +
+                "currently supported.");
         }
 
         if (fromAccount.Balance < dto.Amount)
@@ -67,165 +373,85 @@ public class TransferService : ITransferService
                 "Insufficient funds.");
         }
 
-        if (!skipApproval &&
-            dto.Amount > ApprovalThreshold)
-        {
-            var request = new TransferRequest
+        return (
+            fromAccount,
+            toAccount);
+    }
+
+    private async Task ApplyTransfer(
+        Account fromAccount,
+        Account toAccount,
+        decimal amount,
+        string description)
+    {
+        fromAccount.Balance -= amount;
+        toAccount.Balance += amount;
+
+        _accountRepository.Update(
+            fromAccount);
+
+        _accountRepository.Update(
+            toAccount);
+
+        await _ledgerRepository.Add(
+            new LedgerEntry
             {
                 Id = Guid.NewGuid(),
-                FromAccountId = dto.FromAccountId,
-                ToAccountId = dto.ToAccountId,
-                Amount = dto.Amount,
-                Description = dto.Description,
-                Status = "Pending",
-                CreatedAt = DateTime.UtcNow
-            };
 
-            await _transferRequestRepository
-                .Add(request);
+                AccountId =
+                    fromAccount.Id,
 
-            await _transferRequestRepository
-                .SaveChanges();
+                Amount = amount,
 
-            return new TransferResponseDto
+                EntryType = "Credit",
+
+                Description = description,
+
+                CreatedAt =
+                    DateTime.UtcNow
+            });
+
+        await _ledgerRepository.Add(
+            new LedgerEntry
             {
-                FromAccountId = dto.FromAccountId,
-                ToAccountId = dto.ToAccountId,
-                Amount = dto.Amount,
-                Description =
-                    "Transfer pending approval.",
-                Timestamp = DateTime.UtcNow
-            };
-        }
+                Id = Guid.NewGuid(),
 
-        // The explicit transaction is only needed
-        // when balances and ledger entries will change.
-        await _accountRepository.BeginTransaction();
+                AccountId =
+                    toAccount.Id,
 
-        try
-        {
-            fromAccount.Balance -= dto.Amount;
-            toAccount.Balance += dto.Amount;
+                Amount = amount,
 
-            _accountRepository.Update(fromAccount);
-            _accountRepository.Update(toAccount);
+                EntryType = "Debit",
 
-            await _ledgerRepository.Add(
-                new LedgerEntry
-                {
-                    Id = Guid.NewGuid(),
-                    AccountId = fromAccount.Id,
-                    Amount = dto.Amount,
-                    EntryType = "Credit",
-                    Description = dto.Description,
-                    CreatedAt = DateTime.UtcNow
-                });
+                Description = description,
 
-            await _ledgerRepository.Add(
-                new LedgerEntry
-                {
-                    Id = Guid.NewGuid(),
-                    AccountId = toAccount.Id,
-                    Amount = dto.Amount,
-                    EntryType = "Debit",
-                    Description = dto.Description,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-            await _accountRepository.SaveChanges();
-            await _accountRepository.CommitTransaction();
-
-            return new TransferResponseDto
-            {
-                FromAccountId = fromAccount.Id,
-                ToAccountId = toAccount.Id,
-                Amount = dto.Amount,
-                Description = dto.Description,
-                Timestamp = DateTime.UtcNow
-            };
-        }
-        catch
-        {
-            await _accountRepository
-                .RollbackTransaction();
-
-            throw;
-        }
+                CreatedAt =
+                    DateTime.UtcNow
+            });
     }
 
-    public async Task<List<TransferRequest>>
-    GetPendingTransfers()
+    private static TransferResponseDto
+        CreateResponse(
+            Guid fromAccountId,
+            Guid toAccountId,
+            decimal amount,
+            string description)
     {
-        return await _transferRequestRepository
-            .GetPending();
-    }
-
-    public async Task<string>
-        ApproveTransfer(Guid transferId)
-    {
-        var request =
-            await _transferRequestRepository
-                .GetById(transferId);
-
-        if (request is null)
+        return new TransferResponseDto
         {
-            throw new Exception(
-                "Transfer request not found.");
-        }
+            FromAccountId =
+                fromAccountId,
 
-        if (request.Status != "Pending")
-        {
-            throw new Exception(
-                "Transfer already processed.");
-        }
+            ToAccountId =
+                toAccountId,
 
-        await TransferFunds(new CreateTransferDto
-        {
-            FromAccountId = request.FromAccountId,
-            ToAccountId = request.ToAccountId,
-            Amount = request.Amount,
-            Description = request.Description
-        },
-        true);
+            Amount = amount,
 
-        request.Status = "Approved";
+            Description =
+                description,
 
-        _transferRequestRepository.Update(
-            request);
-
-        await _transferRequestRepository
-            .SaveChanges();
-
-        return "Transfer approved successfully.";
-    }
-
-    public async Task<string>
-        RejectTransfer(Guid transferId)
-    {
-        var request =
-            await _transferRequestRepository
-                .GetById(transferId);
-
-        if (request is null)
-        {
-            throw new Exception(
-                "Transfer request not found.");
-        }
-
-        if (request.Status != "Pending")
-        {
-            throw new Exception(
-                "Transfer already processed.");
-        }
-
-        request.Status = "Rejected";
-
-        _transferRequestRepository.Update(
-            request);
-
-        await _transferRequestRepository
-            .SaveChanges();
-
-        return "Transfer rejected successfully.";
+            Timestamp =
+                DateTime.UtcNow
+        };
     }
 }

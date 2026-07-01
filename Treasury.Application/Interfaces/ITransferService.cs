@@ -14,6 +14,7 @@ public interface ITransferService
     Task<string>
         ApproveTransfer(Guid transferId);
 
-    Task<string>
-        RejectTransfer(Guid transferId);
+    Task<string> RejectTransfer(
+        Guid transferId,
+        string reason);
 }

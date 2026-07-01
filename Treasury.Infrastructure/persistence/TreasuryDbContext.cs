@@ -38,5 +38,16 @@ public class TreasuryDbContext : DbContext
             .HasOne(x => x.AccountType)
             .WithMany(x => x.Accounts)
             .HasForeignKey(x => x.AccountTypeId);
+        
+        modelBuilder.Entity<TransferRequest>()
+            .Property(request =>
+                request.ConcurrencyToken)
+            .IsConcurrencyToken();
+
+        modelBuilder.Entity<TransferRequest>()
+            .HasIndex(request => request.Status);
+
+        modelBuilder.Entity<TransferRequest>()
+            .HasIndex(request => request.CreatedAt);
     }
 }

@@ -71,17 +71,37 @@ public class AccountRepository
 
     public async Task CommitTransaction()
     {
-        if (_transaction is not null)
+        if (_transaction is null)
+        {
+            return;
+        }
+
+        try
         {
             await _transaction.CommitAsync();
+        }
+        finally
+        {
+            await _transaction.DisposeAsync();
+            _transaction = null;
         }
     }
 
     public async Task RollbackTransaction()
     {
-        if (_transaction is not null)
+        if (_transaction is null)
+        {
+            return;
+        }
+
+        try
         {
             await _transaction.RollbackAsync();
+        }
+        finally
+        {
+            await _transaction.DisposeAsync();
+            _transaction = null;
         }
     }
 }

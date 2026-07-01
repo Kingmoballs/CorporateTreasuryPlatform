@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Treasury.Application.DTOs.Transfers;
 using Treasury.Application.Interfaces;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Api.Controllers;
 
@@ -11,6 +12,11 @@ namespace Treasury.Api.Controllers;
 public class TransfersController : ControllerBase
 {
     private readonly ITransferService _transferService;
+
+    private const string ApproverRoles =
+        Roles.Admin + "," +
+        Roles.FinanceManager + "," +
+        Roles.CFO;
 
     public TransfersController(
         ITransferService transferService)
@@ -30,6 +36,7 @@ public class TransfersController : ControllerBase
     }
 
     [HttpGet("pending")]
+    [Authorize(Roles = ApproverRoles)]
     public async Task<IActionResult>
         GetPending()
     {
@@ -41,6 +48,7 @@ public class TransfersController : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
+    [Authorize(Roles = ApproverRoles)]
     public async Task<IActionResult>
         Approve(Guid id)
     {
@@ -52,12 +60,17 @@ public class TransfersController : ControllerBase
     }
 
     [HttpPost("{id}/reject")]
+    [Authorize(Roles = ApproverRoles)]
     public async Task<IActionResult>
-        Reject(Guid id)
+        Reject(
+            Guid id,
+            RejectTransferDto dto)
     {
         var result =
             await _transferService
-                .RejectTransfer(id);
+                .RejectTransfer(
+                    id,
+                    dto.Reason);
 
         return Ok(result);
     }
