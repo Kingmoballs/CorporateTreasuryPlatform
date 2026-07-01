@@ -135,6 +135,10 @@ builder.Services.AddScoped<
     ITreasuryTransactionService,
     TreasuryTransactionService>();
 
+builder.Services.AddScoped<
+    IUserAdministrationService,
+    UserAdministrationService>(); 
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 
@@ -184,6 +188,8 @@ app.UseHttpsRedirection();
 app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseAuthentication();
+
+app.UseMiddleware<ActiveUserMiddleware>();
 
 app.UseAuthorization();
 

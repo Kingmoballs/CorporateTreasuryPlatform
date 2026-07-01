@@ -10,6 +10,10 @@ public interface IRoleRepository
 
     Task Add(Role role);
 
+    Task<Role?> GetById(Guid id);
+
+    Task<List<Role>> GetAll();
+
     Task SaveChanges();
 }
 

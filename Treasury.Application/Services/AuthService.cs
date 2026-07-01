@@ -111,6 +111,12 @@ public class AuthService : IAuthService
                 "Invalid credentials");
         }
 
+        if (!user.IsActive)
+        {
+            throw new Exception(
+                "This user account is inactive.");
+        }
+
         var token =
             _jwtService.GenerateToken(user);
 

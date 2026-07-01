@@ -38,6 +38,15 @@ public class UserRepository : IUserRepository
         await _context.Users.AddAsync(user);
     }
 
+    public async Task<List<User>> GetAll()
+    {
+        return await _context.Users
+            .AsNoTracking()
+            .Include(user => user.Role)
+            .OrderBy(user => user.Email)
+            .ToListAsync();
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();

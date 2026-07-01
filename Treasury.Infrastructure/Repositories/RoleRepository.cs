@@ -35,6 +35,22 @@ public class RoleRepository : IRoleRepository
         await _context.Roles.AddAsync(role);
     }
 
+    public async Task<Role?> GetById(Guid id)
+    {
+        return await _context.Roles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(role =>
+                role.Id == id);
+    }
+
+    public async Task<List<Role>> GetAll()
+    {
+        return await _context.Roles
+            .AsNoTracking()
+            .OrderBy(role => role.Name)
+            .ToListAsync();
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();
