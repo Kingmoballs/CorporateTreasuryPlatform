@@ -28,4 +28,37 @@ public class TransfersController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("pending")]
+    public async Task<IActionResult>
+        GetPending()
+    {
+        var result =
+            await _transferService
+                .GetPendingTransfers();
+
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/approve")]
+    public async Task<IActionResult>
+        Approve(Guid id)
+    {
+        var result =
+            await _transferService
+                .ApproveTransfer(id);
+
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/reject")]
+    public async Task<IActionResult>
+        Reject(Guid id)
+    {
+        var result =
+            await _transferService
+                .RejectTransfer(id);
+
+        return Ok(result);
+    }
 }

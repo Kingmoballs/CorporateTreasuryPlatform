@@ -11,6 +11,8 @@ public interface ITransferRequestRepository
 
     Task<List<TransferRequest>>
         GetPending();
+    
+    void Update(TransferRequest request);
 
     Task SaveChanges();
 }

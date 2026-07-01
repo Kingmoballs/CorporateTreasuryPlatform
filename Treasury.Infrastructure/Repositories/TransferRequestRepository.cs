@@ -40,6 +40,11 @@ public class TransferRequestRepository
             .ToListAsync();
     }
 
+    public void Update(TransferRequest request)
+    {
+        _context.TransferRequests.Update(request);
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();

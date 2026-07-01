@@ -2,7 +2,9 @@ using Treasury.Application.DTOs.Transfers;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 
+
 namespace Treasury.Infrastructure.Services;
+
 public class TransferService : ITransferService
 {
     private readonly IAccountRepository _accountRepository;
@@ -20,78 +22,94 @@ public class TransferService : ITransferService
         _ledgerRepository = ledgerRepository;
         _transferRequestRepository = transferRequestRepository;
     }
-    
+
     public async Task<TransferResponseDto>
+
     TransferFunds(CreateTransferDto dto)
     {
-        await _accountRepository
-            .BeginTransaction();
+        return await TransferFunds(dto, false);
+    }
+    public async Task<TransferResponseDto>
+        TransferFunds(
+            CreateTransferDto dto,
+            bool skipApproval)
+    {
+        var fromAccount =
+            await _accountRepository
+                .GetById(dto.FromAccountId);
+
+        var toAccount =
+            await _accountRepository
+                .GetById(dto.ToAccountId);
+
+        if (fromAccount is null ||
+            toAccount is null)
+        {
+            throw new Exception(
+                "Invalid account selected.");
+        }
+
+        if (dto.Amount <= 0)
+        {
+            throw new Exception(
+                "Transfer amount must be greater than zero.");
+        }
+
+        if (fromAccount.Id == toAccount.Id)
+        {
+            throw new Exception(
+                "Source and destination accounts must be different.");
+        }
+
+        if (fromAccount.Balance < dto.Amount)
+        {
+            throw new Exception(
+                "Insufficient funds.");
+        }
+
+        if (!skipApproval &&
+            dto.Amount > ApprovalThreshold)
+        {
+            var request = new TransferRequest
+            {
+                Id = Guid.NewGuid(),
+                FromAccountId = dto.FromAccountId,
+                ToAccountId = dto.ToAccountId,
+                Amount = dto.Amount,
+                Description = dto.Description,
+                Status = "Pending",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _transferRequestRepository
+                .Add(request);
+
+            await _transferRequestRepository
+                .SaveChanges();
+
+            return new TransferResponseDto
+            {
+                FromAccountId = dto.FromAccountId,
+                ToAccountId = dto.ToAccountId,
+                Amount = dto.Amount,
+                Description =
+                    "Transfer pending approval.",
+                Timestamp = DateTime.UtcNow
+            };
+        }
+
+        // The explicit transaction is only needed
+        // when balances and ledger entries will change.
+        await _accountRepository.BeginTransaction();
 
         try
         {
-            var fromAccount =
-                await _accountRepository
-                    .GetById(dto.FromAccountId);
-
-            var toAccount =
-                await _accountRepository
-                    .GetById(dto.ToAccountId);
-
-            if (fromAccount is null || toAccount is null)
-            {
-                throw new Exception(
-                    "Invalid account selected.");
-            }
-
-            if (dto.Amount <= 0)
-            {
-                throw new Exception(
-                    "Transfer amount must be greater than zero.");
-            }
-
-            if (fromAccount.Balance < dto.Amount)
-            {
-                throw new Exception(
-                    "Insufficient funds.");
-            }
-
-            if (dto.Amount > ApprovalThreshold)
-            {
-                var request = new TransferRequest
-                {
-                    Id = Guid.NewGuid(),
-                    FromAccountId = dto.FromAccountId,
-                    ToAccountId = dto.ToAccountId,
-                    Amount = dto.Amount,
-                    Description = dto.Description,
-                    Status = "Pending"
-                };
-
-                await _transferRequestRepository
-                    .Add(request);
-
-                await _transferRequestRepository
-                    .SaveChanges();
-
-                return new TransferResponseDto
-                {
-                    FromAccountId = dto.FromAccountId,
-                    ToAccountId = dto.ToAccountId,
-                    Amount = dto.Amount,
-                    Description =
-                        "Transfer pending approval.",
-                    Timestamp = DateTime.UtcNow
-                };
-            }
-
-            // Move balances
             fromAccount.Balance -= dto.Amount;
             toAccount.Balance += dto.Amount;
 
             _accountRepository.Update(fromAccount);
             _accountRepository.Update(toAccount);
 
-            // Credit source
             await _ledgerRepository.Add(
                 new LedgerEntry
                 {
@@ -99,10 +117,10 @@ public class TransferService : ITransferService
                     AccountId = fromAccount.Id,
                     Amount = dto.Amount,
                     EntryType = "Credit",
-                    Description = dto.Description
+                    Description = dto.Description,
+                    CreatedAt = DateTime.UtcNow
                 });
 
-            // Debit destination
             await _ledgerRepository.Add(
                 new LedgerEntry
                 {
@@ -110,14 +128,12 @@ public class TransferService : ITransferService
                     AccountId = toAccount.Id,
                     Amount = dto.Amount,
                     EntryType = "Debit",
-                    Description = dto.Description
+                    Description = dto.Description,
+                    CreatedAt = DateTime.UtcNow
                 });
 
-            await _accountRepository
-                .SaveChanges();
-
-            await _accountRepository
-                .CommitTransaction();
+            await _accountRepository.SaveChanges();
+            await _accountRepository.CommitTransaction();
 
             return new TransferResponseDto
             {
@@ -135,5 +151,81 @@ public class TransferService : ITransferService
 
             throw;
         }
+    }
+
+    public async Task<List<TransferRequest>>
+    GetPendingTransfers()
+    {
+        return await _transferRequestRepository
+            .GetPending();
+    }
+
+    public async Task<string>
+        ApproveTransfer(Guid transferId)
+    {
+        var request =
+            await _transferRequestRepository
+                .GetById(transferId);
+
+        if (request is null)
+        {
+            throw new Exception(
+                "Transfer request not found.");
+        }
+
+        if (request.Status != "Pending")
+        {
+            throw new Exception(
+                "Transfer already processed.");
+        }
+
+        await TransferFunds(new CreateTransferDto
+        {
+            FromAccountId = request.FromAccountId,
+            ToAccountId = request.ToAccountId,
+            Amount = request.Amount,
+            Description = request.Description
+        },
+        true);
+
+        request.Status = "Approved";
+
+        _transferRequestRepository.Update(
+            request);
+
+        await _transferRequestRepository
+            .SaveChanges();
+
+        return "Transfer approved successfully.";
+    }
+
+    public async Task<string>
+        RejectTransfer(Guid transferId)
+    {
+        var request =
+            await _transferRequestRepository
+                .GetById(transferId);
+
+        if (request is null)
+        {
+            throw new Exception(
+                "Transfer request not found.");
+        }
+
+        if (request.Status != "Pending")
+        {
+            throw new Exception(
+                "Transfer already processed.");
+        }
+
+        request.Status = "Rejected";
+
+        _transferRequestRepository.Update(
+            request);
+
+        await _transferRequestRepository
+            .SaveChanges();
+
+        return "Transfer rejected successfully.";
     }
 }

@@ -1,10 +1,19 @@
 using Treasury.Application.DTOs.Transfers;
+using Treasury.Domain.Entities;
 
 namespace Treasury.Application.Interfaces;
 
 public interface ITransferService
 {
     Task<TransferResponseDto>
-        TransferFunds(
-            CreateTransferDto dto);
+        TransferFunds(CreateTransferDto dto);
+
+    Task<List<TransferRequest>>
+        GetPendingTransfers();
+
+    Task<string>
+        ApproveTransfer(Guid transferId);
+
+    Task<string>
+        RejectTransfer(Guid transferId);
 }

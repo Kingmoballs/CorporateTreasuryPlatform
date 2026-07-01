@@ -123,6 +123,10 @@ builder.Services.AddScoped<
     ITransferRequestRepository,
     TransferRequestRepository>();
 
+builder.Services.AddScoped<
+    ITreasuryReportingService,
+    TreasuryReportingService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 
