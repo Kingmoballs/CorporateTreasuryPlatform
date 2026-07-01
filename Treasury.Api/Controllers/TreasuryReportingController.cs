@@ -29,4 +29,30 @@ public class TreasuryReportingController
 
         return Ok(result);
     }
+
+    [HttpGet("dashboard")]
+    public async Task<IActionResult>
+        GetCashPositionDashboard()
+    {
+        var result =
+            await _reportingService
+                .GetCashPositionDashboard();
+
+        return Ok(result);
+    }
+
+    [HttpGet("liquidity")]
+    public async Task<IActionResult>
+        GetLiquidityReport(
+            [FromQuery] DateTime? fromUtc,
+            [FromQuery] DateTime? toUtc)
+    {
+        var result =
+            await _reportingService
+                .GetLiquidityReport(
+                    fromUtc,
+                    toUtc);
+
+        return Ok(result);
+    }
 }

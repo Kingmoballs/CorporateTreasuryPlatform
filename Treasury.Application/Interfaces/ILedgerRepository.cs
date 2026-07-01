@@ -9,5 +9,9 @@ public interface ILedgerRepository
     Task<List<LedgerEntry>>
     GetByAccountId(Guid accountId);
 
+    Task<List<LedgerEntry>> GetByDateRange(
+        DateTime fromUtc,
+        DateTime toUtc);
+
     Task SaveChanges();
 }

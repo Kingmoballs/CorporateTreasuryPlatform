@@ -31,6 +31,22 @@ public class LedgerRepository
             .ToListAsync();
     }
 
+    public async Task<List<LedgerEntry>>
+        GetByDateRange(
+            DateTime fromUtc,
+            DateTime toUtc)
+    {
+        
+        return await _context.LedgerEntries
+            .AsNoTracking()
+            .Include(entry => entry.Account)
+            .Where(entry =>
+                entry.CreatedAt >= fromUtc &&
+                entry.CreatedAt < toUtc)
+            .OrderBy(entry => entry.CreatedAt)
+            .ToListAsync();
+    }    
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();
