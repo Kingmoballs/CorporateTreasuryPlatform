@@ -441,11 +441,35 @@ public class TreasuryReportingService
         */
         var completedTransfers = ledgerEntries
             .Where(entry =>
+                entry.TreasuryTransaction?
+                    .TransactionType ==
+                        TransactionTypes.InternalTransfer &&
                 string.Equals(
                     entry.EntryType,
                     "Credit",
-                    StringComparison
-                        .OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        var cashReceipts = ledgerEntries
+            .Where(entry =>
+                entry.TreasuryTransaction?
+                    .TransactionType ==
+                        TransactionTypes.CashReceipt &&
+                string.Equals(
+                    entry.EntryType,
+                    "Debit",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        var cashPayments = ledgerEntries
+            .Where(entry =>
+                entry.TreasuryTransaction?
+                    .TransactionType ==
+                        TransactionTypes.CashPayment &&
+                string.Equals(
+                    entry.EntryType,
+                    "Credit",
+                    StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         var currencies = activeAccounts
@@ -510,6 +534,21 @@ public class TreasuryReportingService
                             currency);
                     })
                     .ToList();
+            var currencyReceipts =
+                cashReceipts
+                    .Where(entry =>
+                        CurrencyMatches(
+                            entry.Account.Currency,
+                            currency))
+                    .ToList();
+            
+            var currencyPayments =
+                cashPayments
+                    .Where(entry =>
+                        CurrencyMatches(
+                            entry.Account.Currency,
+                            currency))
+                    .ToList();
 
             var balances =
                 CalculateLiquidityBalances(
@@ -534,6 +573,27 @@ public class TreasuryReportingService
 
                     OtherBalance =
                         balances.OtherBalance,
+                    
+                    ExternalReceiptCount =
+                        currencyReceipts.Count,
+
+                    ExternalReceiptAmount =
+                        currencyReceipts.Sum(
+                            entry => entry.Amount),
+                    
+                    ExternalPaymentCount =
+                        currencyPayments.Count,
+
+                    ExternalPaymentAmount =
+                        currencyPayments.Sum(
+                            entry => entry.Amount),
+
+                    NetExternalCashFlow =
+                        currencyReceipts.Sum(
+                            entry => entry.Amount)
+                        -
+                        currencyPayments.Sum(
+                            entry => entry.Amount),
 
                     AvailableLiquidityRatio =
                         CalculateRatio(

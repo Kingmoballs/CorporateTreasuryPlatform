@@ -44,4 +44,14 @@ public class CurrencyLiquidityDto
         get;
         set;
     }
+
+    public int ExternalReceiptCount { get; set; }
+
+    public decimal ExternalReceiptAmount { get; set; }
+
+    public int ExternalPaymentCount { get; set; }
+
+    public decimal ExternalPaymentAmount { get; set; }
+
+    public decimal NetExternalCashFlow { get; set; }
 }

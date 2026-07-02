@@ -7,4 +7,10 @@ public static class TransactionTypes
     
     public const string OpeningBalance =
         "OpeningBalance";
+    
+    public const string CashReceipt =
+        "CashReceipt";
+    
+    public const string CashPayment =
+    "CashPayment";
 }

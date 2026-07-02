@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702002207_AddExternalCashMovementFields")]
+    partial class AddExternalCashMovementFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -122,85 +125,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_LedgerEntries_Amount_Positive", "\"Amount\" > 0");
 
                             t.HasCheckConstraint("CK_LedgerEntries_EntryType", "\"EntryType\" IN ('Debit', 'Credit')");
-                        });
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.PaymentRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("BeneficiaryName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("ConcurrencyToken")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ExternalReference")
-                        .HasColumnType("text");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("RejectionReason")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("RequestedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ReviewedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ReviewedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountId");
-
-                    b.HasIndex("IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("RequestedByUserId");
-
-                    b.HasIndex("ReviewedByUserId");
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("PaymentRequests", t =>
-                        {
-                            t.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
-
-                            t.HasCheckConstraint("CK_PaymentRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
                         });
                 });
 
@@ -323,9 +247,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InitiatedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("PaymentRequestId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Reference")
                         .IsRequired()
                         .HasColumnType("text");
@@ -358,8 +279,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("InitiatedByUserId");
-
-                    b.HasIndex("PaymentRequestId");
 
                     b.HasIndex("Reference")
                         .IsUnique();
@@ -445,26 +364,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("TreasuryTransaction");
                 });
 
-            modelBuilder.Entity("Treasury.Domain.Entities.PaymentRequest", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("RequestedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("ReviewedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
             modelBuilder.Entity("Treasury.Domain.Entities.TreasuryTransaction", b =>
                 {
                     b.HasOne("Treasury.Domain.Entities.User", null)
@@ -480,11 +379,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasOne("Treasury.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("InitiatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.PaymentRequest", null)
-                        .WithMany()
-                        .HasForeignKey("PaymentRequestId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Treasury.Domain.Entities.Account", null)

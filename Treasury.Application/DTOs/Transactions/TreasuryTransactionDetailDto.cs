@@ -9,6 +9,8 @@ public class TreasuryTransactionDetailDto
 
     public Guid? CompletedByUserId { get; set; }
 
+    public Guid? PaymentRequestId { get; set; }
+
     public IReadOnlyList<TransactionLedgerEntryDto>
         LedgerEntries { get; set; }
         = Array.Empty<TransactionLedgerEntryDto>();

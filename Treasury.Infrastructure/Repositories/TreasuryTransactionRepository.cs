@@ -117,4 +117,16 @@ public class TreasuryTransactionRepository
 
         return (items, totalCount);
     }
+
+    public async Task<TreasuryTransaction?>
+        GetByIdempotencyKey(
+            string idempotencyKey)
+    {
+        return await _context
+            .TreasuryTransactions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(transaction =>
+                transaction.IdempotencyKey ==
+                    idempotencyKey);
+    }
 }

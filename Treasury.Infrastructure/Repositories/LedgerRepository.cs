@@ -45,6 +45,7 @@ public class LedgerRepository
         return await _context.LedgerEntries
             .AsNoTracking()
             .Include(entry => entry.Account)
+            .Include(entry => entry.TreasuryTransaction)
             .Where(entry =>
                 entry.CreatedAt >= fromUtc &&
                 entry.CreatedAt < toUtc)

@@ -139,6 +139,14 @@ builder.Services.AddScoped<
     IUserAdministrationService,
     UserAdministrationService>(); 
 
+builder.Services.AddScoped<
+    ICashMovementService,
+    CashMovementService>();
+
+builder.Services.AddScoped<
+    IPaymentRequestRepository,
+    PaymentRequestRepository>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 

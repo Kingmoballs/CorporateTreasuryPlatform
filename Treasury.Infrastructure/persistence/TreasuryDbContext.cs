@@ -26,6 +26,8 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<TreasuryTransaction> TreasuryTransactions => Set<TreasuryTransaction>();
 
+    public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -158,6 +160,30 @@ public class TreasuryDbContext : DbContext
             .HasForeignKey(
                 item => item.CompletedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        
+        transaction
+            .HasIndex(item => item.IdempotencyKey)
+            .IsUnique();
+
+        transaction
+            .HasIndex(item =>
+                item.ExternalReference);
+
+        transaction
+            .Property(item => item.IdempotencyKey)
+            .HasMaxLength(100);
+
+        transaction
+            .Property(item => item.ExternalReference)
+            .HasMaxLength(100);
+
+        transaction
+            .Property(item => item.Category)
+            .HasMaxLength(100);
+
+        transaction
+            .Property(item => item.CounterpartyName)
+            .HasMaxLength(200);
 
         modelBuilder.Entity<LedgerEntry>()
             .HasOne(entry =>
@@ -230,5 +256,63 @@ public class TreasuryDbContext : DbContext
                     "CK_TreasuryTransactions_Status",
                     "\"Status\" IN ('Completed')");
             });
+        
+        var paymentRequest =
+            modelBuilder.Entity<PaymentRequest>();
+
+        paymentRequest
+            .Property(request =>
+                request.ConcurrencyToken)
+            .IsConcurrencyToken();
+
+        paymentRequest
+            .HasIndex(request =>
+                request.IdempotencyKey)
+            .IsUnique();
+
+        paymentRequest
+            .HasIndex(request =>
+                request.Status);
+
+        paymentRequest
+            .HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(request =>
+                request.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        paymentRequest
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        paymentRequest
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(request =>
+                request.ReviewedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        paymentRequest
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_PaymentRequests_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_PaymentRequests_Status",
+                    "\"Status\" IN " +
+                    "('Pending', 'Approved', 'Rejected')");
+            });
+
+        transaction
+            .HasOne<PaymentRequest>()
+            .WithMany()
+            .HasForeignKey(item =>
+                item.PaymentRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -120,6 +120,9 @@ public class TreasuryTransactionService
 
             CompletedByUserId =
                 transaction.CompletedByUserId,
+            
+            PaymentRequestId =
+                transaction.PaymentRequestId,
 
             CreatedAtUtc =
                 transaction.CreatedAtUtc,

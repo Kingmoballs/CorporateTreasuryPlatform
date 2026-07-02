@@ -31,6 +31,21 @@ public class TreasuryTransaction
 
     public Guid? CompletedByUserId { get; set; }
 
+    public Guid? PaymentRequestId { get; set; }
+
+    public string? Category { get; set; }
+
+    public string? CounterpartyName { get; set; }
+
+    public string? ExternalReference { get; set; }
+
+
+    /*
+    * Clients should reuse this key when retrying
+    * the same request.
+    */
+    public string? IdempotencyKey { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
         = DateTime.UtcNow;
 

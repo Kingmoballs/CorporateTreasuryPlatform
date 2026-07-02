@@ -15,5 +15,9 @@ public interface ITreasuryTransactionRepository
         IReadOnlyList<TreasuryTransaction> Items,
         int TotalCount)>
         Search(TransactionQueryDto query);
+    
+    Task<TreasuryTransaction?>
+        GetByIdempotencyKey(
+            string idempotencyKey);
 
 }

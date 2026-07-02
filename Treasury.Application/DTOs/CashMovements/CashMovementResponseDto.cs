@@ -1,0 +1,35 @@
+namespace Treasury.Application.DTOs.CashMovements;
+
+public class CashMovementResponseDto
+{
+    public Guid TransactionId { get; set; }
+
+    public string TransactionReference { get; set; }
+        = string.Empty;
+
+    public string MovementType { get; set; }
+        = string.Empty;
+
+    public string Status { get; set; }
+        = string.Empty;
+
+    public Guid AccountId { get; set; }
+
+    public decimal Amount { get; set; }
+
+    public string Currency { get; set; }
+        = string.Empty;
+
+    public string Category { get; set; }
+        = string.Empty;
+
+    public string CounterpartyName { get; set; }
+        = string.Empty;
+
+    public string? ExternalReference { get; set; }
+
+    public string Description { get; set; }
+        = string.Empty;
+
+    public DateTime CompletedAtUtc { get; set; }
+}
