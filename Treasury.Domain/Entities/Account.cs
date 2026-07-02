@@ -18,5 +18,8 @@ public class Account
 
     public AccountType AccountType { get; set; } = null!;
 
+    public Guid ConcurrencyToken { get; set; }
+    = Guid.NewGuid();
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

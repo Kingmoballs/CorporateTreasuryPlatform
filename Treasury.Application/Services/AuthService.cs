@@ -3,6 +3,7 @@ using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
+using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Application.Services;
 
@@ -38,7 +39,7 @@ public class AuthService : IAuthService
 
         if(existingUser != null)
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Email already exists");
         }
 
@@ -48,7 +49,7 @@ public class AuthService : IAuthService
 
         if(role == null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Default role not found");
         }
 
@@ -96,7 +97,7 @@ public class AuthService : IAuthService
 
         if(user == null)
         {
-            throw new Exception(
+            throw new UnauthorizedAccessException(
                 "Invalid credentials");
         }
 
@@ -107,13 +108,13 @@ public class AuthService : IAuthService
 
         if(!validPassword)
         {
-            throw new Exception(
+            throw new UnauthorizedAccessException(
                 "Invalid credentials");
         }
 
         if (!user.IsActive)
         {
-            throw new Exception(
+            throw new UnauthorizedAccessException(
                 "This user account is inactive.");
         }
 

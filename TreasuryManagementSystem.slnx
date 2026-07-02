@@ -4,4 +4,5 @@
   <Project Path="Treasury.Domain/Treasury.Domain.csproj" />
   <Project Path="Treasury.Infrastructure/Treasury.Infrastructure.csproj" />
   <Project Path="Treasury.Shared/Treasury.Shared.csproj" />
+  <Project Path="Treasury.Tests/Treasury.Tests.csproj" />
 </Solution>

@@ -2,6 +2,7 @@ using Treasury.Application.DTOs.Admin;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
+using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -70,7 +71,7 @@ public class UserAdministrationService
 
         if (role is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Role not found.");
         }
 
@@ -86,7 +87,7 @@ public class UserAdministrationService
         if (user.Id ==
             _currentUserService.UserId)
         {
-            throw new Exception(
+            throw new ForbiddenOperationException(
                 "You cannot change your own role.");
         }
 
@@ -123,7 +124,7 @@ public class UserAdministrationService
             _currentUserService.UserId &&
             !isActive)
         {
-            throw new Exception(
+            throw new ForbiddenOperationException(
                 "You cannot deactivate " +
                 "your own account.");
         }
@@ -153,7 +154,7 @@ public class UserAdministrationService
 
         if (user is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "User not found.");
         }
 
@@ -175,7 +176,7 @@ public class UserAdministrationService
 
         if (!anotherAdminExists)
         {
-            throw new Exception(
+            throw new ForbiddenOperationException(
                 "The last active administrator " +
                 "cannot be demoted or deactivated.");
         }

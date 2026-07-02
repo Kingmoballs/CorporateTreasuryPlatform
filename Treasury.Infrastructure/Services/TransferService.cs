@@ -4,6 +4,7 @@ using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
 using Treasury.Shared.Common;
+using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -26,6 +27,22 @@ public class TransferService : ITransferService
     
     private readonly ITreasuryTransactionRepository
         _transactionRepository;
+    private void EnsureDifferentReviewer(
+        Guid? requestedByUserId)
+    {
+        /*
+        * Older requests may not have requester metadata,
+        * so maker-checker applies when the ID is available.
+        */
+        if (requestedByUserId.HasValue &&
+            requestedByUserId.Value ==
+                _currentUserService.UserId)
+        {
+            throw new ForbiddenOperationException(
+                "You cannot approve or reject " +
+                "your own transfer request.");
+        }
+    }
 
     public TransferService(
         IAccountRepository accountRepository,
@@ -136,6 +153,16 @@ public class TransferService : ITransferService
                 dto.Description,
                 transaction);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw new ConflictException(
+                "An account balance changed while the " +
+                "transfer was processing. Refresh the " +
+                "account and try again.");
+        }
         catch
         {
             await _accountRepository
@@ -163,6 +190,9 @@ public class TransferService : ITransferService
             var request =
                 await GetPendingRequest(
                     transferId);
+            
+            EnsureDifferentReviewer(
+                request.RequestedByUserId);
 
             var dto = new CreateTransferDto
             {
@@ -234,9 +264,10 @@ public class TransferService : ITransferService
             await _accountRepository
                 .RollbackTransaction();
 
-            throw new Exception(
-                "This transfer request was already " +
-                "processed by another user.");
+            throw new ConflictException(
+                "The transfer request or an account " +
+                "balance changed while approval was " +
+                "processing. Refresh and try again.");
         }
         catch
         {
@@ -254,7 +285,7 @@ public class TransferService : ITransferService
     {
         if (string.IsNullOrWhiteSpace(reason))
         {
-            throw new Exception(
+            throw new ArgumentException(
                 "A rejection reason is required.");
         }
 
@@ -299,7 +330,7 @@ public class TransferService : ITransferService
             await _accountRepository
                 .RollbackTransaction();
 
-            throw new Exception(
+            throw new ConflictException(
                 "This transfer request was already " +
                 "processed by another user.");
         }
@@ -321,7 +352,7 @@ public class TransferService : ITransferService
 
         if (request is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Transfer request not found.");
         }
 
@@ -330,7 +361,7 @@ public class TransferService : ITransferService
             ApprovalStatus.Pending,
             StringComparison.OrdinalIgnoreCase))
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Transfer request has already " +
                 "been processed.");
         }
@@ -346,7 +377,7 @@ public class TransferService : ITransferService
     {
         if (dto.Amount <= 0)
         {
-            throw new Exception(
+            throw new ArgumentException(
                 "Transfer amount must be " +
                 "greater than zero.");
         }
@@ -354,7 +385,7 @@ public class TransferService : ITransferService
         if (dto.FromAccountId ==
             dto.ToAccountId)
         {
-            throw new Exception(
+            throw new ArgumentException(
                 "Source and destination accounts " +
                 "must be different.");
         }
@@ -370,14 +401,14 @@ public class TransferService : ITransferService
         if (fromAccount is null ||
             toAccount is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Invalid account selected.");
         }
 
         if (!fromAccount.IsActive ||
             !toAccount.IsActive)
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Transfers require active accounts.");
         }
 
@@ -390,14 +421,14 @@ public class TransferService : ITransferService
             toAccount.Currency,
             StringComparison.OrdinalIgnoreCase))
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Cross-currency transfers are not " +
                 "currently supported.");
         }
 
         if (fromAccount.Balance < dto.Amount)
         {
-            throw new Exception(
+            throw new BusinessRuleException(
                 "Insufficient funds.");
         }
 
@@ -469,6 +500,13 @@ public class TransferService : ITransferService
 
         fromAccount.Balance -= amount;
         toAccount.Balance += amount;
+
+        // Rotating both tokens makes stale balance updates fail.
+        fromAccount.ConcurrencyToken =
+            Guid.NewGuid();
+
+        toAccount.ConcurrencyToken =
+            Guid.NewGuid();
 
         _accountRepository.Update(fromAccount);
         _accountRepository.Update(toAccount);
@@ -554,5 +592,5 @@ public class TransferService : ITransferService
                 ?? transaction.CreatedAtUtc
         };
     }
-    
+
 }

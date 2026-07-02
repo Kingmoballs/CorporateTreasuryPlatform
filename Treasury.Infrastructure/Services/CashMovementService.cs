@@ -4,6 +4,7 @@ using Treasury.Domain.Entities;
 using Treasury.Shared.Common;
 using Treasury.Shared.Constants;
 using Microsoft.EntityFrameworkCore;
+using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -27,6 +28,19 @@ public class CashMovementService
 
     private readonly IPaymentRequestRepository
         _paymentRequestRepository;
+    
+    private void EnsureDifferentReviewer(
+        Guid requestedByUserId,
+        string requestType)
+    {
+        if (requestedByUserId ==
+            _currentUserService.UserId)
+        {
+            throw new ForbiddenOperationException(
+                $"You cannot approve or reject " +
+                $"your own {requestType} request.");
+        }
+    }
 
     public CashMovementService(
         IAccountRepository accountRepository,
@@ -77,7 +91,7 @@ public class CashMovementService
                 TransactionTypes.CashReceipt,
                 StringComparison.OrdinalIgnoreCase))
             {
-                throw new Exception(
+                throw new ConflictException(
                     "The idempotency key has already " +
                     "been used for another operation.");
             }
@@ -92,13 +106,13 @@ public class CashMovementService
 
         if (account is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Account not found.");
         }
 
         if (!account.IsActive)
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Cash receipts require an " +
                 "active account.");
         }
@@ -173,6 +187,9 @@ public class CashMovementService
 
             account.Balance += dto.Amount;
 
+            account.ConcurrencyToken =
+                Guid.NewGuid();
+
             _accountRepository.Update(account);
 
             await _transactionRepository
@@ -213,6 +230,16 @@ public class CashMovementService
                 .CommitTransaction();
 
             return MapResponse(transaction);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw new ConflictException(
+                "The account balance changed while " +
+                "the receipt was processing. Refresh " +
+                "and try again.");
         }
         catch
         {
@@ -351,7 +378,7 @@ public class CashMovementService
             if (completedTransaction.TransactionType !=
                 TransactionTypes.CashPayment)
             {
-                throw new Exception(
+                throw new ConflictException(
                     "The idempotency key has already " +
                     "been used.");
             }
@@ -456,6 +483,17 @@ public class CashMovementService
             return MapCompletedPayment(
                 transaction);
         }
+        
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository
+                .RollbackTransaction();
+
+            throw new ConflictException(
+                "The account balance changed while " +
+                "the payment was processing. Refresh " +
+                "and try again.");
+        }
         catch
         {
             await _accountRepository
@@ -488,6 +526,10 @@ public class CashMovementService
             var request =
                 await GetPendingPayment(
                     paymentRequestId);
+            
+            EnsureDifferentReviewer(
+                request.RequestedByUserId,
+                "payment");
 
             var account =
                 await GetValidPaymentAccount(
@@ -535,9 +577,10 @@ public class CashMovementService
             await _accountRepository
                 .RollbackTransaction();
 
-            throw new Exception(
-                "This payment request was already " +
-                "processed by another user.");
+            throw new ConflictException(
+                "The payment request or account " +
+                "balance changed while approval was " +
+                "processing. Refresh and try again.");
         }
         catch
         {
@@ -567,6 +610,10 @@ public class CashMovementService
             var request =
                 await GetPendingPayment(
                     paymentRequestId);
+            
+            EnsureDifferentReviewer(
+                request.RequestedByUserId,
+                "payment");
 
             request.Status =
                 ApprovalStatus.Rejected;
@@ -599,7 +646,7 @@ public class CashMovementService
             await _accountRepository
                 .RollbackTransaction();
 
-            throw new Exception(
+            throw new ConflictException(
                 "This payment request was already " +
                 "processed by another user.");
         }
@@ -623,19 +670,19 @@ public class CashMovementService
 
         if (account is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Payment account not found.");
         }
 
         if (!account.IsActive)
         {
-            throw new Exception(
+            throw new ForbiddenOperationException(
                 "Payments require an active account.");
         }
 
         if (account.Balance < amount)
         {
-            throw new Exception(
+            throw new BusinessRuleException(
                 "Insufficient funds.");
         }
 
@@ -651,14 +698,14 @@ public class CashMovementService
 
         if (request is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Payment request not found.");
         }
 
         if (request.Status !=
             ApprovalStatus.Pending)
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Payment request has already " +
                 "been processed.");
         }
@@ -742,6 +789,9 @@ public class CashMovementService
             };
 
         account.Balance -= amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
 
         _accountRepository.Update(account);
 

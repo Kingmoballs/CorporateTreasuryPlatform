@@ -314,5 +314,12 @@ public class TreasuryDbContext : DbContext
             .HasForeignKey(item =>
                 item.PaymentRequestId)
             .OnDelete(DeleteBehavior.Restrict);
+        
+        modelBuilder.Entity<Account>()
+            .Property(account =>
+                account.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
     }
 }

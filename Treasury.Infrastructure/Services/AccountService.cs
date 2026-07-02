@@ -4,6 +4,7 @@ using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Common;
 using Treasury.Shared.Constants;
+using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -102,7 +103,7 @@ public class AccountService : IAccountService
 
         if (accountType is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Account type not found.");
         }
 
@@ -113,7 +114,7 @@ public class AccountService : IAccountService
 
         if (accountExists)
         {
-            throw new Exception(
+            throw new ConflictException(
                 "Account number already exists.");
         }
 
@@ -319,7 +320,7 @@ public class AccountService : IAccountService
 
         if (account is null)
         {
-            throw new Exception(
+            throw new ResourceNotFoundException(
                 "Account not found.");
         }
 
