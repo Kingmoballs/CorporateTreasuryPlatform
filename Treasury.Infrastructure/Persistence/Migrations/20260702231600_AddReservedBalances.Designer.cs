@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702231600_AddReservedBalances")]
+    partial class AddReservedBalances
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -100,114 +103,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.ToTable("AccountTypes");
                 });
 
-            modelBuilder.Entity("Treasury.Domain.Entities.ApprovalDecision", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ApproverUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Comment")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Decision")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("PaymentRequestId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ReversalRequestId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("TransferRequestId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApproverUserId");
-
-                    b.HasIndex("PaymentRequestId", "ApproverUserId")
-                        .IsUnique();
-
-                    b.HasIndex("ReversalRequestId", "ApproverUserId")
-                        .IsUnique();
-
-                    b.HasIndex("TransferRequestId", "ApproverUserId")
-                        .IsUnique();
-
-                    b.ToTable("ApprovalDecisions", t =>
-                        {
-                            t.HasCheckConstraint("CK_ApprovalDecisions_Decision", "\"Decision\" IN ('Approved', 'Rejected')");
-
-                            t.HasCheckConstraint("CK_ApprovalDecisions_OneRequest", "num_nonnulls(\"TransferRequestId\", \"PaymentRequestId\", \"ReversalRequestId\") = 1");
-                        });
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.ApprovalPolicy", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ConcurrencyToken")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("OperationType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("RequiredApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
-                    b.Property<decimal>("ThresholdAmount")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UpdatedByUserId");
-
-                    b.HasIndex("OperationType", "Currency")
-                        .IsUnique();
-
-                    b.ToTable("ApprovalPolicies", t =>
-                        {
-                            t.HasCheckConstraint("CK_ApprovalPolicies_Currency", "char_length(\"Currency\") = 3");
-
-                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment')");
-
-                            t.HasCheckConstraint("CK_ApprovalPolicies_RequiredApprovalCount", "\"RequiredApprovalCount\" BETWEEN 1 AND 5");
-
-                            t.HasCheckConstraint("CK_ApprovalPolicies_Threshold", "\"ThresholdAmount\" >= 0");
-                        });
-                });
-
             modelBuilder.Entity("Treasury.Domain.Entities.LedgerEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -260,11 +155,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
-                    b.Property<int>("ApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
                     b.Property<string>("BeneficiaryName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -301,11 +191,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("RequiredApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
                     b.Property<DateTime?>("ReviewedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -333,8 +218,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
 
-                            t.HasCheckConstraint("CK_PaymentRequests_ApprovalCounts", "\"RequiredApprovalCount\" >= 1 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
-
                             t.HasCheckConstraint("CK_PaymentRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
                         });
                 });
@@ -344,11 +227,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<int>("ApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
 
                     b.Property<Guid>("ConcurrencyToken")
                         .IsConcurrencyToken()
@@ -369,11 +247,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uuid");
-
-                    b.Property<int>("RequiredApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
 
                     b.Property<DateTime?>("ReviewedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -398,8 +271,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ReversalRequests", t =>
                         {
-                            t.HasCheckConstraint("CK_ReversalRequests_ApprovalCounts", "\"RequiredApprovalCount\" >= 1 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
-
                             t.HasCheckConstraint("CK_ReversalRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
                         });
                 });
@@ -428,11 +299,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
-                    b.Property<int>("ApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
                     b.Property<Guid>("ConcurrencyToken")
                         .IsConcurrencyToken()
                         .HasColumnType("uuid");
@@ -452,11 +318,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("RequestedByUserId")
                         .HasColumnType("uuid");
-
-                    b.Property<int>("RequiredApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
 
                     b.Property<DateTime?>("ReviewedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -480,8 +341,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.ToTable("TransferRequests", t =>
                         {
                             t.HasCheckConstraint("CK_TransferRequests_Amount_Positive", "\"Amount\" > 0");
-
-                            t.HasCheckConstraint("CK_TransferRequests_ApprovalCounts", "\"RequiredApprovalCount\" >= 1 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
 
                             t.HasCheckConstraint("CK_TransferRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
                         });
@@ -648,38 +507,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("AccountType");
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.ApprovalDecision", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("ApproverUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.PaymentRequest", null)
-                        .WithMany()
-                        .HasForeignKey("PaymentRequestId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.ReversalRequest", null)
-                        .WithMany()
-                        .HasForeignKey("ReversalRequestId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.TransferRequest", null)
-                        .WithMany()
-                        .HasForeignKey("TransferRequestId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.ApprovalPolicy", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UpdatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.LedgerEntry", b =>

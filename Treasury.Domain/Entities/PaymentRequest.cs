@@ -36,6 +36,11 @@ public class PaymentRequest
 
     public string? RejectionReason { get; set; }
 
+    public int RequiredApprovalCount { get; set; }
+        = 1;
+
+    public int ApprovalCount { get; set; }
+
     public Guid ConcurrencyToken { get; set; }
         = Guid.NewGuid();
 

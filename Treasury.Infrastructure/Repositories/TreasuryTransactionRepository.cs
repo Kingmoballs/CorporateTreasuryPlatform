@@ -34,9 +34,12 @@ public class TreasuryTransactionRepository
                 transaction.LedgerEntries)
             .ThenInclude(entry =>
                 entry.Account)
+            .Include(transaction =>
+                transaction.ReversesTransaction)
             .FirstOrDefaultAsync(transaction =>
                 transaction.Reference ==
                     reference);
+            
     }
 
     public async Task<(
@@ -128,5 +131,26 @@ public class TreasuryTransactionRepository
             .FirstOrDefaultAsync(transaction =>
                 transaction.IdempotencyKey ==
                     idempotencyKey);
+    }
+    public async Task<TreasuryTransaction?>
+        GetById(Guid id)
+    {
+        return await _context
+            .TreasuryTransactions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(transaction =>
+                transaction.Id == id);
+    }
+
+    public async Task<TreasuryTransaction?>
+        GetByReversedTransactionId(
+            Guid originalTransactionId)
+    {
+        return await _context
+            .TreasuryTransactions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(transaction =>
+                transaction.ReversesTransactionId ==
+                    originalTransactionId);
     }
 }

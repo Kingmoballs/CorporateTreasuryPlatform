@@ -123,6 +123,15 @@ public class TreasuryTransactionService
             
             PaymentRequestId =
                 transaction.PaymentRequestId,
+            
+            ReversesTransactionId =
+                transaction.ReversesTransactionId,
+            
+            ReversalRequestId =
+                transaction.ReversalRequestId,
+            
+            ReversesTransactionReference =
+                transaction.ReversesTransaction?.Reference,
 
             CreatedAtUtc =
                 transaction.CreatedAtUtc,

@@ -210,6 +210,9 @@ public class TreasuryReportingService
 
             OtherBalance =
                 balances.OtherBalance,
+            
+            ReservedCash =
+                balances.ReservedCash,
 
             /*
              * Pending internal transfers are shown
@@ -243,7 +246,13 @@ public class TreasuryReportingService
                             account.AccountType.Name,
 
                         Balance =
-                            account.Balance
+                            account.Balance,
+
+                        ReservedBalance =
+                            account.ReservedBalance,
+
+                        AvailableBalance =
+                            account.AvailableBalance
                     })
                 .ToList()
         };
@@ -258,10 +267,12 @@ public class TreasuryReportingService
         decimal committedCash = 0;
         decimal investmentBalance = 0;
         decimal otherBalance = 0;
+        decimal reservedCash = 0;
 
         foreach (var account in accounts)
         {
             totalCash += account.Balance;
+            reservedCash += account.ReservedBalance;
 
             /*
              * These classifications represent the
@@ -273,7 +284,7 @@ public class TreasuryReportingService
                 AccountTypes.Reserve))
             {
                 availableLiquidity +=
-                    account.Balance;
+                    account.AvailableBalance;
             }
             else if (IsAccountType(
                 account,
@@ -302,7 +313,8 @@ public class TreasuryReportingService
             availableLiquidity,
             committedCash,
             investmentBalance,
-            otherBalance);
+            otherBalance,
+            reservedCash);
     }
 
     private static bool IsAccountType(
@@ -392,7 +404,8 @@ public class TreasuryReportingService
         decimal AvailableLiquidity,
         decimal CommittedCash,
         decimal InvestmentBalance,
-        decimal OtherBalance);
+        decimal OtherBalance,
+        decimal ReservedCash);
     
     public async Task<LiquidityReportDto>
         GetLiquidityReport(
@@ -496,6 +509,36 @@ public class TreasuryReportingService
                 currency => currency,
                 StringComparer.OrdinalIgnoreCase)
             .ToList();
+        
+        var reversedReceipts = ledgerEntries
+            .Where(entry =>
+                entry.TreasuryTransaction?
+                    .TransactionType ==
+                        TransactionTypes.Reversal &&
+                entry.TreasuryTransaction?
+                    .ReversesTransaction?
+                    .TransactionType ==
+                        TransactionTypes.CashReceipt &&
+                string.Equals(
+                    entry.EntryType,
+                    "Credit",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var reversedPayments = ledgerEntries
+            .Where(entry =>
+                entry.TreasuryTransaction?
+                    .TransactionType ==
+                        TransactionTypes.Reversal &&
+                entry.TreasuryTransaction?
+                    .ReversesTransaction?
+                    .TransactionType ==
+                        TransactionTypes.CashPayment &&
+                string.Equals(
+                    entry.EntryType,
+                    "Debit",
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         var currencyReports =
             new List<CurrencyLiquidityDto>();
@@ -549,6 +592,22 @@ public class TreasuryReportingService
                             entry.Account.Currency,
                             currency))
                     .ToList();
+            
+            var currencyReversedReceipts =
+                reversedReceipts
+                    .Where(entry =>
+                        CurrencyMatches(
+                            entry.Account.Currency,
+                            currency))
+                    .ToList();
+
+            var currencyReversedPayments =
+                reversedPayments
+                    .Where(entry =>
+                        CurrencyMatches(
+                            entry.Account.Currency,
+                            currency))
+                    .ToList();
 
             var balances =
                 CalculateLiquidityBalances(
@@ -588,11 +647,31 @@ public class TreasuryReportingService
                         currencyPayments.Sum(
                             entry => entry.Amount),
 
+                    ReversedReceiptCount =
+                        currencyReversedReceipts.Count,
+
+                    ReversedReceiptAmount =
+                        currencyReversedReceipts.Sum(
+                            entry => entry.Amount),
+
+                    ReversedPaymentCount =
+                        currencyReversedPayments.Count,
+
+                    ReversedPaymentAmount =
+                        currencyReversedPayments.Sum(
+                            entry => entry.Amount),
+
                     NetExternalCashFlow =
                         currencyReceipts.Sum(
                             entry => entry.Amount)
                         -
+                        currencyReversedReceipts.Sum(
+                            entry => entry.Amount)
+                        -
                         currencyPayments.Sum(
+                            entry => entry.Amount)
+                        +
+                        currencyReversedPayments.Sum(
                             entry => entry.Amount),
 
                     AvailableLiquidityRatio =

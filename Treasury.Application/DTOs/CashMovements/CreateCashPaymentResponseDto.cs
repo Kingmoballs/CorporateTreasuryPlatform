@@ -28,6 +28,10 @@ public class CashPaymentResponseDto
 
     public string Description { get; set; }
         = string.Empty;
+    
+    public int ApprovalCount { get; set; }
+
+    public int RequiredApprovalCount { get; set; }
 
     public string? RejectionReason { get; set; }
 

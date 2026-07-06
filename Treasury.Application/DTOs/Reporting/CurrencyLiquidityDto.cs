@@ -54,4 +54,22 @@ public class CurrencyLiquidityDto
     public decimal ExternalPaymentAmount { get; set; }
 
     public decimal NetExternalCashFlow { get; set; }
+
+    public int ReversedReceiptCount { get; set; }
+
+    public decimal ReversedReceiptAmount
+    {
+        get;
+        set;
+    }
+
+    public int ReversedPaymentCount { get; set; }
+
+    public decimal ReversedPaymentAmount
+    {
+        get;
+        set;
+    }
+
+    public decimal ReservedCash { get; set; }
 }

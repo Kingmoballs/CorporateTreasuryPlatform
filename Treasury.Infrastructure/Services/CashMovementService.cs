@@ -23,8 +23,8 @@ public class CashMovementService
     private readonly ICurrentUserService
         _currentUserService;
     
-    private const decimal ApprovalThreshold =
-        10000000m;
+    private readonly IApprovalPolicyService
+        _approvalPolicyService;
 
     private readonly IPaymentRequestRepository
         _paymentRequestRepository;
@@ -42,13 +42,51 @@ public class CashMovementService
         }
     }
 
+    private void ReservePaymentFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.AvailableBalance < amount)
+        {
+            throw new BusinessRuleException(
+                "Insufficient available funds.");
+        }
+
+        account.ReservedBalance += amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
+    }
+
+    private void ReleasePaymentFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.ReservedBalance < amount)
+        {
+            throw new ConflictException(
+                "The expected payment reservation " +
+                "was not found.");
+        }
+
+        account.ReservedBalance -= amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
+    }
+
     public CashMovementService(
         IAccountRepository accountRepository,
         ILedgerRepository ledgerRepository,
         ITreasuryTransactionRepository
             transactionRepository,
         ICurrentUserService currentUserService,
-        IPaymentRequestRepository paymentRequestRepository)
+        IPaymentRequestRepository paymentRequestRepository,
+        IApprovalPolicyService approvalPolicyService)
     {
         _accountRepository =
             accountRepository;
@@ -64,6 +102,9 @@ public class CashMovementService
 
         _paymentRequestRepository =
             paymentRequestRepository;
+        
+        _approvalPolicyService =
+            approvalPolicyService;
     }
 
     public async Task<CashMovementResponseDto>
@@ -403,7 +444,14 @@ public class CashMovementService
                 dto.AccountId,
                 dto.Amount);
 
-        if (dto.Amount > ApprovalThreshold)
+        var approvalThreshold =
+            await _approvalPolicyService
+                .GetThreshold(
+                    ApprovalOperationTypes
+                        .CashPayment,
+                    account.Currency);
+                    
+        if (dto.Amount > approvalThreshold)
         {
             var request = new PaymentRequest
             {
@@ -446,12 +494,25 @@ public class CashMovementService
                 CreatedAtUtc =
                     DateTime.UtcNow
             };
+            
+            ReservePaymentFunds(
+                account,
+                dto.Amount);
 
-            await _paymentRequestRepository
-                .Add(request);
+            try
+            {
+                await _paymentRequestRepository
+                    .Add(request);
 
-            await _paymentRequestRepository
-                .SaveChanges();
+                await _paymentRequestRepository
+                    .SaveChanges();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "The account balance changed while " +
+                    "payment funds were being reserved.");
+            }
 
             return MapPaymentRequest(request);
         }
@@ -472,7 +533,8 @@ public class CashMovementService
                     dto.Description,
                     paymentRequestId: null,
                     initiatedByUserId:
-                        _currentUserService.UserId);
+                        _currentUserService.UserId,
+                    releaseReservation: false);
 
             await _accountRepository
                 .SaveChanges();
@@ -534,7 +596,8 @@ public class CashMovementService
             var account =
                 await GetValidPaymentAccount(
                     request.AccountId,
-                    request.Amount);
+                    request.Amount,
+                    fundsAlreadyReserved: true);
 
             var transaction =
                 await ExecutePayment(
@@ -546,7 +609,8 @@ public class CashMovementService
                     request.IdempotencyKey,
                     request.Description,
                     request.Id,
-                    request.RequestedByUserId);
+                    request.RequestedByUserId,
+                    releaseReservation: true);
 
             request.Status =
                 ApprovalStatus.Approved;
@@ -629,6 +693,20 @@ public class CashMovementService
 
             request.ConcurrencyToken =
                 Guid.NewGuid();
+            
+            var account =
+                await _accountRepository
+                    .GetById(request.AccountId);
+
+            if (account is null)
+            {
+                throw new ResourceNotFoundException(
+                    "Payment account not found.");
+            }
+
+            ReleasePaymentFunds(
+                account,
+                request.Amount);
 
             _paymentRequestRepository
                 .Update(request);
@@ -638,6 +716,9 @@ public class CashMovementService
 
             await _accountRepository
                 .CommitTransaction();
+            
+            await _accountRepository
+                .SaveChanges();
 
             return MapPaymentRequest(request);
         }
@@ -662,7 +743,8 @@ public class CashMovementService
     private async Task<Account>
         GetValidPaymentAccount(
             Guid accountId,
-            decimal amount)
+            decimal amount,
+            bool fundsAlreadyReserved = false)
     {
         var account =
             await _accountRepository
@@ -680,10 +762,25 @@ public class CashMovementService
                 "Payments require an active account.");
         }
 
-        if (account.Balance < amount)
+        if (fundsAlreadyReserved &&
+            account.ReservedBalance < amount)
+        {
+            throw new ConflictException(
+                "The expected payment reservation " +
+                "was not found.");
+        }
+
+        var spendableBalance =
+            account.AvailableBalance
+            +
+            (fundsAlreadyReserved
+                ? amount
+                : 0);
+
+        if (spendableBalance < amount)
         {
             throw new BusinessRuleException(
-                "Insufficient funds.");
+                "Insufficient available funds.");
         }
 
         return account;
@@ -723,7 +820,8 @@ public class CashMovementService
             string idempotencyKey,
             string description,
             Guid? paymentRequestId,
-            Guid initiatedByUserId)
+            Guid initiatedByUserId,
+            bool releaseReservation)
     {
         var completedAtUtc =
             DateTime.UtcNow;
@@ -787,8 +885,33 @@ public class CashMovementService
                 CompletedAtUtc =
                     completedAtUtc
             };
+        
+        if (releaseReservation)
+        {
+            if (account.ReservedBalance <
+                amount)
+            {
+                throw new ConflictException(
+                    "The expected payment reservation " +
+                    "was not found.");
+            }
+
+            /*
+            * Approval consumes the reservation and actual
+            * balance together in one database update.
+            */
+            account.ReservedBalance -= amount;
+        }
 
         account.Balance -= amount;
+
+        if (account.ReservedBalance >
+            account.Balance)
+        {
+            throw new ConflictException(
+                "The remaining reservations exceed " +
+                "the account balance.");
+        }
 
         account.ConcurrencyToken =
             Guid.NewGuid();
@@ -912,6 +1035,12 @@ public class CashMovementService
 
             RejectionReason =
                 request.RejectionReason,
+            
+            ApprovalCount =
+                request.ApprovalCount,
+
+            RequiredApprovalCount =
+                request.RequiredApprovalCount,
 
             CreatedAtUtc =
                 request.CreatedAtUtc

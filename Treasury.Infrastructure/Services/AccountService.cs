@@ -264,6 +264,12 @@ public class AccountService : IAccountService
 
                 Balance =
                     account.Balance,
+                
+                 ReservedBalance =
+                    account.ReservedBalance,
+
+                AvailableBalance =
+                    account.AvailableBalance,
 
                 Currency =
                     account.Currency,
@@ -304,6 +310,12 @@ public class AccountService : IAccountService
 
                     Balance =
                         account.Balance,
+
+                     ReservedBalance =
+                        account.ReservedBalance,
+
+                    AvailableBalance =
+                        account.AvailableBalance,
 
                     Currency =
                         account.Currency

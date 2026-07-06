@@ -1,23 +1,22 @@
 namespace Treasury.Domain.Entities;
 
-public class TransferRequest
+public class ReversalRequest
 {
     public Guid Id { get; set; }
 
-    public Guid FromAccountId { get; set; }
+    public Guid OriginalTransactionId { get; set; }
 
-    public Guid ToAccountId { get; set; }
+    public TreasuryTransaction
+        OriginalTransaction { get; set; }
+        = null!;
 
-    public decimal Amount { get; set; }
-
-    public string Description { get; set; }
+    public string Reason { get; set; }
         = string.Empty;
 
     public string Status { get; set; }
         = "Pending";
 
-    // Nullable so existing transfer requests can migrate safely.
-    public Guid? RequestedByUserId { get; set; }
+    public Guid RequestedByUserId { get; set; }
 
     public Guid? ReviewedByUserId { get; set; }
 
@@ -30,13 +29,9 @@ public class TransferRequest
 
     public int ApprovalCount { get; set; }
 
-    /*
-     * Rotated whenever the request is processed.
-     * EF uses it to detect simultaneous approvals.
-     */
     public Guid ConcurrencyToken { get; set; }
         = Guid.NewGuid();
 
-    public DateTime CreatedAt { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
         = DateTime.UtcNow;
 }

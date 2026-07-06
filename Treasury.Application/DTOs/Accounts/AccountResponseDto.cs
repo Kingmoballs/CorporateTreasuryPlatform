@@ -20,5 +20,9 @@ public class AccountResponseDto
     
     public string?
         OpeningBalanceTransactionReference { get; set; }
+    
+    public decimal ReservedBalance { get; set; }
+
+    public decimal AvailableBalance { get; set; }
 
 }

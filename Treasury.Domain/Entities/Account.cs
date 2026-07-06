@@ -1,4 +1,7 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace Treasury.Domain.Entities;
+
 
 public class Account
 {
@@ -22,4 +25,10 @@ public class Account
     = Guid.NewGuid();
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public decimal ReservedBalance { get; set; }
+
+    [NotMapped]
+    public decimal AvailableBalance =>
+        Balance - ReservedBalance;
 }

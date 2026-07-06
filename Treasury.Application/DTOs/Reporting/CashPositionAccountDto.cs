@@ -14,4 +14,8 @@ public class CashPositionAccountDto
         = string.Empty;
 
     public decimal Balance { get; set; }
+
+    public decimal ReservedBalance { get; set; }
+
+    public decimal AvailableBalance { get; set; }
 }

@@ -17,6 +17,10 @@ public class TransferResponseDto
 
     public string Description { get; set; }
         = string.Empty;
+    
+    public int ApprovalCount { get; set; }
+
+    public int RequiredApprovalCount { get; set; }
 
     public DateTime Timestamp { get; set; }
 }

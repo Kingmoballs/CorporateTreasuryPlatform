@@ -42,6 +42,16 @@ public class TransferServiceTests
 
         var transactionRepository =
             new Mock<ITreasuryTransactionRepository>();
+        
+        var approvalPolicyService =
+            new Mock<IApprovalPolicyService>();
+
+        approvalPolicyService
+            .Setup(service =>
+                service.GetThreshold(
+                    It.IsAny<string>(),
+                    It.IsAny<string>()))
+            .ReturnsAsync(10_000_000m);
 
         accountRepository
             .Setup(repository =>
@@ -68,7 +78,8 @@ public class TransferServiceTests
             ledgerRepository.Object,
             transferRequestRepository.Object,
             currentUserService.Object,
-            transactionRepository.Object);
+            transactionRepository.Object,
+            approvalPolicyService.Object);
 
         // Act
         var exception =

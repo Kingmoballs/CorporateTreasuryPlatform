@@ -187,13 +187,24 @@ public class ConcurrentPaymentIntegrationTests
             .SetupGet(service =>
                 service.UserId)
             .Returns(currentUserId);
+        
+        var approvalPolicyService =
+            new Mock<IApprovalPolicyService>();
+
+        approvalPolicyService
+            .Setup(service =>
+                service.GetThreshold(
+                    It.IsAny<string>(),
+                    It.IsAny<string>()))
+            .ReturnsAsync(10_000_000m);
 
         return new CashMovementService(
             accountRepository,
             ledgerRepository,
             transactionRepository,
             currentUserService.Object,
-            paymentRequestRepository);
+            paymentRequestRepository,
+            approvalPolicyService.Object);
     }
 
     private static CreateCashPaymentDto

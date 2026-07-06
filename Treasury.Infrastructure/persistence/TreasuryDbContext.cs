@@ -28,6 +28,12 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
 
+    public DbSet<ReversalRequest> ReversalRequests => Set<ReversalRequest>();
+
+    public DbSet<ApprovalPolicy> ApprovalPolicies => Set<ApprovalPolicy>();
+
+    public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -70,6 +76,22 @@ public class TreasuryDbContext : DbContext
             throw new InvalidOperationException(
                 "Completed treasury transactions " +
                 "are immutable.");
+        }
+
+        var changedApprovalDecisions =
+            ChangeTracker
+                .Entries<ApprovalDecision>()
+                .Where(entry =>
+                    entry.State ==
+                        EntityState.Modified ||
+                    entry.State ==
+                        EntityState.Deleted)
+                .ToList();
+
+        if (changedApprovalDecisions.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Approval decisions are immutable.");
         }
     }
 
@@ -115,6 +137,16 @@ public class TreasuryDbContext : DbContext
 
         modelBuilder.Entity<TransferRequest>()
             .HasIndex(request => request.CreatedAt);
+        
+        modelBuilder.Entity<TransferRequest>()
+            .Property(request =>
+                request.RequiredApprovalCount)
+            .HasDefaultValue(1);
+
+        modelBuilder.Entity<TransferRequest>()
+            .Property(request =>
+                request.ApprovalCount)
+            .HasDefaultValue(0);
         
         var transaction =
             modelBuilder.Entity<TreasuryTransaction>();
@@ -214,6 +246,14 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_Accounts_Currency_Length",
                     "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_Accounts_ReservedBalance_NonNegative",
+                    "\"ReservedBalance\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_Accounts_ReservedBalance_NotAboveBalance",
+                    "\"ReservedBalance\" <= \"Balance\"");
             });
 
         modelBuilder.Entity<LedgerEntry>()
@@ -239,6 +279,13 @@ public class TreasuryDbContext : DbContext
                     "CK_TransferRequests_Status",
                     "\"Status\" IN " +
                     "('Pending', 'Approved', 'Rejected')");
+                
+                table.HasCheckConstraint(
+                    "CK_TransferRequests_ApprovalCounts",
+                    "\"RequiredApprovalCount\" >= 1 " +
+                    "AND \"ApprovalCount\" >= 0 " +
+                    "AND \"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
             });
 
         modelBuilder.Entity<TreasuryTransaction>()
@@ -306,7 +353,24 @@ public class TreasuryDbContext : DbContext
                     "CK_PaymentRequests_Status",
                     "\"Status\" IN " +
                     "('Pending', 'Approved', 'Rejected')");
+                
+                table.HasCheckConstraint(
+                    "CK_PaymentRequests_ApprovalCounts",
+                    "\"RequiredApprovalCount\" >= 1 " +
+                    "AND \"ApprovalCount\" >= 0 " +
+                    "AND \"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
             });
+        
+        paymentRequest
+            .Property(request =>
+                request.RequiredApprovalCount)
+            .HasDefaultValue(1);
+
+        paymentRequest
+            .Property(request =>
+                request.ApprovalCount)
+            .HasDefaultValue(0);
 
         transaction
             .HasOne<PaymentRequest>()
@@ -321,5 +385,222 @@ public class TreasuryDbContext : DbContext
             .IsConcurrencyToken()
             .HasDefaultValueSql(
                 "gen_random_uuid()");
+        
+        var reversalRequest =
+            modelBuilder.Entity<ReversalRequest>();
+
+        reversalRequest
+            .Property(request =>
+                request.ConcurrencyToken)
+            .IsConcurrencyToken();
+
+        reversalRequest
+            .HasIndex(request =>
+                request.OriginalTransactionId)
+            .IsUnique();
+
+        reversalRequest
+            .HasIndex(request =>
+                request.Status);
+
+        reversalRequest
+            .HasOne(request =>
+                request.OriginalTransaction)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.OriginalTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        reversalRequest
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        reversalRequest
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(request =>
+                request.ReviewedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        reversalRequest
+            .Property(request =>
+                request.RequiredApprovalCount)
+            .HasDefaultValue(1);
+
+        reversalRequest
+            .Property(request =>
+                request.ApprovalCount)
+            .HasDefaultValue(0);
+
+        reversalRequest
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_ReversalRequests_Status",
+                    "\"Status\" IN " +
+                    "('Pending', 'Approved', 'Rejected')");
+                
+                table.HasCheckConstraint(
+                    "CK_ReversalRequests_ApprovalCounts",
+                    "\"RequiredApprovalCount\" >= 1 " +
+                    "AND \"ApprovalCount\" >= 0 " +
+                    "AND \"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
+            });
+
+        transaction
+            .HasIndex(item =>
+                item.ReversesTransactionId)
+            .IsUnique();
+
+        transaction
+            .HasOne(item =>
+                item.ReversesTransaction)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.ReversesTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        transaction
+            .HasOne<ReversalRequest>()
+            .WithMany()
+            .HasForeignKey(item =>
+                item.ReversalRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        modelBuilder.Entity<Account>()
+            .Property(account =>
+                account.ReservedBalance)
+            .HasDefaultValue(0m);
+        
+        var approvalPolicy =
+            modelBuilder.Entity<ApprovalPolicy>();
+
+        approvalPolicy
+            .HasIndex(policy => new
+            {
+                policy.OperationType,
+                policy.Currency
+            })
+            .IsUnique();
+
+        approvalPolicy
+            .Property(policy =>
+                policy.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        approvalPolicy
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(policy =>
+                policy.UpdatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        approvalPolicy
+            .Property(policy =>
+                policy.RequiredApprovalCount)
+            .HasDefaultValue(1);
+
+        approvalPolicy
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_ApprovalPolicies_Threshold",
+                    "\"ThresholdAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_ApprovalPolicies_Currency",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_ApprovalPolicies_OperationType",
+                    "\"OperationType\" IN " +
+                    "('InternalTransfer', 'CashPayment')");
+                
+                table.HasCheckConstraint(
+                    "CK_ApprovalPolicies_RequiredApprovalCount",
+                    "\"RequiredApprovalCount\" " +
+                    "BETWEEN 1 AND 5");
+            });
+
+            var approvalDecision =
+                modelBuilder.Entity<ApprovalDecision>();
+
+            approvalDecision
+                .HasIndex(decision => new
+                {
+                    decision.TransferRequestId,
+                    decision.ApproverUserId
+                })
+                .IsUnique();
+
+            approvalDecision
+                .HasIndex(decision => new
+                {
+                    decision.PaymentRequestId,
+                    decision.ApproverUserId
+                })
+                .IsUnique();
+
+            approvalDecision
+                .HasIndex(decision => new
+                {
+                    decision.ReversalRequestId,
+                    decision.ApproverUserId
+                })
+                .IsUnique();
+
+            approvalDecision
+                .HasOne<TransferRequest>()
+                .WithMany()
+                .HasForeignKey(decision =>
+                    decision.TransferRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            approvalDecision
+                .HasOne<PaymentRequest>()
+                .WithMany()
+                .HasForeignKey(decision =>
+                    decision.PaymentRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            approvalDecision
+                .HasOne<ReversalRequest>()
+                .WithMany()
+                .HasForeignKey(decision =>
+                    decision.ReversalRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            approvalDecision
+                .HasOne<User>()
+                .WithMany()
+                .HasForeignKey(decision =>
+                    decision.ApproverUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            approvalDecision
+                .ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_ApprovalDecisions_Decision",
+                        "\"Decision\" IN " +
+                        "('Approved', 'Rejected')");
+
+                    /*
+                    * PostgreSQL num_nonnulls ensures a decision
+                    * belongs to exactly one request type.
+                    */
+                    table.HasCheckConstraint(
+                        "CK_ApprovalDecisions_OneRequest",
+                        "num_nonnulls(" +
+                        "\"TransferRequestId\", " +
+                        "\"PaymentRequestId\", " +
+                        "\"ReversalRequestId\") = 1");
+                });
     }
 }

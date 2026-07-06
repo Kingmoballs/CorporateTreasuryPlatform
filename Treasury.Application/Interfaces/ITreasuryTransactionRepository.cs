@@ -19,5 +19,11 @@ public interface ITreasuryTransactionRepository
     Task<TreasuryTransaction?>
         GetByIdempotencyKey(
             string idempotencyKey);
+    
+    Task<TreasuryTransaction?> GetById(Guid id);
+
+    Task<TreasuryTransaction?>
+        GetByReversedTransactionId(
+            Guid originalTransactionId);
 
 }

@@ -46,6 +46,16 @@ public class CashReceiptIntegrationTests
             .SetupGet(service =>
                 service.UserId)
             .Returns(seededData.UserId);
+        
+        var approvalPolicyService =
+            new Mock<IApprovalPolicyService>();
+
+        approvalPolicyService
+            .Setup(service =>
+                service.GetThreshold(
+                    It.IsAny<string>(),
+                    It.IsAny<string>()))
+            .ReturnsAsync(10_000_000m);
 
         var service =
             new CashMovementService(
@@ -53,7 +63,8 @@ public class CashReceiptIntegrationTests
                 ledgerRepository,
                 transactionRepository,
                 currentUserService.Object,
-                paymentRequestRepository);
+                paymentRequestRepository,
+                approvalPolicyService.Object);
 
         var dto = new CreateCashReceiptDto
         {

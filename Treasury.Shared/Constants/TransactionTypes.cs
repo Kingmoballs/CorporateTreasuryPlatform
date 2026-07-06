@@ -12,5 +12,8 @@ public static class TransactionTypes
         "CashReceipt";
     
     public const string CashPayment =
-    "CashPayment";
+        "CashPayment";
+    
+    public const string Reversal =
+        "Reversal";
 }

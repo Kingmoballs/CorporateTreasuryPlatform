@@ -147,6 +147,22 @@ builder.Services.AddScoped<
     IPaymentRequestRepository,
     PaymentRequestRepository>();
 
+builder.Services.AddScoped<
+    IReversalRequestRepository,
+    ReversalRequestRepository>();
+
+builder.Services.AddScoped<
+    IReversalService,
+    ReversalService>();
+
+builder.Services.AddScoped<
+    IApprovalPolicyRepository,
+    ApprovalPolicyRepository>();
+
+builder.Services.AddScoped<
+    IApprovalPolicyService,
+    ApprovalPolicyService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 
@@ -213,6 +229,8 @@ using (var scope = app.Services.CreateScope())
     await RoleSeeder.SeedRoles(context);
 
     await AccountTypeSeeder.SeedAccountTypes(context);
+
+    await ApprovalPolicySeeder.Seed(context);
 }
 
 app.Run();

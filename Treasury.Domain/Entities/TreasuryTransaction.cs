@@ -39,6 +39,13 @@ public class TreasuryTransaction
 
     public string? ExternalReference { get; set; }
 
+    public Guid? ReversesTransactionId { get; set; }
+
+    public TreasuryTransaction?
+        ReversesTransaction { get; set; }
+
+    public Guid? ReversalRequestId { get; set; }
+
 
     /*
     * Clients should reuse this key when retrying

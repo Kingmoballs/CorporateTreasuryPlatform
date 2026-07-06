@@ -44,12 +44,17 @@ public class LedgerRepository
         
         return await _context.LedgerEntries
             .AsNoTracking()
-            .Include(entry => entry.Account)
-            .Include(entry => entry.TreasuryTransaction)
+            .Include(entry =>
+                entry.Account)
+            .Include(entry =>
+                entry.TreasuryTransaction)
+                .ThenInclude(transaction =>
+                    transaction!.ReversesTransaction)
             .Where(entry =>
                 entry.CreatedAt >= fromUtc &&
                 entry.CreatedAt < toUtc)
-            .OrderBy(entry => entry.CreatedAt)
+            .OrderBy(entry =>
+                entry.CreatedAt)
             .ToListAsync();
     }    
 

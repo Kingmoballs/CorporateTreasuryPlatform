@@ -18,7 +18,8 @@ public class CurrencyCashPositionDto
     public decimal PendingInternalTransferAmount { get; set; }
     
     public decimal AvailableLiquidityRatio { get; set; }
-    
+
+    public decimal ReservedCash { get; set; }
 
     public IReadOnlyList<CashPositionAccountDto>
         Accounts { get; set; }

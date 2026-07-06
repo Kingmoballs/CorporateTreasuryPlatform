@@ -10,8 +10,8 @@ namespace Treasury.Infrastructure.Services;
 
 public class TransferService : ITransferService
 {
-    private const decimal ApprovalThreshold =
-        10000000m;
+    private readonly IApprovalPolicyService
+        _approvalPolicyService;
 
     private readonly IAccountRepository
         _accountRepository;
@@ -44,6 +44,43 @@ public class TransferService : ITransferService
         }
     }
 
+    private void ReserveFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.AvailableBalance < amount)
+        {
+            throw new BusinessRuleException(
+                "Insufficient available funds.");
+        }
+
+        account.ReservedBalance += amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
+    }
+
+    private void ReleaseReservedFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.ReservedBalance < amount)
+        {
+            throw new ConflictException(
+                "The account does not contain the " +
+                "expected transfer reservation.");
+        }
+
+        account.ReservedBalance -= amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
+    }
+
     public TransferService(
         IAccountRepository accountRepository,
         ILedgerRepository ledgerRepository,
@@ -51,7 +88,8 @@ public class TransferService : ITransferService
             transferRequestRepository,
         ICurrentUserService currentUserService,
         ITreasuryTransactionRepository
-            transactionRepository)
+            transactionRepository,
+        IApprovalPolicyService approvalPolicyService)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
@@ -61,6 +99,8 @@ public class TransferService : ITransferService
             currentUserService;
         _transactionRepository = 
             transactionRepository;
+        _approvalPolicyService =
+            approvalPolicyService;
     }
 
     public async Task<TransferResponseDto>
@@ -68,9 +108,20 @@ public class TransferService : ITransferService
     {
         var accounts =
             await GetAndValidateAccounts(dto);
+        
+        var approvalThreshold =
+            await _approvalPolicyService
+                .GetThreshold(
+                    ApprovalOperationTypes
+                        .InternalTransfer,
+                    accounts.FromAccount.Currency);
 
-        if (dto.Amount > ApprovalThreshold)
+        if (dto.Amount > approvalThreshold)
         {
+            ReserveFunds(
+                accounts.FromAccount,
+                dto.Amount);
+
             var request = new TransferRequest
             {
                 Id = Guid.NewGuid(),
@@ -96,11 +147,24 @@ public class TransferService : ITransferService
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _transferRequestRepository
-                .Add(request);
+            try
+            {
+                await _transferRequestRepository
+                    .Add(request);
 
-            await _transferRequestRepository
-                .SaveChanges();
+                /*
+                * The reservation and request share one DbContext,
+                * so SaveChanges persists them atomically.
+                */
+                await _transferRequestRepository
+                    .SaveChanges();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "The account balance changed while " +
+                    "funds were being reserved.");
+            }
 
             return new TransferResponseDto
             {
@@ -138,7 +202,8 @@ public class TransferService : ITransferService
                     dto.Description,
                     transferRequestId: null,
                     initiatedByUserId:
-                        _currentUserService.UserId);
+                        _currentUserService.UserId,
+                    releaseReservation: false);
 
             await _accountRepository
                 .SaveChanges();
@@ -210,7 +275,9 @@ public class TransferService : ITransferService
             };
 
             var accounts =
-                await GetAndValidateAccounts(dto);
+                await GetAndValidateAccounts(
+                    dto,
+                    fundsAlreadyReserved: true);
 
             var transaction =
                 await ApplyTransfer(
@@ -221,7 +288,8 @@ public class TransferService : ITransferService
                     transferRequestId:
                         request.Id,
                     initiatedByUserId:
-                        request.RequestedByUserId);
+                        request.RequestedByUserId,
+                    releaseReservation: true);
 
             request.Status =
                 ApprovalStatus.Approved;
@@ -285,7 +353,7 @@ public class TransferService : ITransferService
     {
         if (string.IsNullOrWhiteSpace(reason))
         {
-            throw new ArgumentException(
+            throw new RequestValidationException(
                 "A rejection reason is required.");
         }
 
@@ -297,6 +365,24 @@ public class TransferService : ITransferService
             var request =
                 await GetPendingRequest(
                     transferId);
+
+            EnsureDifferentReviewer(
+                request.RequestedByUserId);
+
+            var sourceAccount =
+                await _accountRepository
+                    .GetById(
+                        request.FromAccountId);
+
+            if (sourceAccount is null)
+            {
+                throw new ResourceNotFoundException(
+                    "Source account not found.");
+            }
+
+            ReleaseReservedFunds(
+                sourceAccount,
+                request.Amount);
 
             request.Status =
                 ApprovalStatus.Rejected;
@@ -316,7 +402,7 @@ public class TransferService : ITransferService
             _transferRequestRepository
                 .Update(request);
 
-            await _transferRequestRepository
+            await _accountRepository
                 .SaveChanges();
 
             await _accountRepository
@@ -331,8 +417,8 @@ public class TransferService : ITransferService
                 .RollbackTransaction();
 
             throw new ConflictException(
-                "This transfer request was already " +
-                "processed by another user.");
+                "The request or account reservation " +
+                "changed while processing.");
         }
         catch
         {
@@ -373,7 +459,8 @@ public class TransferService : ITransferService
         Account FromAccount,
         Account ToAccount)>
         GetAndValidateAccounts(
-            CreateTransferDto dto)
+            CreateTransferDto dto,
+            bool fundsAlreadyReserved = false)
     {
         if (dto.Amount <= 0)
         {
@@ -426,10 +513,26 @@ public class TransferService : ITransferService
                 "currently supported.");
         }
 
-        if (fromAccount.Balance < dto.Amount)
+        if (fundsAlreadyReserved &&
+            fromAccount.ReservedBalance <
+                dto.Amount)
+        {
+            throw new ConflictException(
+                "The expected transfer reservation " +
+                "was not found.");
+        }
+
+        var spendableBalance =
+            fromAccount.AvailableBalance
+            +
+            (fundsAlreadyReserved
+                ? dto.Amount
+                : 0);
+
+        if (spendableBalance < dto.Amount)
         {
             throw new BusinessRuleException(
-                "Insufficient funds.");
+                "Insufficient available funds.");
         }
 
         return (
@@ -444,8 +547,22 @@ public class TransferService : ITransferService
             decimal amount,
             string description,
             Guid? transferRequestId,
-            Guid? initiatedByUserId)
+            Guid? initiatedByUserId,
+            bool releaseReservation)
     {
+        if (releaseReservation)
+        {
+            if (fromAccount.ReservedBalance <
+                amount)
+            {
+                throw new ConflictException(
+                    "Transfer reservation is missing.");
+            }
+
+            fromAccount.ReservedBalance -=
+                amount;
+        }
+
         var completedAtUtc =
             DateTime.UtcNow;
 
