@@ -14,6 +14,9 @@ public class ApprovalPolicy
 
     public int RequiredApprovalCount { get; set; }
         = 1;
+    
+    public int PendingRequestExpiryHours { get; set; }
+        = 24;
 
     public bool IsActive { get; set; } = true;
 

@@ -13,6 +13,7 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using Treasury.Application.Validators;
 using Treasury.Infrastructure.Services;
+using Treasury.Api.BackgroundServices;
 
 
 // Create a builder for the web application
@@ -72,6 +73,27 @@ builder.Services.AddSwaggerGen(options =>
             }
         });
 });
+
+builder.Services.AddScoped<
+    IPendingRequestExpiryService,
+    PendingRequestExpiryService>();
+
+builder.Services
+    .AddOptions<PendingRequestExpiryWorkerOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            PendingRequestExpiryWorkerOptions
+                .SectionName))
+    .Validate(
+        options =>
+            options.IntervalMinutes >= 1 &&
+            options.IntervalMinutes <= 60,
+        "Expiration interval must be between " +
+        "1 and 60 minutes.")
+    .ValidateOnStart();
+
+builder.Services.AddHostedService<
+    PendingRequestExpiryWorker>();
 
 
 builder.Services.AddDbContext<TreasuryDbContext>(options =>
@@ -162,6 +184,22 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IApprovalPolicyService,
     ApprovalPolicyService>();
+
+builder.Services.AddScoped<
+    IApprovalDecisionRepository,
+    ApprovalDecisionRepository>();
+
+builder.Services.AddScoped<
+    IApprovalHistoryService,
+    ApprovalHistoryService>();
+
+builder.Services.AddScoped<
+    IBankStatementRepository,
+    BankStatementRepository>();
+
+builder.Services.AddScoped<
+    IBankStatementService,
+    BankStatementService>();
 
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];

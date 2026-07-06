@@ -175,6 +175,11 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("PendingRequestExpiryHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(24);
+
                     b.Property<int>("RequiredApprovalCount")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -200,11 +205,164 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_ApprovalPolicies_Currency", "char_length(\"Currency\") = 3");
 
-                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment')");
+                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment', 'TransactionReversal')");
+
+                            t.HasCheckConstraint("CK_ApprovalPolicies_PendingRequestExpiryHours", "\"PendingRequestExpiryHours\" BETWEEN 1 AND 168");
 
                             t.HasCheckConstraint("CK_ApprovalPolicies_RequiredApprovalCount", "\"RequiredApprovalCount\" BETWEEN 1 AND 5");
 
                             t.HasCheckConstraint("CK_ApprovalPolicies_Threshold", "\"ThresholdAmount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.BankStatementImport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("ClosingBalance")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("LineCount")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("OpeningBalance")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("StatementFromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StatementReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("StatementToUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UploadedAtUtc");
+
+                    b.HasIndex("UploadedByUserId");
+
+                    b.HasIndex("AccountId", "StatementReference");
+
+                    b.ToTable("BankStatementImports", t =>
+                        {
+                            t.HasCheckConstraint("CK_BankStatementImports_Currency_Length", "char_length(\"Currency\") = 3");
+
+                            t.HasCheckConstraint("CK_BankStatementImports_LineCount", "\"LineCount\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.BankStatementLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("BalanceAfterTransaction")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("BankReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("BankStatementImportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("CounterpartyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("MatchedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MatchedTreasuryTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReconciledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReconciledByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReconciliationStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("TransactionDateUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ValueDateUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchedTreasuryTransactionId");
+
+                    b.HasIndex("ReconciledByUserId");
+
+                    b.HasIndex("BankStatementImportId", "LineNumber")
+                        .IsUnique();
+
+                    b.HasIndex("AccountId", "ReconciliationStatus", "TransactionDateUtc");
+
+                    b.ToTable("BankStatementLines", t =>
+                        {
+                            t.HasCheckConstraint("CK_BankStatementLines_Amount_NotZero", "\"Amount\" <> 0");
+
+                            t.HasCheckConstraint("CK_BankStatementLines_Currency_Length", "char_length(\"Currency\") = 3");
+
+                            t.HasCheckConstraint("CK_BankStatementLines_LineNumber", "\"LineNumber\" > 0");
+
+                            t.HasCheckConstraint("CK_BankStatementLines_ReconciliationStatus", "\"ReconciliationStatus\" IN ('Unmatched', 'Matched', 'Reconciled', 'Ignored')");
                         });
                 });
 
@@ -288,6 +446,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ExternalReference")
                         .HasColumnType("text");
 
@@ -329,13 +490,15 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Status", "ExpiresAtUtc");
+
                     b.ToTable("PaymentRequests", t =>
                         {
                             t.HasCheckConstraint("CK_PaymentRequests_Amount_Positive", "\"Amount\" > 0");
 
                             t.HasCheckConstraint("CK_PaymentRequests_ApprovalCounts", "\"RequiredApprovalCount\" >= 1 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
 
-                            t.HasCheckConstraint("CK_PaymentRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
+                            t.HasCheckConstraint("CK_PaymentRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected', 'Expired')");
                         });
                 });
 
@@ -355,6 +518,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("OriginalTransactionId")
@@ -396,11 +562,13 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Status", "ExpiresAtUtc");
+
                     b.ToTable("ReversalRequests", t =>
                         {
                             t.HasCheckConstraint("CK_ReversalRequests_ApprovalCounts", "\"RequiredApprovalCount\" >= 1 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
 
-                            t.HasCheckConstraint("CK_ReversalRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
+                            t.HasCheckConstraint("CK_ReversalRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected', 'Expired')");
                         });
                 });
 
@@ -444,6 +612,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("FromAccountId")
                         .HasColumnType("uuid");
 
@@ -477,13 +648,15 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("Status", "ExpiresAtUtc");
+
                     b.ToTable("TransferRequests", t =>
                         {
                             t.HasCheckConstraint("CK_TransferRequests_Amount_Positive", "\"Amount\" > 0");
 
                             t.HasCheckConstraint("CK_TransferRequests_ApprovalCounts", "\"RequiredApprovalCount\" >= 1 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
 
-                            t.HasCheckConstraint("CK_TransferRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected')");
+                            t.HasCheckConstraint("CK_TransferRequests_Status", "\"Status\" IN ('Pending', 'Approved', 'Rejected', 'Expired')");
                         });
                 });
 
@@ -652,7 +825,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Treasury.Domain.Entities.ApprovalDecision", b =>
                 {
-                    b.HasOne("Treasury.Domain.Entities.User", null)
+                    b.HasOne("Treasury.Domain.Entities.User", "Approver")
                         .WithMany()
                         .HasForeignKey("ApproverUserId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -672,6 +845,8 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TransferRequestId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Approver");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.ApprovalPolicy", b =>
@@ -680,6 +855,57 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.BankStatementImport", b =>
+                {
+                    b.HasOne("Treasury.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Treasury.Domain.Entities.User", "UploadedByUser")
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("UploadedByUser");
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.BankStatementLine", b =>
+                {
+                    b.HasOne("Treasury.Domain.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Treasury.Domain.Entities.BankStatementImport", "BankStatementImport")
+                        .WithMany("Lines")
+                        .HasForeignKey("BankStatementImportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Treasury.Domain.Entities.TreasuryTransaction", "MatchedTreasuryTransaction")
+                        .WithMany()
+                        .HasForeignKey("MatchedTreasuryTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.User", "ReconciledByUser")
+                        .WithMany()
+                        .HasForeignKey("ReconciledByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("BankStatementImport");
+
+                    b.Navigation("MatchedTreasuryTransaction");
+
+                    b.Navigation("ReconciledByUser");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.LedgerEntry", b =>
@@ -801,6 +1027,11 @@ namespace Treasury.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Treasury.Domain.Entities.AccountType", b =>
                 {
                     b.Navigation("Accounts");
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.BankStatementImport", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.Role", b =>

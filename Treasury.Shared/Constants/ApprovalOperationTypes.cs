@@ -7,4 +7,7 @@ public static class ApprovalOperationTypes
 
     public const string CashPayment =
         "CashPayment";
+
+    public const string TransactionReversal =
+        "TransactionReversal";
 }

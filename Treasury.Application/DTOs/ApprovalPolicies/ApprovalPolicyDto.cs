@@ -14,9 +14,11 @@ public class ApprovalPolicyDto
 
     public bool IsActive { get; set; }
 
+    public int RequiredApprovalCount { get; set; }
+
+    public int PendingRequestExpiryHours { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 
-    public DateTime UpdatedAtUtc { get; set; }
-
-    public int RequiredApprovalCount { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }    
 }

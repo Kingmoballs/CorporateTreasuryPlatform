@@ -34,6 +34,10 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
 
+    public DbSet<BankStatementImport> BankStatementImports => Set<BankStatementImport>();
+
+    public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -134,6 +138,13 @@ public class TreasuryDbContext : DbContext
 
         modelBuilder.Entity<TransferRequest>()
             .HasIndex(request => request.Status);
+        
+        modelBuilder.Entity<TransferRequest>()
+            .HasIndex(request => new
+            {
+                request.Status,
+                request.ExpiresAtUtc
+            });
 
         modelBuilder.Entity<TransferRequest>()
             .HasIndex(request => request.CreatedAt);
@@ -278,7 +289,7 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_TransferRequests_Status",
                     "\"Status\" IN " +
-                    "('Pending', 'Approved', 'Rejected')");
+                    "('Pending', 'Approved', 'Rejected', 'Expired')");
                 
                 table.HasCheckConstraint(
                     "CK_TransferRequests_ApprovalCounts",
@@ -320,6 +331,13 @@ public class TreasuryDbContext : DbContext
         paymentRequest
             .HasIndex(request =>
                 request.Status);
+        
+        paymentRequest
+            .HasIndex(request => new
+            {
+                request.Status,
+                request.ExpiresAtUtc
+            });
 
         paymentRequest
             .HasOne<Account>()
@@ -352,7 +370,7 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_PaymentRequests_Status",
                     "\"Status\" IN " +
-                    "('Pending', 'Approved', 'Rejected')");
+                    "('Pending', 'Approved', 'Rejected', 'Expired')");
                 
                 table.HasCheckConstraint(
                     "CK_PaymentRequests_ApprovalCounts",
@@ -402,6 +420,13 @@ public class TreasuryDbContext : DbContext
         reversalRequest
             .HasIndex(request =>
                 request.Status);
+        
+        reversalRequest
+            .HasIndex(request => new
+            {
+                request.Status,
+                request.ExpiresAtUtc
+            });
 
         reversalRequest
             .HasOne(request =>
@@ -441,7 +466,7 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_ReversalRequests_Status",
                     "\"Status\" IN " +
-                    "('Pending', 'Approved', 'Rejected')");
+                    "('Pending', 'Approved', 'Rejected', 'Expired')");
                 
                 table.HasCheckConstraint(
                     "CK_ReversalRequests_ApprovalCounts",
@@ -476,6 +501,157 @@ public class TreasuryDbContext : DbContext
                 account.ReservedBalance)
             .HasDefaultValue(0m);
         
+        var bankStatementImport =
+            modelBuilder.Entity<BankStatementImport>();
+
+        bankStatementImport
+            .HasOne(statementImport =>
+                statementImport.Account)
+            .WithMany()
+            .HasForeignKey(statementImport =>
+                statementImport.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        bankStatementImport
+            .HasOne(statementImport =>
+                statementImport.UploadedByUser)
+            .WithMany()
+            .HasForeignKey(statementImport =>
+                statementImport.UploadedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        bankStatementImport
+            .HasIndex(statementImport => new
+            {
+                statementImport.AccountId,
+                statementImport.StatementReference
+            });
+
+        bankStatementImport
+            .HasIndex(statementImport =>
+                statementImport.UploadedAtUtc);
+
+        bankStatementImport
+            .Property(statementImport =>
+                statementImport.FileName)
+            .HasMaxLength(255);
+
+        bankStatementImport
+            .Property(statementImport =>
+                statementImport.StatementReference)
+            .HasMaxLength(100);
+
+        bankStatementImport
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_BankStatementImports_Currency_Length",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_BankStatementImports_LineCount",
+                    "\"LineCount\" >= 0");
+            });
+
+        var bankStatementLine =
+            modelBuilder.Entity<BankStatementLine>();
+
+        bankStatementLine
+            .Property(line =>
+                line.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        bankStatementLine
+            .HasOne(line =>
+                line.BankStatementImport)
+            .WithMany(statementImport =>
+                statementImport.Lines)
+            .HasForeignKey(line =>
+                line.BankStatementImportId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        bankStatementLine
+            .HasOne(line =>
+                line.Account)
+            .WithMany()
+            .HasForeignKey(line =>
+                line.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        bankStatementLine
+            .HasOne(line =>
+                line.MatchedTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(line =>
+                line.MatchedTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        bankStatementLine
+            .HasOne(line =>
+                line.ReconciledByUser)
+            .WithMany()
+            .HasForeignKey(line =>
+                line.ReconciledByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        bankStatementLine
+            .HasIndex(line => new
+            {
+                line.BankStatementImportId,
+                line.LineNumber
+            })
+            .IsUnique();
+
+        bankStatementLine
+            .HasIndex(line => new
+            {
+                line.AccountId,
+                line.ReconciliationStatus,
+                line.TransactionDateUtc
+            });
+
+        bankStatementLine
+            .HasIndex(line =>
+                line.MatchedTreasuryTransactionId);
+
+        bankStatementLine
+            .Property(line =>
+                line.Description)
+            .HasMaxLength(500);
+
+        bankStatementLine
+            .Property(line =>
+                line.BankReference)
+            .HasMaxLength(100);
+
+        bankStatementLine
+            .Property(line =>
+                line.CounterpartyName)
+            .HasMaxLength(200);
+
+        bankStatementLine
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_BankStatementLines_LineNumber",
+                    "\"LineNumber\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_BankStatementLines_Amount_NotZero",
+                    "\"Amount\" <> 0");
+
+                table.HasCheckConstraint(
+                    "CK_BankStatementLines_Currency_Length",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_BankStatementLines_ReconciliationStatus",
+                    "\"ReconciliationStatus\" IN " +
+                    "('Unmatched', 'Matched', 'Reconciled', 'Ignored')");
+            });
+        
         var approvalPolicy =
             modelBuilder.Entity<ApprovalPolicy>();
 
@@ -505,6 +681,11 @@ public class TreasuryDbContext : DbContext
             .Property(policy =>
                 policy.RequiredApprovalCount)
             .HasDefaultValue(1);
+        
+        approvalPolicy
+            .Property(policy =>
+                policy.PendingRequestExpiryHours)
+            .HasDefaultValue(24);
 
         approvalPolicy
             .ToTable(table =>
@@ -520,12 +701,19 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_ApprovalPolicies_OperationType",
                     "\"OperationType\" IN " +
-                    "('InternalTransfer', 'CashPayment')");
+                    "('InternalTransfer', " +
+                    "'CashPayment', " +
+                    "'TransactionReversal')");
                 
                 table.HasCheckConstraint(
                     "CK_ApprovalPolicies_RequiredApprovalCount",
                     "\"RequiredApprovalCount\" " +
                     "BETWEEN 1 AND 5");
+                
+                table.HasCheckConstraint(
+                    "CK_ApprovalPolicies_PendingRequestExpiryHours",
+                    "\"PendingRequestExpiryHours\" " +
+                    "BETWEEN 1 AND 168");
             });
 
             var approvalDecision =
@@ -577,12 +765,12 @@ public class TreasuryDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             approvalDecision
-                .HasOne<User>()
+                .HasOne(decision =>
+                    decision.Approver)
                 .WithMany()
                 .HasForeignKey(decision =>
                     decision.ApproverUserId)
                 .OnDelete(DeleteBehavior.Restrict);
-
             approvalDecision
                 .ToTable(table =>
                 {

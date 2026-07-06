@@ -27,6 +27,10 @@ public class TransferService : ITransferService
     
     private readonly ITreasuryTransactionRepository
         _transactionRepository;
+    
+    private readonly IApprovalDecisionRepository
+        _approvalDecisionRepository;
+
     private void EnsureDifferentReviewer(
         Guid? requestedByUserId)
     {
@@ -89,7 +93,8 @@ public class TransferService : ITransferService
         ICurrentUserService currentUserService,
         ITreasuryTransactionRepository
             transactionRepository,
-        IApprovalPolicyService approvalPolicyService)
+        IApprovalPolicyService approvalPolicyService,
+        IApprovalDecisionRepository approvalDecisionRepository)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
@@ -101,6 +106,8 @@ public class TransferService : ITransferService
             transactionRepository;
         _approvalPolicyService =
             approvalPolicyService;
+        _approvalDecisionRepository =
+            approvalDecisionRepository;
     }
 
     public async Task<TransferResponseDto>
@@ -109,18 +116,21 @@ public class TransferService : ITransferService
         var accounts =
             await GetAndValidateAccounts(dto);
         
-        var approvalThreshold =
+        var approvalRequirements =
             await _approvalPolicyService
-                .GetThreshold(
+                .GetRequirements(
                     ApprovalOperationTypes
                         .InternalTransfer,
                     accounts.FromAccount.Currency);
 
-        if (dto.Amount > approvalThreshold)
+        if (dto.Amount >  approvalRequirements.ThresholdAmount)
         {
             ReserveFunds(
                 accounts.FromAccount,
                 dto.Amount);
+
+            var createdAtUtc =
+                DateTime.UtcNow;
 
             var request = new TransferRequest
             {
@@ -136,6 +146,12 @@ public class TransferService : ITransferService
 
                 Description = dto.Description,
 
+                RequiredApprovalCount =
+                    approvalRequirements
+                        .RequiredApprovalCount,
+
+                ApprovalCount = 0,
+
                 Status = ApprovalStatus.Pending,
 
                 RequestedByUserId =
@@ -143,8 +159,13 @@ public class TransferService : ITransferService
 
                 ConcurrencyToken =
                     Guid.NewGuid(),
+                
+                CreatedAt = createdAtUtc,
 
-                CreatedAt = DateTime.UtcNow
+                ExpiresAtUtc =
+                    createdAtUtc.AddHours(
+                        approvalRequirements
+                            .PendingRequestExpiryHours),
             };
 
             try
@@ -182,10 +203,19 @@ public class TransferService : ITransferService
 
                 Status = ApprovalStatus.Pending,
 
+                ApprovalCount =
+                    request.ApprovalCount,
+
+                RequiredApprovalCount =
+                    request.RequiredApprovalCount,
+
                 Description =
                     "Transfer pending approval.",
 
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+
+                ExpiresAtUtc =
+                    request.ExpiresAtUtc,
             };
         }
 
@@ -255,9 +285,69 @@ public class TransferService : ITransferService
             var request =
                 await GetPendingRequest(
                     transferId);
-            
+
             EnsureDifferentReviewer(
                 request.RequestedByUserId);
+
+            var currentUserId =
+                _currentUserService.UserId;
+
+            var alreadyDecided =
+                await _approvalDecisionRepository
+                    .HasTransferDecision(
+                        request.Id,
+                        currentUserId);
+
+            if (alreadyDecided)
+            {
+                throw new ConflictException(
+                    "You have already reviewed this " +
+                    "transfer request.");
+            }
+
+            await _approvalDecisionRepository.Add(
+                new ApprovalDecision
+                {
+                    Id = Guid.NewGuid(),
+
+                    TransferRequestId =
+                        request.Id,
+
+                    ApproverUserId =
+                        currentUserId,
+
+                    Decision =
+                        ApprovalDecisionTypes
+                            .Approved,
+
+                    CreatedAtUtc =
+                        DateTime.UtcNow
+                });
+
+            request.ApprovalCount += 1;
+
+            request.ConcurrencyToken =
+                Guid.NewGuid();
+
+            /*
+            * Keep the reservation while additional
+            * approvals are still outstanding.
+            */
+            if (request.ApprovalCount <
+                request.RequiredApprovalCount)
+            {
+                _transferRequestRepository
+                    .Update(request);
+
+                await _accountRepository
+                    .SaveChanges();
+
+                await _accountRepository
+                    .CommitTransaction();
+
+                return CreatePendingTransferResponse(
+                    request);
+            }
 
             var dto = new CreateTransferDto
             {
@@ -289,43 +379,48 @@ public class TransferService : ITransferService
                         request.Id,
                     initiatedByUserId:
                         request.RequestedByUserId,
-                    releaseReservation: true);
+                    releaseReservation:
+                        true);
 
             request.Status =
                 ApprovalStatus.Approved;
 
             request.ReviewedByUserId =
-                _currentUserService.UserId;
+                currentUserId;
 
             request.ReviewedAtUtc =
                 DateTime.UtcNow;
 
-            request.RejectionReason = null;
+            request.RejectionReason =
+                null;
 
-            // Rotating the token makes a concurrent update fail.
             request.ConcurrencyToken =
                 Guid.NewGuid();
 
             _transferRequestRepository
                 .Update(request);
 
-            /*
-             * All repositories share the same scoped
-             * TreasuryDbContext. One SaveChanges therefore
-             * saves the balances, ledger and request status.
-             */
             await _accountRepository
                 .SaveChanges();
 
             await _accountRepository
                 .CommitTransaction();
 
-            return CreateResponse(
-                accounts.FromAccount.Id,
-                accounts.ToAccount.Id,
-                request.Amount,
-                request.Description,
-                transaction);
+            var response =
+                CreateResponse(
+                    accounts.FromAccount.Id,
+                    accounts.ToAccount.Id,
+                    request.Amount,
+                    request.Description,
+                    transaction);
+
+            response.ApprovalCount =
+                request.ApprovalCount;
+
+            response.RequiredApprovalCount =
+                request.RequiredApprovalCount;
+
+            return response;
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -333,9 +428,9 @@ public class TransferService : ITransferService
                 .RollbackTransaction();
 
             throw new ConflictException(
-                "The transfer request or an account " +
-                "balance changed while approval was " +
-                "processing. Refresh and try again.");
+                "The request or account changed while " +
+                "approval was processing. Refresh and " +
+                "try again.");
         }
         catch
         {
@@ -369,6 +464,43 @@ public class TransferService : ITransferService
             EnsureDifferentReviewer(
                 request.RequestedByUserId);
 
+            var currentUserId =
+                _currentUserService.UserId;
+
+            var alreadyDecided =
+                await _approvalDecisionRepository
+                    .HasTransferDecision(
+                        request.Id,
+                        currentUserId);
+
+            if (alreadyDecided)
+            {
+                throw new ConflictException(
+                    "You have already reviewed this " +
+                    "transfer request.");
+            }
+
+            await _approvalDecisionRepository.Add(
+                new ApprovalDecision
+                {
+                    Id = Guid.NewGuid(),
+
+                    TransferRequestId =
+                        request.Id,
+
+                    ApproverUserId =
+                        currentUserId,
+
+                    Decision =
+                        ApprovalDecisionTypes.Rejected,
+
+                    Comment =
+                        reason.Trim(),
+
+                    CreatedAtUtc =
+                        DateTime.UtcNow
+                });
+
             var sourceAccount =
                 await _accountRepository
                     .GetById(
@@ -388,7 +520,7 @@ public class TransferService : ITransferService
                 ApprovalStatus.Rejected;
 
             request.ReviewedByUserId =
-                _currentUserService.UserId;
+                currentUserId;
 
             request.ReviewedAtUtc =
                 DateTime.UtcNow;
@@ -452,6 +584,10 @@ public class TransferService : ITransferService
                 "been processed.");
         }
 
+        PendingRequestExpiryGuard.EnsureNotExpired(
+            request.ExpiresAtUtc,
+            "transfer");
+            
         return request;
     }
 
@@ -707,6 +843,45 @@ public class TransferService : ITransferService
             Timestamp =
                 transaction.CompletedAtUtc
                 ?? transaction.CreatedAtUtc
+        };
+    }
+
+    private static TransferResponseDto
+        CreatePendingTransferResponse(
+            TransferRequest request)
+    {
+        return new TransferResponseDto
+        {
+            TransactionId =
+                null,
+
+            TransactionReference =
+                null,
+
+            Status =
+                ApprovalStatus.Pending,
+
+            FromAccountId =
+                request.FromAccountId,
+
+            ToAccountId =
+                request.ToAccountId,
+
+            Amount =
+                request.Amount,
+
+            Description =
+                "Transfer is awaiting additional " +
+                "approvals.",
+
+            ApprovalCount =
+                request.ApprovalCount,
+
+            RequiredApprovalCount =
+                request.RequiredApprovalCount,
+
+            Timestamp =
+                DateTime.UtcNow
         };
     }
 

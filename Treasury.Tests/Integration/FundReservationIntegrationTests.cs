@@ -8,6 +8,7 @@ using Treasury.Infrastructure.Persistence;
 using Treasury.Infrastructure.Repositories;
 using Treasury.Infrastructure.Services;
 using Treasury.Shared.Constants;
+using Treasury.Application.DTOs.ApprovalPolicies;
 
 namespace Treasury.Tests.Integration;
 
@@ -366,10 +367,255 @@ public class FundReservationIntegrationTests
             pendingRequests);
     }
 
+    [Fact]
+    public async Task
+        LargePayment_TwoApprovals_ExecutesOnlyAfterFinalApproval()
+    {
+        // Arrange
+        await using var database =
+            await PostgreSqlTestDatabase.Start();
+
+        var seeded =
+            await SeedRequiredData(database);
+
+        const decimal paymentAmount =
+            12_000_000m;
+
+        Guid paymentRequestId;
+
+        // The policy requires two different approvers.
+        await using (
+            var requestContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateCashMovementService(
+                    requestContext,
+                    seeded.RequesterId,
+                    requiredApprovalCount: 2);
+
+            var response =
+                await service.RecordPayment(
+                    CreatePayment(
+                        seeded.AccountId,
+                        paymentAmount,
+                        "multi-level-payment-001"));
+
+            Assert.Equal(
+                ApprovalStatus.Pending,
+                response.Status);
+
+            Assert.Equal(
+                0,
+                response.ApprovalCount);
+
+            Assert.Equal(
+                2,
+                response.RequiredApprovalCount);
+
+            Assert.NotNull(
+                response.PaymentRequestId);
+
+            paymentRequestId =
+                response.PaymentRequestId!.Value;
+        }
+
+        // First approval must not execute the payment.
+        await using (
+            var firstApprovalContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateCashMovementService(
+                    firstApprovalContext,
+                    seeded.ApproverId,
+                    requiredApprovalCount: 2);
+
+            var response =
+                await service.ApprovePayment(
+                    paymentRequestId);
+
+            Assert.Equal(
+                ApprovalStatus.Pending,
+                response.Status);
+
+            Assert.Null(
+                response.TransactionId);
+
+            Assert.Equal(
+                1,
+                response.ApprovalCount);
+
+            Assert.Equal(
+                2,
+                response.RequiredApprovalCount);
+        }
+
+        // Confirm that funds remain reserved after approval one.
+        await using (
+            var intermediateContext =
+                database.CreateContext())
+        {
+            var account =
+                await intermediateContext.Accounts
+                    .AsNoTracking()
+                    .SingleAsync(item =>
+                        item.Id == seeded.AccountId);
+
+            var request =
+                await intermediateContext.PaymentRequests
+                    .AsNoTracking()
+                    .SingleAsync(item =>
+                        item.Id == paymentRequestId);
+
+            var transactionCount =
+                await intermediateContext
+                    .TreasuryTransactions
+                    .CountAsync(item =>
+                        item.PaymentRequestId ==
+                            paymentRequestId);
+
+            var decisions =
+                await intermediateContext
+                    .ApprovalDecisions
+                    .AsNoTracking()
+                    .Where(item =>
+                        item.PaymentRequestId ==
+                            paymentRequestId)
+                    .ToListAsync();
+
+            Assert.Equal(
+                20_000_000m,
+                account.Balance);
+
+            Assert.Equal(
+                paymentAmount,
+                account.ReservedBalance);
+
+            Assert.Equal(
+                ApprovalStatus.Pending,
+                request.Status);
+
+            Assert.Equal(
+                1,
+                request.ApprovalCount);
+
+            Assert.Equal(
+                0,
+                transactionCount);
+
+            Assert.Single(decisions);
+        }
+
+        // Second distinct approver completes the payment.
+        await using (
+            var finalApprovalContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateCashMovementService(
+                    finalApprovalContext,
+                    seeded.SecondApproverId,
+                    requiredApprovalCount: 2);
+
+            var response =
+                await service.ApprovePayment(
+                    paymentRequestId);
+
+            Assert.Equal(
+                TransactionStatuses.Completed,
+                response.Status);
+
+            Assert.NotNull(
+                response.TransactionId);
+
+            Assert.Equal(
+                2,
+                response.ApprovalCount);
+
+            Assert.Equal(
+                2,
+                response.RequiredApprovalCount);
+        }
+
+        // Assert the final database state.
+        await using var verificationContext =
+            database.CreateContext();
+
+        var finalAccount =
+            await verificationContext.Accounts
+                .AsNoTracking()
+                .SingleAsync(item =>
+                    item.Id == seeded.AccountId);
+
+        var finalRequest =
+            await verificationContext.PaymentRequests
+                .AsNoTracking()
+                .SingleAsync(item =>
+                    item.Id == paymentRequestId);
+
+        var transactions =
+            await verificationContext
+                .TreasuryTransactions
+                .AsNoTracking()
+                .Where(item =>
+                    item.PaymentRequestId ==
+                        paymentRequestId)
+                .ToListAsync();
+
+        var finalDecisions =
+            await verificationContext
+                .ApprovalDecisions
+                .AsNoTracking()
+                .Where(item =>
+                    item.PaymentRequestId ==
+                        paymentRequestId)
+                .ToListAsync();
+
+        Assert.Equal(
+            8_000_000m,
+            finalAccount.Balance);
+
+        Assert.Equal(
+            0m,
+            finalAccount.ReservedBalance);
+
+        Assert.Equal(
+            ApprovalStatus.Approved,
+            finalRequest.Status);
+
+        Assert.Equal(
+            2,
+            finalRequest.ApprovalCount);
+
+        Assert.Equal(
+            seeded.SecondApproverId,
+            finalRequest.ReviewedByUserId);
+
+        Assert.Single(transactions);
+
+        Assert.Equal(
+            2,
+            finalDecisions.Count);
+
+        Assert.Contains(
+            finalDecisions,
+            item =>
+                item.ApproverUserId ==
+                    seeded.ApproverId);
+
+        Assert.Contains(
+            finalDecisions,
+            item =>
+                item.ApproverUserId ==
+                    seeded.SecondApproverId);
+    }
+
     private static CashMovementService
         CreateCashMovementService(
             TreasuryDbContext context,
-            Guid userId)
+            Guid userId,
+            int requiredApprovalCount = 1)
     {
         var accountRepository =
             new AccountRepository(context);
@@ -398,10 +644,18 @@ public class FundReservationIntegrationTests
 
         approvalPolicyService
             .Setup(service =>
-                service.GetThreshold(
+                service.GetRequirements(
                     It.IsAny<string>(),
                     It.IsAny<string>()))
-            .ReturnsAsync(10_000_000m);
+            .ReturnsAsync(
+                new ApprovalRequirementsDto
+                {
+                    ThresholdAmount =
+                        10_000_000m,
+
+                    RequiredApprovalCount =
+                        requiredApprovalCount
+                });
 
 
         /*
@@ -414,7 +668,8 @@ public class FundReservationIntegrationTests
             transactionRepository,
             currentUser.Object,
             paymentRequestRepository,
-            approvalPolicyService.Object);
+            approvalPolicyService.Object,
+            new ApprovalDecisionRepository(context));
     }
 
     private static CreateCashPaymentDto
@@ -476,6 +731,11 @@ public class FundReservationIntegrationTests
             CreateUser(
                 managerRole,
                 "reservation-approver");
+        
+        var secondApprover =
+            CreateUser(
+                managerRole,
+                "reservation-second-approver");
 
         var accountType = new AccountType
         {
@@ -524,7 +784,8 @@ public class FundReservationIntegrationTests
 
         await context.Users.AddRangeAsync(
             requester,
-            approver);
+            approver,
+            secondApprover);
 
         await context.AccountTypes
             .AddAsync(accountType);
@@ -537,6 +798,7 @@ public class FundReservationIntegrationTests
         return new SeededData(
             requester.Id,
             approver.Id,
+            secondApprover.Id,
             account.Id);
     }
 
@@ -576,5 +838,6 @@ public class FundReservationIntegrationTests
     private sealed record SeededData(
         Guid RequesterId,
         Guid ApproverId,
+        Guid SecondApproverId,
         Guid AccountId);
 }

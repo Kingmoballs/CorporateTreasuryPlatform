@@ -4,6 +4,7 @@ using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Services;
 using Treasury.Shared.Constants;
 using Treasury.Application.Common.Exceptions;
+using Treasury.Application.DTOs.ApprovalPolicies;
 
 namespace Treasury.Tests.Transfers;
 
@@ -45,13 +46,24 @@ public class TransferServiceTests
         
         var approvalPolicyService =
             new Mock<IApprovalPolicyService>();
+        
+        var approvalDecisionRepository =
+            new Mock<IApprovalDecisionRepository>();
 
         approvalPolicyService
             .Setup(service =>
-                service.GetThreshold(
+                service.GetRequirements(
                     It.IsAny<string>(),
                     It.IsAny<string>()))
-            .ReturnsAsync(10_000_000m);
+            .ReturnsAsync(
+                new ApprovalRequirementsDto
+                {
+                    ThresholdAmount =
+                        10_000_000m,
+
+                    RequiredApprovalCount =
+                        1
+                });
 
         accountRepository
             .Setup(repository =>
@@ -79,7 +91,8 @@ public class TransferServiceTests
             transferRequestRepository.Object,
             currentUserService.Object,
             transactionRepository.Object,
-            approvalPolicyService.Object);
+            approvalPolicyService.Object,
+            approvalDecisionRepository.Object);
 
         // Act
         var exception =

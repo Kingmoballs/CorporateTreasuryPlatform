@@ -22,6 +22,13 @@ public static class ApprovalPolicySeeder
                 .CashPayment,
             "NGN",
             10_000_000m);
+        
+        await AddIfMissing(
+            context,
+            ApprovalOperationTypes
+                .TransactionReversal,
+            "NGN",
+            0m);
 
         await context.SaveChangesAsync();
     }
@@ -61,6 +68,9 @@ public static class ApprovalPolicySeeder
                 
                 RequiredApprovalCount =
                     1,
+                
+                PendingRequestExpiryHours =
+                    24,
 
                 IsActive =
                     true,

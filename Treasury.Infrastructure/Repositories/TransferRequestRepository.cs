@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Persistence;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Repositories;
 
@@ -34,9 +35,17 @@ public class TransferRequestRepository
     public async Task<List<TransferRequest>>
         GetPending()
     {
+        var nowUtc =
+            DateTime.UtcNow;
+
         return await _context.TransferRequests
-            .Where(x => x.Status == "Pending")
-            .OrderByDescending(x => x.CreatedAt)
+            .Where(request =>
+                request.Status ==
+                    ApprovalStatus.Pending &&
+                (!request.ExpiresAtUtc.HasValue ||
+                request.ExpiresAtUtc.Value > nowUtc))
+            .OrderByDescending(request =>
+                request.CreatedAt)
             .ToListAsync();
     }
 

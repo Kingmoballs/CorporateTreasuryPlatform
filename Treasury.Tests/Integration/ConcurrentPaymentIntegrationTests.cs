@@ -7,6 +7,7 @@ using Treasury.Infrastructure.Persistence;
 using Treasury.Infrastructure.Repositories;
 using Treasury.Infrastructure.Services;
 using Treasury.Shared.Constants;
+using Treasury.Application.DTOs.ApprovalPolicies;
 
 namespace Treasury.Tests.Integration;
 
@@ -82,15 +83,15 @@ public class ConcurrentPaymentIntegrationTests
         // Assert
         var successfulAttempt =
             Assert.Single(
-                attempts.Where(
-                    attempt =>
-                        attempt.Succeeded));
+                attempts,
+                attempt =>
+                    attempt.Succeeded);
 
         var failedAttempt =
             Assert.Single(
-                attempts.Where(
-                    attempt =>
-                        !attempt.Succeeded));
+                attempts,
+                attempt =>
+                    !attempt.Succeeded);
 
         Assert.NotNull(
             successfulAttempt.Response);
@@ -193,10 +194,18 @@ public class ConcurrentPaymentIntegrationTests
 
         approvalPolicyService
             .Setup(service =>
-                service.GetThreshold(
+                service.GetRequirements(
                     It.IsAny<string>(),
                     It.IsAny<string>()))
-            .ReturnsAsync(10_000_000m);
+            .ReturnsAsync(
+                new ApprovalRequirementsDto
+                {
+                    ThresholdAmount =
+                        10_000_000m,
+
+                    RequiredApprovalCount =
+                        1
+                });
 
         return new CashMovementService(
             accountRepository,
@@ -204,7 +213,8 @@ public class ConcurrentPaymentIntegrationTests
             transactionRepository,
             currentUserService.Object,
             paymentRequestRepository,
-            approvalPolicyService.Object);
+            approvalPolicyService.Object,
+            new ApprovalDecisionRepository(context));
     }
 
     private static CreateCashPaymentDto

@@ -13,7 +13,7 @@ public interface IReversalService
     Task<List<ReversalRequestResponseDto>>
         GetPending();
 
-    Task<TreasuryTransactionDetailDto>
+    Task<ReversalApprovalResponseDto>
         Approve(Guid reversalRequestId);
 
     Task<ReversalRequestResponseDto>

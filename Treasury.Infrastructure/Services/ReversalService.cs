@@ -29,6 +29,12 @@ public class ReversalService : IReversalService
     private readonly ICurrentUserService
         _currentUserService;
 
+    private readonly IApprovalPolicyService
+        _approvalPolicyService;
+
+    private readonly IApprovalDecisionRepository
+        _approvalDecisionRepository;
+
     public ReversalService(
         IAccountRepository accountRepository,
         ILedgerRepository ledgerRepository,
@@ -38,7 +44,9 @@ public class ReversalService : IReversalService
             reversalRequestRepository,
         ITreasuryTransactionService
             transactionService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IApprovalPolicyService approvalPolicyService,
+        IApprovalDecisionRepository approvalDecisionRepository)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
@@ -50,6 +58,10 @@ public class ReversalService : IReversalService
             transactionService;
         _currentUserService =
             currentUserService;
+        _approvalPolicyService =
+            approvalPolicyService;
+        _approvalDecisionRepository =
+            approvalDecisionRepository;
     }
 
     public async Task<ReversalRequestResponseDto>
@@ -74,6 +86,13 @@ public class ReversalService : IReversalService
 
         EnsureTransactionCanBeReversed(
             original);
+        
+        var approvalRequirements =
+            await _approvalPolicyService
+                .GetRequirements(
+                    ApprovalOperationTypes
+                        .TransactionReversal,
+                    original.Currency);
 
         var existingRequest =
             await _reversalRequestRepository
@@ -99,6 +118,8 @@ public class ReversalService : IReversalService
                 "been reversed.");
         }
 
+        var createdAtUtc = DateTime.UtcNow;
+
         var request = new ReversalRequest
         {
             Id = Guid.NewGuid(),
@@ -112,6 +133,12 @@ public class ReversalService : IReversalService
             Status =
                 ApprovalStatus.Pending,
 
+            RequiredApprovalCount =
+                approvalRequirements
+                    .RequiredApprovalCount,
+
+            ApprovalCount = 0,
+
             RequestedByUserId =
                 _currentUserService.UserId,
 
@@ -119,7 +146,12 @@ public class ReversalService : IReversalService
                 Guid.NewGuid(),
 
             CreatedAtUtc =
-                DateTime.UtcNow
+                createdAtUtc,
+
+            ExpiresAtUtc =
+                createdAtUtc.AddHours(
+                    approvalRequirements
+                        .PendingRequestExpiryHours)
         };
 
         await _reversalRequestRepository
@@ -148,7 +180,7 @@ public class ReversalService : IReversalService
             .ToList();
     }
 
-    public async Task<TreasuryTransactionDetailDto>
+    public async Task<ReversalApprovalResponseDto>
         Approve(Guid reversalRequestId)
     {
         await _accountRepository
@@ -162,6 +194,75 @@ public class ReversalService : IReversalService
 
             EnsureDifferentReviewer(
                 request.RequestedByUserId);
+
+            var currentUserId =
+                _currentUserService.UserId;
+
+            var alreadyDecided =
+                await _approvalDecisionRepository
+                    .HasReversalDecision(
+                        request.Id,
+                        currentUserId);
+
+            if (alreadyDecided)
+            {
+                throw new ConflictException(
+                    "You have already reviewed this " +
+                    "reversal request.");
+            }
+
+            await _approvalDecisionRepository.Add(
+                new ApprovalDecision
+                {
+                    Id = Guid.NewGuid(),
+
+                    ReversalRequestId =
+                        request.Id,
+
+                    ApproverUserId =
+                        currentUserId,
+
+                    Decision =
+                        ApprovalDecisionTypes
+                            .Approved,
+
+                    CreatedAtUtc =
+                        DateTime.UtcNow
+                });
+
+            request.ApprovalCount += 1;
+
+            request.ConcurrencyToken =
+                Guid.NewGuid();
+
+            /*
+            * Do not reverse balances until the final
+            * required approval has been recorded.
+            */
+            if (request.ApprovalCount <
+                request.RequiredApprovalCount)
+            {
+                _reversalRequestRepository
+                    .Update(request);
+
+                await _accountRepository
+                    .SaveChanges();
+
+                await _accountRepository
+                    .CommitTransaction();
+
+                return new ReversalApprovalResponseDto
+                {
+                    Request =
+                        MapRequest(
+                            request,
+                            request
+                                .OriginalTransaction),
+
+                    Transaction =
+                        null
+                };
+            }
 
             var existingReversal =
                 await _transactionRepository
@@ -183,10 +284,13 @@ public class ReversalService : IReversalService
                 ApprovalStatus.Approved;
 
             request.ReviewedByUserId =
-                _currentUserService.UserId;
+                currentUserId;
 
             request.ReviewedAtUtc =
                 DateTime.UtcNow;
+
+            request.RejectionReason =
+                null;
 
             request.ConcurrencyToken =
                 Guid.NewGuid();
@@ -200,9 +304,21 @@ public class ReversalService : IReversalService
             await _accountRepository
                 .CommitTransaction();
 
-            return await _transactionService
-                .GetByReference(
-                    reversal.Reference);
+            var transaction =
+                await _transactionService
+                    .GetByReference(
+                        reversal.Reference);
+
+            return new ReversalApprovalResponseDto
+            {
+                Request =
+                    MapRequest(
+                        request,
+                        request.OriginalTransaction),
+
+                Transaction =
+                    transaction
+            };
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -211,7 +327,8 @@ public class ReversalService : IReversalService
 
             throw new ConflictException(
                 "The reversal request or account " +
-                "balance changed while processing.");
+                "changed while approval was " +
+                "processing.");
         }
         catch
         {
@@ -236,11 +353,48 @@ public class ReversalService : IReversalService
         EnsureDifferentReviewer(
             request.RequestedByUserId);
 
+        var currentUserId =
+            _currentUserService.UserId;
+
+        var alreadyDecided =
+            await _approvalDecisionRepository
+                .HasReversalDecision(
+                    request.Id,
+                    currentUserId);
+
+        if (alreadyDecided)
+        {
+            throw new ConflictException(
+                "You have already reviewed this " +
+                "reversal request.");
+        }
+
+        await _approvalDecisionRepository.Add(
+            new ApprovalDecision
+            {
+                Id = Guid.NewGuid(),
+
+                ReversalRequestId =
+                    request.Id,
+
+                ApproverUserId =
+                    currentUserId,
+
+                Decision =
+                    ApprovalDecisionTypes.Rejected,
+
+                Comment =
+                    reason.Trim(),
+
+                CreatedAtUtc =
+                    DateTime.UtcNow
+            });
+
         request.Status =
             ApprovalStatus.Rejected;
 
         request.ReviewedByUserId =
-            _currentUserService.UserId;
+            currentUserId;
 
         request.ReviewedAtUtc =
             DateTime.UtcNow;
@@ -583,7 +737,11 @@ public class ReversalService : IReversalService
                 "Reversal request has already " +
                 "been processed.");
         }
-
+        
+        PendingRequestExpiryGuard.EnsureNotExpired(
+            request.ExpiresAtUtc,
+            "reversal");
+            
         return request;
     }
 
@@ -681,7 +839,10 @@ public class ReversalService : IReversalService
                 request.RejectionReason,
 
             CreatedAtUtc =
-                request.CreatedAtUtc
+                request.CreatedAtUtc,
+            
+            ExpiresAtUtc =
+                request.ExpiresAtUtc,
         };
     }
 }

@@ -44,4 +44,6 @@ public class ReversalRequestResponseDto
     public int RequiredApprovalCount { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }
+
+    public DateTime? ExpiresAtUtc { get; set; }
 }

@@ -7,6 +7,7 @@ using Treasury.Infrastructure.Repositories;
 using Treasury.Infrastructure.Services;
 using Treasury.Shared.Constants;
 using Treasury.Infrastructure.Persistence;
+using Treasury.Application.DTOs.ApprovalPolicies;
 
 namespace Treasury.Tests.Integration;
 
@@ -49,13 +50,24 @@ public class CashReceiptIntegrationTests
         
         var approvalPolicyService =
             new Mock<IApprovalPolicyService>();
+        
+        var approvalDecisionRepository =
+            new Mock<IApprovalDecisionRepository>();
 
         approvalPolicyService
             .Setup(service =>
-                service.GetThreshold(
+                service.GetRequirements(
                     It.IsAny<string>(),
                     It.IsAny<string>()))
-            .ReturnsAsync(10_000_000m);
+            .ReturnsAsync(
+                new ApprovalRequirementsDto
+                {
+                    ThresholdAmount =
+                        10_000_000m,
+
+                    RequiredApprovalCount =
+                        1
+                });
 
         var service =
             new CashMovementService(
@@ -64,7 +76,8 @@ public class CashReceiptIntegrationTests
                 transactionRepository,
                 currentUserService.Object,
                 paymentRequestRepository,
-                approvalPolicyService.Object);
+                approvalPolicyService.Object,
+                new ApprovalDecisionRepository(context));
 
         var dto = new CreateCashReceiptDto
         {

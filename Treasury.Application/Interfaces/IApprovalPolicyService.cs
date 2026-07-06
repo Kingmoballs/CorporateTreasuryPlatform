@@ -8,7 +8,12 @@ public interface IApprovalPolicyService
         string operationType,
         string currency);
 
-    Task<List<ApprovalPolicyDto>> GetAll();
+    Task<List<ApprovalPolicyDto>> GetAll();Task<ApprovalRequirementsDto>
+        GetRequirements(
+            string operationType,
+            string currency);
+
+
 
     Task<ApprovalPolicyDto> SavePolicy(
         UpdateApprovalPolicyDto dto);

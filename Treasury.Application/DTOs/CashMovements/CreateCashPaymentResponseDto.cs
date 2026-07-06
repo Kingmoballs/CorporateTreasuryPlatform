@@ -36,4 +36,6 @@ public class CashPaymentResponseDto
     public string? RejectionReason { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }
+
+    public DateTime? ExpiresAtUtc { get; set; }
 }

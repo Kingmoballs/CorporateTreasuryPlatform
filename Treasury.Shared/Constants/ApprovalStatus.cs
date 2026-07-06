@@ -10,4 +10,7 @@ public static class ApprovalStatus
 
     public const string Rejected =
         "Rejected";
+
+    public const string Expired =
+        "Expired";
 }

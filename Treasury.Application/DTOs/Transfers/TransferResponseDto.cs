@@ -23,4 +23,6 @@ public class TransferResponseDto
     public int RequiredApprovalCount { get; set; }
 
     public DateTime Timestamp { get; set; }
+
+    public DateTime? ExpiresAtUtc { get; set; }
 }

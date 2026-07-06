@@ -30,6 +30,8 @@ public class TransferRequest
 
     public int ApprovalCount { get; set; }
 
+    public DateTime? ExpiresAtUtc { get; set; }
+
     /*
      * Rotated whenever the request is processed.
      * EF uses it to detect simultaneous approvals.

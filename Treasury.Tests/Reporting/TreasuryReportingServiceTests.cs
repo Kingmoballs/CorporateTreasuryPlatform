@@ -109,10 +109,10 @@ public class TreasuryReportingServiceTests
 
         var operating =
             Assert.Single(
-                currency.ByAccountType.Where(
-                    item =>
-                        item.AccountType ==
-                            "Operating"));
+                currency.ByAccountType,
+                item =>
+                    item.AccountType ==
+                        "Operating");
 
         Assert.Equal(
             45_000_000m,
@@ -120,10 +120,10 @@ public class TreasuryReportingServiceTests
 
         var payroll =
             Assert.Single(
-                currency.ByAccountType.Where(
-                    item =>
-                        item.AccountType ==
-                            "Payroll"));
+                currency.ByAccountType,
+                item =>
+                    item.AccountType ==
+                        "Payroll");
 
         Assert.Equal(
             5_000_000m,

@@ -7,6 +7,7 @@ using Treasury.Infrastructure.Persistence;
 using Treasury.Infrastructure.Repositories;
 using Treasury.Infrastructure.Services;
 using Treasury.Shared.Constants;
+using Treasury.Application.DTOs.ApprovalPolicies;
 
 namespace Treasury.Tests.Integration;
 
@@ -111,10 +112,15 @@ public class ReversalIntegrationTests
                     approvalContext,
                     seededData.ApproverId);
 
-            var reversal =
+            var approval =
                 await reversalService
-                    .Approve(
-                        reversalRequestId);
+                    .Approve(reversalRequestId);
+
+            Assert.NotNull(
+                approval.Transaction);
+
+            var reversal =
+                approval.Transaction!;
 
             Assert.Equal(
                 TransactionTypes.Reversal,
@@ -199,6 +205,306 @@ public class ReversalIntegrationTests
                 .ReviewedByUserId);
     }
 
+    [Fact]
+    public async Task
+        ReceiptReversal_TwoApprovals_ReversesOnlyAfterFinalApproval()
+    {
+        // Arrange
+        await using var database =
+            await PostgreSqlTestDatabase.Start();
+
+        SeededData seeded;
+
+        await using (
+            var seedContext =
+                database.CreateContext())
+        {
+            seeded =
+                await SeedRequiredData(
+                    seedContext);
+        }
+
+        string receiptReference;
+
+        // Record the original ₦2M receipt.
+        await using (
+            var receiptContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateCashMovementService(
+                    receiptContext,
+                    seeded.RequesterId);
+
+            var receipt =
+                await service.RecordReceipt(
+                    new CreateCashReceiptDto
+                    {
+                        AccountId =
+                            seeded.AccountId,
+
+                        Amount =
+                            2_000_000m,
+
+                        CounterpartyName =
+                            "Multi-Level Test Customer",
+
+                        Category =
+                            "CustomerReceipt",
+
+                        ExternalReference =
+                            "MULTI-REVERSAL-RECEIPT",
+
+                        IdempotencyKey =
+                            "multi-reversal-receipt-001",
+
+                        Description =
+                            "Receipt requiring reversal"
+                    });
+
+            receiptReference =
+                receipt.TransactionReference;
+        }
+
+        Guid reversalRequestId;
+
+        // Request a reversal requiring two approvals.
+        await using (
+            var requestContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateReversalService(
+                    requestContext,
+                    seeded.RequesterId,
+                    requiredApprovalCount: 2);
+
+            var response =
+                await service.RequestReversal(
+                    receiptReference,
+                    "Receipt was posted twice.");
+
+            reversalRequestId =
+                response.Id;
+
+            Assert.Equal(
+                ApprovalStatus.Pending,
+                response.Status);
+
+            Assert.Equal(
+                0,
+                response.ApprovalCount);
+
+            Assert.Equal(
+                2,
+                response.RequiredApprovalCount);
+        }
+
+        // First approval must not reverse the receipt.
+        await using (
+            var firstApprovalContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateReversalService(
+                    firstApprovalContext,
+                    seeded.ApproverId,
+                    requiredApprovalCount: 2);
+
+            var response =
+                await service.Approve(
+                    reversalRequestId);
+
+            Assert.Null(
+                response.Transaction);
+
+            Assert.Equal(
+                ApprovalStatus.Pending,
+                response.Request.Status);
+
+            Assert.Equal(
+                1,
+                response.Request.ApprovalCount);
+
+            Assert.Equal(
+                2,
+                response.Request.RequiredApprovalCount);
+        }
+
+        // Verify that the first approval changed no balance.
+        await using (
+            var intermediateContext =
+                database.CreateContext())
+        {
+            var account =
+                await intermediateContext.Accounts
+                    .AsNoTracking()
+                    .SingleAsync(item =>
+                        item.Id == seeded.AccountId);
+
+            var request =
+                await intermediateContext
+                    .ReversalRequests
+                    .AsNoTracking()
+                    .SingleAsync(item =>
+                        item.Id ==
+                            reversalRequestId);
+
+            var reversalTransactionCount =
+                await intermediateContext
+                    .TreasuryTransactions
+                    .CountAsync(transaction =>
+                        transaction.ReversalRequestId ==
+                            reversalRequestId);
+
+            var decisions =
+                await intermediateContext
+                    .ApprovalDecisions
+                    .AsNoTracking()
+                    .Where(decision =>
+                        decision.ReversalRequestId ==
+                            reversalRequestId)
+                    .ToListAsync();
+
+            // ₦10M opening balance + ₦2M receipt.
+            Assert.Equal(
+                12_000_000m,
+                account.Balance);
+
+            Assert.Equal(
+                ApprovalStatus.Pending,
+                request.Status);
+
+            Assert.Equal(
+                1,
+                request.ApprovalCount);
+
+            Assert.Equal(
+                0,
+                reversalTransactionCount);
+
+            Assert.Single(decisions);
+
+            Assert.Equal(
+                seeded.ApproverId,
+                decisions[0].ApproverUserId);
+        }
+
+        // Second distinct approver executes the reversal.
+        await using (
+            var secondApprovalContext =
+                database.CreateContext())
+        {
+            var service =
+                CreateReversalService(
+                    secondApprovalContext,
+                    seeded.SecondApproverId,
+                    requiredApprovalCount: 2);
+
+            var response =
+                await service.Approve(
+                    reversalRequestId);
+
+            Assert.NotNull(
+                response.Transaction);
+
+            Assert.Equal(
+                ApprovalStatus.Approved,
+                response.Request.Status);
+
+            Assert.Equal(
+                2,
+                response.Request.ApprovalCount);
+
+            Assert.Equal(
+                TransactionTypes.Reversal,
+                response.Transaction!.TransactionType);
+        }
+
+        // Assert the final database state.
+        await using var verificationContext =
+            database.CreateContext();
+
+        var finalAccount =
+            await verificationContext.Accounts
+                .AsNoTracking()
+                .SingleAsync(item =>
+                    item.Id == seeded.AccountId);
+
+        var finalRequest =
+            await verificationContext
+                .ReversalRequests
+                .AsNoTracking()
+                .SingleAsync(item =>
+                    item.Id == reversalRequestId);
+
+        var reversalTransactions =
+            await verificationContext
+                .TreasuryTransactions
+                .AsNoTracking()
+                .Where(transaction =>
+                    transaction.ReversalRequestId ==
+                        reversalRequestId)
+                .ToListAsync();
+
+        var finalDecisions =
+            await verificationContext
+                .ApprovalDecisions
+                .AsNoTracking()
+                .Where(decision =>
+                    decision.ReversalRequestId ==
+                        reversalRequestId)
+                .ToListAsync();
+
+        // The reversal returns the account to ₦10M.
+        Assert.Equal(
+            10_000_000m,
+            finalAccount.Balance);
+
+        Assert.Equal(
+            ApprovalStatus.Approved,
+            finalRequest.Status);
+
+        Assert.Equal(
+            2,
+            finalRequest.ApprovalCount);
+
+        Assert.Equal(
+            2,
+            finalRequest.RequiredApprovalCount);
+
+        Assert.Equal(
+            seeded.SecondApproverId,
+            finalRequest.ReviewedByUserId);
+
+        var reversalTransaction =
+            Assert.Single(reversalTransactions);
+
+        Assert.Equal(
+            TransactionTypes.Reversal,
+            reversalTransaction.TransactionType);
+
+        Assert.Equal(
+            2_000_000m,
+            reversalTransaction.Amount);
+
+        Assert.Equal(
+            2,
+            finalDecisions.Count);
+
+        Assert.Contains(
+            finalDecisions,
+            decision =>
+                decision.ApproverUserId ==
+                    seeded.ApproverId);
+
+        Assert.Contains(
+            finalDecisions,
+            decision =>
+                decision.ApproverUserId ==
+                    seeded.SecondApproverId);
+    }
+
     private static CashMovementService
         CreateCashMovementService(
             TreasuryDbContext context,
@@ -209,10 +515,18 @@ public class ReversalIntegrationTests
 
         approvalPolicyService
             .Setup(service =>
-                service.GetThreshold(
+                service.GetRequirements(
                     It.IsAny<string>(),
                     It.IsAny<string>()))
-            .ReturnsAsync(10_000_000m);
+            .ReturnsAsync(
+                new ApprovalRequirementsDto
+                {
+                    ThresholdAmount =
+                        10_000_000m,
+
+                    RequiredApprovalCount =
+                        1
+                });
 
         return new CashMovementService(
             new AccountRepository(context),
@@ -222,17 +536,36 @@ public class ReversalIntegrationTests
             CreateCurrentUser(userId),
             new PaymentRequestRepository(
                 context),
-            approvalPolicyService.Object);
+            approvalPolicyService.Object,
+            new ApprovalDecisionRepository(context));
     }
 
     private static ReversalService
         CreateReversalService(
             TreasuryDbContext context,
-            Guid userId)
+            Guid userId,
+            int requiredApprovalCount = 1)
     {
         var transactionRepository =
             new TreasuryTransactionRepository(
                 context);
+        
+        var approvalPolicyService =
+            new Mock<IApprovalPolicyService>();
+
+        approvalPolicyService
+            .Setup(service =>
+                service.GetRequirements(
+                    It.IsAny<string>(),
+                    It.IsAny<string>()))
+            .ReturnsAsync(
+                new ApprovalRequirementsDto
+                {
+                    ThresholdAmount = 0m,
+
+                    RequiredApprovalCount = 
+                        requiredApprovalCount
+                });
 
         return new ReversalService(
             new AccountRepository(context),
@@ -242,7 +575,9 @@ public class ReversalIntegrationTests
                 context),
             new TreasuryTransactionService(
                 transactionRepository),
-            CreateCurrentUser(userId));
+            CreateCurrentUser(userId),
+            approvalPolicyService.Object,
+            new ApprovalDecisionRepository(context));
     }
 
     private static ICurrentUserService
@@ -282,6 +617,11 @@ public class ReversalIntegrationTests
         var approver = CreateUser(
             managerRole,
             "approver");
+        
+        var secondApprover =
+            CreateUser(
+                managerRole,
+                "second-approver");
 
         var accountType = new AccountType
         {
@@ -327,7 +667,8 @@ public class ReversalIntegrationTests
 
         await context.Users.AddRangeAsync(
             requester,
-            approver);
+            approver,
+            secondApprover);
 
         await context.AccountTypes
             .AddAsync(accountType);
@@ -340,6 +681,7 @@ public class ReversalIntegrationTests
         return new SeededData(
             requester.Id,
             approver.Id,
+            secondApprover.Id,
             account.Id);
     }
 
@@ -374,5 +716,6 @@ public class ReversalIntegrationTests
     private sealed record SeededData(
         Guid RequesterId,
         Guid ApproverId,
+        Guid SecondApproverId,
         Guid AccountId);
 }

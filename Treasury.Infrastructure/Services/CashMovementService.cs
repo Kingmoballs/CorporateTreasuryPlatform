@@ -29,6 +29,9 @@ public class CashMovementService
     private readonly IPaymentRequestRepository
         _paymentRequestRepository;
     
+    private readonly IApprovalDecisionRepository
+        _approvalDecisionRepository;
+    
     private void EnsureDifferentReviewer(
         Guid requestedByUserId,
         string requestType)
@@ -86,7 +89,8 @@ public class CashMovementService
             transactionRepository,
         ICurrentUserService currentUserService,
         IPaymentRequestRepository paymentRequestRepository,
-        IApprovalPolicyService approvalPolicyService)
+        IApprovalPolicyService approvalPolicyService,
+        IApprovalDecisionRepository approvalDecisionRepository)
     {
         _accountRepository =
             accountRepository;
@@ -105,6 +109,9 @@ public class CashMovementService
         
         _approvalPolicyService =
             approvalPolicyService;
+
+        _approvalDecisionRepository =
+            approvalDecisionRepository;
     }
 
     public async Task<CashMovementResponseDto>
@@ -444,15 +451,18 @@ public class CashMovementService
                 dto.AccountId,
                 dto.Amount);
 
-        var approvalThreshold =
+        var approvalRequirements =
             await _approvalPolicyService
-                .GetThreshold(
+                .GetRequirements(
                     ApprovalOperationTypes
                         .CashPayment,
                     account.Currency);
                     
-        if (dto.Amount > approvalThreshold)
-        {
+        if (dto.Amount > approvalRequirements.ThresholdAmount)
+        {   
+            var createdAtUtc =
+                DateTime.UtcNow;
+
             var request = new PaymentRequest
             {
                 Id = Guid.NewGuid(),
@@ -471,6 +481,12 @@ public class CashMovementService
 
                 Category =
                     dto.Category.Trim(),
+                
+                RequiredApprovalCount =
+                    approvalRequirements
+                        .RequiredApprovalCount,
+
+                ApprovalCount = 0,
 
                 ExternalReference =
                     NormalizeOptionalText(
@@ -491,8 +507,12 @@ public class CashMovementService
                 ConcurrencyToken =
                     Guid.NewGuid(),
 
-                CreatedAtUtc =
-                    DateTime.UtcNow
+                CreatedAtUtc = createdAtUtc,
+                
+                ExpiresAtUtc =
+                    createdAtUtc.AddHours(
+                        approvalRequirements
+                            .PendingRequestExpiryHours),
             };
             
             ReservePaymentFunds(
@@ -588,10 +608,65 @@ public class CashMovementService
             var request =
                 await GetPendingPayment(
                     paymentRequestId);
-            
+
             EnsureDifferentReviewer(
                 request.RequestedByUserId,
                 "payment");
+
+            var currentUserId =
+                _currentUserService.UserId;
+
+            var alreadyDecided =
+                await _approvalDecisionRepository
+                    .HasPaymentDecision(
+                        request.Id,
+                        currentUserId);
+
+            if (alreadyDecided)
+            {
+                throw new ConflictException(
+                    "You have already reviewed this " +
+                    "payment request.");
+            }
+
+            await _approvalDecisionRepository.Add(
+                new ApprovalDecision
+                {
+                    Id = Guid.NewGuid(),
+
+                    PaymentRequestId =
+                        request.Id,
+
+                    ApproverUserId =
+                        currentUserId,
+
+                    Decision =
+                        ApprovalDecisionTypes
+                            .Approved,
+
+                    CreatedAtUtc =
+                        DateTime.UtcNow
+                });
+
+            request.ApprovalCount += 1;
+
+            request.ConcurrencyToken =
+                Guid.NewGuid();
+
+            if (request.ApprovalCount <
+                request.RequiredApprovalCount)
+            {
+                _paymentRequestRepository
+                    .Update(request);
+
+                await _accountRepository
+                    .SaveChanges();
+
+                await _accountRepository
+                    .CommitTransaction();
+
+                return MapPaymentRequest(request);
+            }
 
             var account =
                 await GetValidPaymentAccount(
@@ -608,18 +683,24 @@ public class CashMovementService
                     request.ExternalReference,
                     request.IdempotencyKey,
                     request.Description,
-                    request.Id,
-                    request.RequestedByUserId,
-                    releaseReservation: true);
+                    paymentRequestId:
+                        request.Id,
+                    initiatedByUserId:
+                        request.RequestedByUserId,
+                    releaseReservation:
+                        true);
 
             request.Status =
                 ApprovalStatus.Approved;
 
             request.ReviewedByUserId =
-                _currentUserService.UserId;
+                currentUserId;
 
             request.ReviewedAtUtc =
                 DateTime.UtcNow;
+
+            request.RejectionReason =
+                null;
 
             request.ConcurrencyToken =
                 Guid.NewGuid();
@@ -634,7 +715,9 @@ public class CashMovementService
                 .CommitTransaction();
 
             return MapCompletedPayment(
-                transaction);
+                transaction,
+                request.ApprovalCount,
+                request.RequiredApprovalCount);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -642,9 +725,9 @@ public class CashMovementService
                 .RollbackTransaction();
 
             throw new ConflictException(
-                "The payment request or account " +
-                "balance changed while approval was " +
-                "processing. Refresh and try again.");
+                "The request or account changed while " +
+                "approval was processing. Refresh and " +
+                "try again.");
         }
         catch
         {
@@ -678,12 +761,49 @@ public class CashMovementService
             EnsureDifferentReviewer(
                 request.RequestedByUserId,
                 "payment");
+            
+            var currentUserId =
+                _currentUserService.UserId;
+
+            var alreadyDecided =
+                await _approvalDecisionRepository
+                    .HasPaymentDecision(
+                        request.Id,
+                        currentUserId);
+
+            if (alreadyDecided)
+            {
+                throw new ConflictException(
+                    "You have already reviewed this " +
+                    "payment request.");
+            }
+
+            await _approvalDecisionRepository.Add(
+                new ApprovalDecision
+                {
+                    Id = Guid.NewGuid(),
+
+                    PaymentRequestId =
+                        request.Id,
+
+                    ApproverUserId =
+                        currentUserId,
+
+                    Decision =
+                        ApprovalDecisionTypes.Rejected,
+
+                    Comment =
+                        reason.Trim(),
+
+                    CreatedAtUtc =
+                        DateTime.UtcNow
+                });
 
             request.Status =
                 ApprovalStatus.Rejected;
 
             request.ReviewedByUserId =
-                _currentUserService.UserId;
+                currentUserId;
 
             request.ReviewedAtUtc =
                 DateTime.UtcNow;
@@ -806,6 +926,10 @@ public class CashMovementService
                 "Payment request has already " +
                 "been processed.");
         }
+
+        PendingRequestExpiryGuard.EnsureNotExpired(
+            request.ExpiresAtUtc,
+            "payment");
 
         return request;
     }
@@ -1043,13 +1167,17 @@ public class CashMovementService
                 request.RequiredApprovalCount,
 
             CreatedAtUtc =
-                request.CreatedAtUtc
+                request.CreatedAtUtc,
+            
+            ExpiresAtUtc = request.ExpiresAtUtc
         };
     }
 
     private static CashPaymentResponseDto
         MapCompletedPayment(
-            TreasuryTransaction transaction)
+            TreasuryTransaction transaction,
+            int approvalCount = 0,
+            int requiredApprovalCount = 0)
     {
         return new CashPaymentResponseDto
         {
@@ -1061,6 +1189,12 @@ public class CashMovementService
 
             TransactionReference =
                 transaction.Reference,
+            
+            ApprovalCount =
+                approvalCount,
+
+            RequiredApprovalCount =
+                requiredApprovalCount,
 
             Status =
                 transaction.Status,

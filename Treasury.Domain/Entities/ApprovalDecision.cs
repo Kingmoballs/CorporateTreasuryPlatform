@@ -12,6 +12,9 @@ public class ApprovalDecision
 
     public Guid ApproverUserId { get; set; }
 
+    public User Approver { get; set; }
+        = null!;
+
     public string Decision { get; set; }
         = string.Empty;
 

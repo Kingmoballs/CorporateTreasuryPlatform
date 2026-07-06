@@ -31,6 +31,19 @@ public class ApprovalPolicyService
         string operationType,
         string currency)
     {
+        var requirements =
+            await GetRequirements(
+                operationType,
+                currency);
+
+        return requirements.ThresholdAmount;
+    }
+
+    public async Task<ApprovalRequirementsDto>
+        GetRequirements(
+            string operationType,
+            string currency)
+    {
         var normalizedOperation =
             NormalizeOperationType(
                 operationType);
@@ -51,7 +64,17 @@ public class ApprovalPolicyService
                 $"{normalizedCurrency}.");
         }
 
-        return policy.ThresholdAmount;
+        return new ApprovalRequirementsDto
+        {
+            ThresholdAmount =
+                policy.ThresholdAmount,
+
+            RequiredApprovalCount =
+                policy.RequiredApprovalCount,
+
+            PendingRequestExpiryHours =
+                policy.PendingRequestExpiryHours
+        };
     }
 
     public async Task<List<ApprovalPolicyDto>>
@@ -82,6 +105,14 @@ public class ApprovalPolicyService
             throw new RequestValidationException(
                 "Required approval count must be " +
                 "between 1 and 5.");
+        }
+
+        if (dto.PendingRequestExpiryHours < 1 ||
+            dto.PendingRequestExpiryHours > 168)
+        {
+            throw new RequestValidationException(
+                "Pending request expiry must be " +
+                "between 1 and 168 hours.");
         }
 
         var operationType =
@@ -120,6 +151,9 @@ public class ApprovalPolicyService
 
                 RequiredApprovalCount =
                     dto.RequiredApprovalCount,
+                
+                PendingRequestExpiryHours =
+                    dto.PendingRequestExpiryHours,
 
                 CreatedAtUtc =
                     DateTime.UtcNow,
@@ -150,6 +184,9 @@ public class ApprovalPolicyService
     
             policy.RequiredApprovalCount =
                 dto.RequiredApprovalCount;
+    
+            policy.PendingRequestExpiryHours =
+                dto.PendingRequestExpiryHours;
 
             policy.ConcurrencyToken =
                 Guid.NewGuid();
@@ -194,6 +231,16 @@ public class ApprovalPolicyService
                 .CashPayment;
         }
 
+        if (string.Equals(
+            operationType,
+            ApprovalOperationTypes
+                .TransactionReversal,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return ApprovalOperationTypes
+                .TransactionReversal;
+        }
+
         throw new RequestValidationException(
             "Unsupported approval operation type.");
     }
@@ -235,6 +282,9 @@ public class ApprovalPolicyService
 
             RequiredApprovalCount =
                 policy.RequiredApprovalCount,
+            
+            PendingRequestExpiryHours =
+                policy.PendingRequestExpiryHours,
 
             IsActive =
                 policy.IsActive,

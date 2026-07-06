@@ -41,6 +41,8 @@ public class PaymentRequest
 
     public int ApprovalCount { get; set; }
 
+    public DateTime? ExpiresAtUtc { get; set; }
+
     public Guid ConcurrencyToken { get; set; }
         = Guid.NewGuid();
 
