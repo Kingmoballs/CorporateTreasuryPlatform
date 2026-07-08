@@ -25,5 +25,13 @@ public interface ITreasuryTransactionRepository
     Task<TreasuryTransaction?>
         GetByReversedTransactionId(
             Guid originalTransactionId);
+    
+    Task<List<TreasuryTransaction>>
+        FindPotentialReconciliationMatches(
+            Guid accountId,
+            decimal signedAmount,
+            string currency,
+            DateTime transactionDateUtc,
+            int dateToleranceDays);
 
 }

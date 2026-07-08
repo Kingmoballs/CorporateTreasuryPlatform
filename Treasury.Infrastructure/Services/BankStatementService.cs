@@ -19,11 +19,15 @@ public class BankStatementService
 
     private readonly ICurrentUserService
         _currentUserService;
+    
+    private readonly ITreasuryTransactionRepository
+        _transactionRepository;
 
     public BankStatementService(
         IBankStatementRepository bankStatementRepository,
         IAccountRepository accountRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ITreasuryTransactionRepository transactionRepository)
     {
         _bankStatementRepository =
             bankStatementRepository;
@@ -33,6 +37,9 @@ public class BankStatementService
 
         _currentUserService =
             currentUserService;
+        
+        _transactionRepository =
+            transactionRepository;
     }
 
     public async Task<BankStatementImportResponseDto>
@@ -225,6 +232,254 @@ public class BankStatementService
             statementImport);
     }
 
+    public async Task<BankStatementReconciliationSummaryDto>
+        GetReconciliationSummary(Guid importId)
+    {
+        var statementImport =
+            await _bankStatementRepository.GetImportById(
+                importId);
+
+        if (statementImport is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement import not found.");
+        }
+
+        var lines =
+            statementImport.Lines.ToList();
+
+        var totalLineCount =
+            lines.Count;
+
+        var unmatchedLineCount =
+            lines.Count(line =>
+                line.ReconciliationStatus ==
+                ReconciliationStatus.Unmatched);
+
+        var matchedLineCount =
+            lines.Count(line =>
+                line.ReconciliationStatus ==
+                ReconciliationStatus.Matched);
+
+        var reconciledLineCount =
+            lines.Count(line =>
+                line.ReconciliationStatus ==
+                ReconciliationStatus.Reconciled);
+
+        var ignoredLineCount =
+            lines.Count(line =>
+                line.ReconciliationStatus ==
+                ReconciliationStatus.Ignored);
+
+        var totalInflowAmount =
+            lines
+                .Where(line =>
+                    line.Amount > 0)
+                .Sum(line =>
+                    line.Amount);
+
+        var totalOutflowAmount =
+            lines
+                .Where(line =>
+                    line.Amount < 0)
+                .Sum(line =>
+                    Math.Abs(line.Amount));
+
+        var netStatementMovement =
+            lines.Sum(line =>
+                line.Amount);
+
+        decimal? calculatedClosingBalance =
+            null;
+
+        decimal? closingBalanceVariance =
+            null;
+
+        if (statementImport.OpeningBalance.HasValue)
+        {
+            calculatedClosingBalance =
+                statementImport.OpeningBalance.Value +
+                netStatementMovement;
+        }
+
+        if (statementImport.ClosingBalance.HasValue &&
+            calculatedClosingBalance.HasValue)
+        {
+            closingBalanceVariance =
+                statementImport.ClosingBalance.Value -
+                calculatedClosingBalance.Value;
+        }
+
+        /*
+        * Reconciled and ignored lines are considered final.
+        * Matched lines still need a user to confirm reconciliation.
+        */
+        var completedLineCount =
+            reconciledLineCount + ignoredLineCount;
+
+        var completionPercentage =
+            totalLineCount == 0
+                ? 0m
+                : Math.Round(
+                    completedLineCount * 100m / totalLineCount,
+                    2);
+
+        return new BankStatementReconciliationSummaryDto
+        {
+            ImportId =
+                statementImport.Id,
+
+            AccountId =
+                statementImport.AccountId,
+
+            AccountName =
+                statementImport.Account?.Name
+                ?? string.Empty,
+
+            FileName =
+                statementImport.FileName,
+
+            StatementReference =
+                statementImport.StatementReference,
+
+            Currency =
+                statementImport.Currency,
+
+            StatementFromUtc =
+                statementImport.StatementFromUtc,
+
+            StatementToUtc =
+                statementImport.StatementToUtc,
+
+            OpeningBalance =
+                statementImport.OpeningBalance,
+
+            ClosingBalance =
+                statementImport.ClosingBalance,
+
+            NetStatementMovement =
+                netStatementMovement,
+
+            TotalInflowAmount =
+                totalInflowAmount,
+
+            TotalOutflowAmount =
+                totalOutflowAmount,
+
+            CalculatedClosingBalance =
+                calculatedClosingBalance,
+
+            ClosingBalanceVariance =
+                closingBalanceVariance,
+
+            TotalLineCount =
+                totalLineCount,
+
+            UnmatchedLineCount =
+                unmatchedLineCount,
+
+            MatchedLineCount =
+                matchedLineCount,
+
+            ReconciledLineCount =
+                reconciledLineCount,
+
+            IgnoredLineCount =
+                ignoredLineCount,
+
+            MatchedButNotReconciledCount =
+                matchedLineCount,
+
+            ActionRequiredLineCount =
+                unmatchedLineCount + matchedLineCount,
+
+            ReconciliationCompletionPercentage =
+                completionPercentage,
+
+            GeneratedAtUtc =
+                DateTime.UtcNow
+        };
+    }
+
+    public async Task<BankStatementExceptionReportDto>
+        GetExceptionReport(Guid importId)
+    {
+        var statementImport =
+            await _bankStatementRepository.GetImportById(
+                importId);
+
+        if (statementImport is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement import not found.");
+        }
+
+        /*
+        * Exception report means lines that still need user action:
+        * - Unmatched: needs matching or ignoring.
+        * - Matched: needs final reconciliation confirmation.
+        */
+        var actionRequiredLines =
+            statementImport.Lines
+                .Where(line =>
+                    line.ReconciliationStatus ==
+                        ReconciliationStatus.Unmatched ||
+                    line.ReconciliationStatus ==
+                        ReconciliationStatus.Matched)
+                .OrderBy(line =>
+                    line.LineNumber)
+                .ToList();
+
+        var unmatchedLineCount =
+            actionRequiredLines.Count(line =>
+                line.ReconciliationStatus ==
+                ReconciliationStatus.Unmatched);
+
+        var matchedPendingCount =
+            actionRequiredLines.Count(line =>
+                line.ReconciliationStatus ==
+                ReconciliationStatus.Matched);
+
+        return new BankStatementExceptionReportDto
+        {
+            ImportId =
+                statementImport.Id,
+
+            AccountId =
+                statementImport.AccountId,
+
+            AccountName =
+                statementImport.Account?.Name
+                ?? string.Empty,
+
+            FileName =
+                statementImport.FileName,
+
+            StatementReference =
+                statementImport.StatementReference,
+
+            Currency =
+                statementImport.Currency,
+
+            GeneratedAtUtc =
+                DateTime.UtcNow,
+
+            ActionRequiredLineCount =
+                actionRequiredLines.Count,
+
+            UnmatchedLineCount =
+                unmatchedLineCount,
+
+            MatchedPendingReconciliationCount =
+                matchedPendingCount,
+
+            Lines =
+                actionRequiredLines
+                    .Select(MapLine)
+                    .ToList()
+        };
+    }
+
     public async Task<List<BankStatementLineResponseDto>>
         GetUnmatchedLines(
             Guid? accountId,
@@ -250,6 +505,401 @@ public class BankStatementService
         return lines
             .Select(MapLine)
             .ToList();
+    }
+
+    public async Task<BankStatementReconciliationResultDto>
+        AutoMatchImport(
+            Guid importId,
+            int dateToleranceDays = 2)
+    {
+        ValidateDateToleranceDays(
+            dateToleranceDays);
+
+        var statementImport =
+            await _bankStatementRepository.GetImportById(
+                importId);
+
+        if (statementImport is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement import not found.");
+        }
+
+        var processedAtUtc =
+            DateTime.UtcNow;
+
+        var candidateLines =
+            statementImport.Lines
+                .Where(line =>
+                    line.ReconciliationStatus ==
+                    ReconciliationStatus.Unmatched)
+                .OrderBy(line =>
+                    line.LineNumber)
+                .ToList();
+
+        var result =
+            new BankStatementReconciliationResultDto
+            {
+                ImportId =
+                    statementImport.Id,
+
+                ProcessedAtUtc =
+                    processedAtUtc,
+
+                CandidateLineCount =
+                    candidateLines.Count
+            };
+
+        /*
+        * This prevents two lines in the same run from
+        * being matched to the same treasury transaction
+        * before SaveChanges commits the updates.
+        */
+        var usedTransactionIds =
+            new HashSet<Guid>();
+
+        foreach (var line in candidateLines)
+        {
+            var potentialMatches =
+                await _transactionRepository
+                    .FindPotentialReconciliationMatches(
+                        line.AccountId,
+                        line.Amount,
+                        line.Currency,
+                        line.TransactionDateUtc,
+                        dateToleranceDays);
+
+            potentialMatches =
+                potentialMatches
+                    .Where(transaction =>
+                        !usedTransactionIds
+                            .Contains(transaction.Id))
+                    .ToList();
+
+            if (potentialMatches.Count == 1)
+            {
+                var matchedTransaction =
+                    potentialMatches.Single();
+
+                line.ReconciliationStatus =
+                    ReconciliationStatus.Matched;
+
+                line.MatchedTreasuryTransactionId =
+                    matchedTransaction.Id;
+
+                line.MatchedAtUtc =
+                    processedAtUtc;
+
+                line.ConcurrencyToken =
+                    Guid.NewGuid();
+
+                _bankStatementRepository.UpdateLine(
+                    line);
+
+                usedTransactionIds.Add(
+                    matchedTransaction.Id);
+
+                result.MatchedLineCount++;
+
+                result.MatchedLineIds.Add(
+                    line.Id);
+
+                continue;
+            }
+
+            if (potentialMatches.Count == 0)
+            {
+                result.UnmatchedLineCount++;
+            }
+            else
+            {
+                /*
+                * More than one possible treasury transaction
+                * means the system should not guess.
+                * A later manual-reconciliation step will handle this.
+                */
+                result.AmbiguousMatchCount++;
+            }
+        }
+
+        await _bankStatementRepository.SaveChanges();
+
+        return result;
+    }
+
+    public async Task<BankStatementLineResponseDto>
+        ManualMatchLine(
+            Guid lineId,
+            Guid treasuryTransactionId)
+    {
+        if (treasuryTransactionId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Treasury transaction is required.");
+        }
+
+        var line =
+            await _bankStatementRepository.GetLineById(
+                lineId);
+
+        if (line is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement line not found.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Reconciled)
+        {
+            throw new ConflictException(
+                "A reconciled statement line cannot " +
+                "be rematched.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Ignored)
+        {
+            throw new ConflictException(
+                "An ignored statement line cannot " +
+                "be matched.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Matched)
+        {
+            throw new ConflictException(
+                "This statement line is already matched. " +
+                "Unmatch it before assigning another " +
+                "treasury transaction.");
+        }
+
+        var transaction =
+            await _transactionRepository.GetById(
+                treasuryTransactionId);
+
+        if (transaction is null)
+        {
+            throw new ResourceNotFoundException(
+                "Treasury transaction not found.");
+        }
+
+        EnsureTransactionCanMatchLine(
+            line,
+            transaction);
+
+        var alreadyMatched =
+            await _bankStatementRepository
+                .TransactionAlreadyMatched(
+                    treasuryTransactionId,
+                    line.Id);
+
+        if (alreadyMatched)
+        {
+            throw new ConflictException(
+                "This treasury transaction has already " +
+                "been matched to another bank statement line.");
+        }
+
+        line.ReconciliationStatus =
+            ReconciliationStatus.Matched;
+
+        line.MatchedTreasuryTransactionId =
+            transaction.Id;
+
+        line.MatchedAtUtc =
+            DateTime.UtcNow;
+
+        line.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _bankStatementRepository.UpdateLine(
+            line);
+
+        await _bankStatementRepository.SaveChanges();
+
+        var savedLine =
+            await _bankStatementRepository.GetLineById(
+                line.Id);
+
+        return MapLine(
+            savedLine ?? line);
+    }
+
+    public async Task<BankStatementLineResponseDto>
+        ReconcileLine(
+            Guid lineId)
+    {
+        var line =
+            await _bankStatementRepository.GetLineById(
+                lineId);
+
+        if (line is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement line not found.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Reconciled)
+        {
+            throw new ConflictException(
+                "This statement line is already reconciled.");
+        }
+
+        if (line.ReconciliationStatus !=
+            ReconciliationStatus.Matched ||
+            line.MatchedTreasuryTransactionId is null)
+        {
+            throw new ConflictException(
+                "Only a matched statement line can " +
+                "be reconciled.");
+        }
+
+        line.ReconciliationStatus =
+            ReconciliationStatus.Reconciled;
+
+        line.ReconciledByUserId =
+            _currentUserService.UserId;
+
+        line.ReconciledAtUtc =
+            DateTime.UtcNow;
+
+        line.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _bankStatementRepository.UpdateLine(
+            line);
+
+        await _bankStatementRepository.SaveChanges();
+
+        var savedLine =
+            await _bankStatementRepository.GetLineById(
+                line.Id);
+
+        return MapLine(
+            savedLine ?? line);
+    }
+
+    public async Task<BankStatementLineResponseDto>
+        UnmatchLine(
+            Guid lineId)
+    {
+        var line =
+            await _bankStatementRepository.GetLineById(
+                lineId);
+
+        if (line is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement line not found.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Reconciled)
+        {
+            throw new ConflictException(
+                "A reconciled statement line cannot " +
+                "be unmatched.");
+        }
+
+        if (line.ReconciliationStatus !=
+            ReconciliationStatus.Matched)
+        {
+            throw new ConflictException(
+                "Only a matched statement line can " +
+                "be unmatched.");
+        }
+
+        line.ReconciliationStatus =
+            ReconciliationStatus.Unmatched;
+
+        line.MatchedTreasuryTransactionId =
+            null;
+
+        line.MatchedAtUtc =
+            null;
+
+        line.ReconciledByUserId =
+            null;
+
+        line.ReconciledAtUtc =
+            null;
+
+        line.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _bankStatementRepository.UpdateLine(
+            line);
+
+        await _bankStatementRepository.SaveChanges();
+
+        var savedLine =
+            await _bankStatementRepository.GetLineById(
+                line.Id);
+
+        return MapLine(
+            savedLine ?? line);
+    }
+
+    public async Task<BankStatementLineResponseDto>
+        IgnoreLine(
+            Guid lineId)
+    {
+        var line =
+            await _bankStatementRepository.GetLineById(
+                lineId);
+
+        if (line is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement line not found.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Reconciled)
+        {
+            throw new ConflictException(
+                "A reconciled statement line cannot " +
+                "be ignored.");
+        }
+
+        if (line.ReconciliationStatus ==
+            ReconciliationStatus.Matched)
+        {
+            throw new ConflictException(
+                "Unmatch the statement line before " +
+                "ignoring it.");
+        }
+
+        line.ReconciliationStatus =
+            ReconciliationStatus.Ignored;
+
+        line.MatchedTreasuryTransactionId =
+            null;
+
+        line.MatchedAtUtc =
+            null;
+
+        line.ReconciledByUserId =
+            null;
+
+        line.ReconciledAtUtc =
+            null;
+
+        line.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _bankStatementRepository.UpdateLine(
+            line);
+
+        await _bankStatementRepository.SaveChanges();
+
+        var savedLine =
+            await _bankStatementRepository.GetLineById(
+                line.Id);
+
+        return MapLine(
+            savedLine ?? line);
     }
 
     private static void ValidateImportDto(
@@ -350,6 +1000,69 @@ public class BankStatementService
             throw new BusinessRuleException(
                 "All statement lines must use the " +
                 "same currency as the statement.");
+        }
+    }
+
+    private static void ValidateDateToleranceDays(
+        int dateToleranceDays)
+    {
+        if (dateToleranceDays < 0 ||
+            dateToleranceDays > 10)
+        {
+            throw new BusinessRuleException(
+                "Date tolerance must be between " +
+                "0 and 10 days.");
+        }
+    }
+
+    private static void EnsureTransactionCanMatchLine(
+        BankStatementLine line,
+        TreasuryTransaction transaction)
+    {
+        if (transaction.Status !=
+            TransactionStatuses.Completed)
+        {
+            throw new ConflictException(
+                "Only completed treasury transactions " +
+                "can be reconciled.");
+        }
+
+        if (!string.Equals(
+            transaction.Currency,
+            line.Currency,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction currency does " +
+                "not match the bank statement line.");
+        }
+
+        if (transaction.Amount !=
+            Math.Abs(line.Amount))
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction amount does " +
+                "not match the bank statement line.");
+        }
+
+        /*
+        * Positive bank line means cash came into this account.
+        * Negative bank line means cash left this account.
+        */
+        if (line.Amount > 0 &&
+            transaction.DestinationAccountId != line.AccountId)
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction does not " +
+                "represent cash coming into this account.");
+        }
+
+        if (line.Amount < 0 &&
+            transaction.SourceAccountId != line.AccountId)
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction does not " +
+                "represent cash leaving this account.");
         }
     }
 

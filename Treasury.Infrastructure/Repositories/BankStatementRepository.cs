@@ -114,6 +114,27 @@ public class BankStatementRepository
                     statementReference);
     }
 
+    public async Task<bool> TransactionAlreadyMatched(
+        Guid treasuryTransactionId,
+        Guid? excludeLineId = null)
+    {
+        var query =
+            _context.BankStatementLines
+                .AsQueryable()
+                .Where(line =>
+                    line.MatchedTreasuryTransactionId ==
+                    treasuryTransactionId);
+
+        if (excludeLineId.HasValue)
+        {
+            query =
+                query.Where(line =>
+                    line.Id != excludeLineId.Value);
+        }
+
+        return await query.AnyAsync();
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();

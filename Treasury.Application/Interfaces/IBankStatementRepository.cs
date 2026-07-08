@@ -20,6 +20,10 @@ public interface IBankStatementRepository
     Task<bool> StatementReferenceExists(
         Guid accountId,
         string statementReference);
+    
+    Task<bool> TransactionAlreadyMatched(
+        Guid treasuryTransactionId,
+        Guid? excludeLineId = null);
 
     Task SaveChanges();
 }

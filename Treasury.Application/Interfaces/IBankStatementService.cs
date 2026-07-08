@@ -14,4 +14,27 @@ public interface IBankStatementService
         Guid? accountId,
         DateTime? fromUtc,
         DateTime? toUtc);
+
+    Task<BankStatementReconciliationResultDto> AutoMatchImport(
+        Guid importId,
+        int dateToleranceDays = 2);
+    
+    Task<BankStatementLineResponseDto> ManualMatchLine(
+        Guid lineId,
+        Guid treasuryTransactionId);
+
+    Task<BankStatementLineResponseDto> ReconcileLine(
+        Guid lineId);
+
+    Task<BankStatementLineResponseDto> UnmatchLine(
+        Guid lineId);
+
+    Task<BankStatementLineResponseDto> IgnoreLine(
+        Guid lineId);
+    
+    Task<BankStatementReconciliationSummaryDto>
+        GetReconciliationSummary(Guid importId);
+
+    Task<BankStatementExceptionReportDto>
+        GetExceptionReport(Guid importId);
 }

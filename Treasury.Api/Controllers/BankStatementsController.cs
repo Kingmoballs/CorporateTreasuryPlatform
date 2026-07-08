@@ -50,6 +50,89 @@ public class BankStatementsController
         return Ok(result);
     }
 
+    [HttpGet("imports/{id}/summary")]
+    public async Task<IActionResult> GetReconciliationSummary(
+        Guid id)
+    {
+        var result =
+            await _bankStatementService
+                .GetReconciliationSummary(id);
+
+        return Ok(result);
+    }
+
+    [HttpGet("imports/{id}/exceptions")]
+    public async Task<IActionResult> GetExceptionReport(
+        Guid id)
+    {
+        var result =
+            await _bankStatementService
+                .GetExceptionReport(id);
+
+        return Ok(result);
+    }
+
+    [HttpPost("imports/{id}/auto-match")]
+    public async Task<IActionResult> AutoMatchImport(
+        Guid id,
+        [FromQuery] int dateToleranceDays = 2)
+    {
+        var result =
+            await _bankStatementService
+                .AutoMatchImport(
+                    id,
+                    dateToleranceDays);
+
+        return Ok(result);
+    }
+
+    [HttpPost("lines/{id}/manual-match")]
+    public async Task<IActionResult> ManualMatchLine(
+        Guid id,
+        ManualBankStatementMatchDto dto)
+    {
+        var result =
+            await _bankStatementService
+                .ManualMatchLine(
+                    id,
+                    dto.TreasuryTransactionId);
+
+        return Ok(result);
+    }
+
+    [HttpPost("lines/{id}/reconcile")]
+    public async Task<IActionResult> ReconcileLine(
+        Guid id)
+    {
+        var result =
+            await _bankStatementService
+                .ReconcileLine(id);
+
+        return Ok(result);
+    }
+
+    [HttpPost("lines/{id}/unmatch")]
+    public async Task<IActionResult> UnmatchLine(
+        Guid id)
+    {
+        var result =
+            await _bankStatementService
+                .UnmatchLine(id);
+
+        return Ok(result);
+    }
+
+    [HttpPost("lines/{id}/ignore")]
+    public async Task<IActionResult> IgnoreLine(
+        Guid id)
+    {
+        var result =
+            await _bankStatementService
+                .IgnoreLine(id);
+
+        return Ok(result);
+    }
+
     [HttpGet("unmatched")]
     public async Task<IActionResult> GetUnmatchedLines(
         [FromQuery] Guid? accountId,

@@ -3,6 +3,7 @@ using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Persistence;
 using Treasury.Application.DTOs.Transactions;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Repositories;
 
@@ -152,5 +153,84 @@ public class TreasuryTransactionRepository
             .FirstOrDefaultAsync(transaction =>
                 transaction.ReversesTransactionId ==
                     originalTransactionId);
+    }
+
+    public async Task<List<TreasuryTransaction>>
+        FindPotentialReconciliationMatches(
+            Guid accountId,
+            decimal signedAmount,
+            string currency,
+            DateTime transactionDateUtc,
+            int dateToleranceDays)
+    {
+        if (signedAmount == 0)
+        {
+            return new List<TreasuryTransaction>();
+        }
+
+        var absoluteAmount =
+            Math.Abs(signedAmount);
+
+        var normalizedCurrency =
+            currency.Trim().ToUpperInvariant();
+
+        var fromUtc =
+            transactionDateUtc.Date
+                .AddDays(-dateToleranceDays);
+
+        var toUtc =
+            transactionDateUtc.Date
+                .AddDays(dateToleranceDays + 1);
+
+        var alreadyMatchedTransactionIds =
+            _context.BankStatementLines
+                .Where(line =>
+                    line.MatchedTreasuryTransactionId != null)
+                .Select(line =>
+                    line.MatchedTreasuryTransactionId!.Value);
+
+        var query =
+            _context.TreasuryTransactions
+                .AsNoTracking()
+                .Where(transaction =>
+                    transaction.Status ==
+                        TransactionStatuses.Completed &&
+                    transaction.Currency ==
+                        normalizedCurrency &&
+                    transaction.Amount ==
+                        absoluteAmount &&
+                    !alreadyMatchedTransactionIds
+                        .Contains(transaction.Id))
+                .Where(transaction =>
+                    (transaction.CompletedAtUtc ??
+                        transaction.CreatedAtUtc) >= fromUtc &&
+                    (transaction.CompletedAtUtc ??
+                        transaction.CreatedAtUtc) < toUtc);
+
+        /*
+        * Positive bank amount means money entered this account.
+        * Negative bank amount means money left this account.
+        */
+        if (signedAmount > 0)
+        {
+            query =
+                query.Where(transaction =>
+                    transaction.DestinationAccountId ==
+                    accountId);
+        }
+        else
+        {
+            query =
+                query.Where(transaction =>
+                    transaction.SourceAccountId ==
+                    accountId);
+        }
+
+        return await query
+            .OrderBy(transaction =>
+                transaction.CompletedAtUtc ??
+                transaction.CreatedAtUtc)
+            .Take(5)
+            .ToListAsync();
     }
 }
