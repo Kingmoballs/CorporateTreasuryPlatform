@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.BankStatements;
 using Treasury.Application.Interfaces;
@@ -212,6 +214,47 @@ public class BankStatementService
         return MapImport(
             savedImport
             ?? statementImport);
+    }
+
+    public async Task<BankStatementImportResponseDto>
+        ImportStatementFromCsv(
+            CreateBankStatementCsvImportDto dto)
+    {
+        var lines =
+            ParseCsvLines(dto.CsvContent);
+
+        var importDto =
+            new CreateBankStatementImportDto
+            {
+                AccountId =
+                    dto.AccountId,
+
+                FileName =
+                    dto.FileName,
+
+                StatementReference =
+                    dto.StatementReference,
+
+                Currency =
+                    dto.Currency,
+
+                StatementFromUtc =
+                    dto.StatementFromUtc,
+
+                StatementToUtc =
+                    dto.StatementToUtc,
+
+                OpeningBalance =
+                    dto.OpeningBalance,
+
+                ClosingBalance =
+                    dto.ClosingBalance,
+
+                Lines =
+                    lines
+            };
+
+        return await ImportStatement(importDto);
     }
 
     public async Task<BankStatementImportResponseDto>
@@ -1155,6 +1198,306 @@ public class BankStatementService
                 "The treasury transaction does not " +
                 "represent cash leaving this account.");
         }
+    }
+
+    private static List<CreateBankStatementLineDto> ParseCsvLines(
+        string csvContent)
+    {
+        if (string.IsNullOrWhiteSpace(csvContent))
+        {
+            throw new BusinessRuleException(
+                "CSV content is required.");
+        }
+
+        using var reader =
+            new StringReader(csvContent);
+
+        var headerLine =
+            reader.ReadLine();
+
+        if (string.IsNullOrWhiteSpace(headerLine))
+        {
+            throw new BusinessRuleException(
+                "CSV header row is required.");
+        }
+
+        var headers =
+            ParseCsvRow(headerLine);
+
+        var lines =
+            new List<CreateBankStatementLineDto>();
+
+        var physicalRowNumber =
+            1;
+
+        string? rowLine;
+
+        while ((rowLine = reader.ReadLine()) is not null)
+        {
+            physicalRowNumber++;
+
+            if (string.IsNullOrWhiteSpace(rowLine))
+            {
+                continue;
+            }
+
+            var values =
+                ParseCsvRow(rowLine);
+
+            if (values.Count != headers.Count)
+            {
+                throw new BusinessRuleException(
+                    $"CSV row {physicalRowNumber} has " +
+                    $"{values.Count} columns, but the header " +
+                    $"has {headers.Count} columns.");
+            }
+
+            var row =
+                new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            for (var index = 0; index < headers.Count; index++)
+            {
+                row[headers[index].Trim()] =
+                    values[index].Trim();
+            }
+
+            lines.Add(
+                new CreateBankStatementLineDto
+                {
+                    LineNumber =
+                        ParseRequiredInt(
+                            GetRequiredCsvValue(
+                                row,
+                                "LineNumber"),
+                            "LineNumber"),
+
+                    TransactionDateUtc =
+                        ParseRequiredDate(
+                            GetRequiredCsvValue(
+                                row,
+                                "TransactionDateUtc"),
+                            "TransactionDateUtc"),
+
+                    ValueDateUtc =
+                        ParseOptionalDate(
+                            GetOptionalCsvValue(
+                                row,
+                                "ValueDateUtc"),
+                            "ValueDateUtc"),
+
+                    Description =
+                        GetRequiredCsvValue(
+                            row,
+                            "Description"),
+
+                    BankReference =
+                        GetOptionalCsvValue(
+                            row,
+                            "BankReference"),
+
+                    CounterpartyName =
+                        GetOptionalCsvValue(
+                            row,
+                            "CounterpartyName"),
+
+                    Amount =
+                        ParseRequiredDecimal(
+                            GetRequiredCsvValue(
+                                row,
+                                "Amount"),
+                            "Amount"),
+
+                    Currency =
+                        GetRequiredCsvValue(
+                            row,
+                            "Currency"),
+
+                    BalanceAfterTransaction =
+                        ParseOptionalDecimal(
+                            GetOptionalCsvValue(
+                                row,
+                                "BalanceAfterTransaction"),
+                            "BalanceAfterTransaction")
+                });
+        }
+
+        if (lines.Count == 0)
+        {
+            throw new BusinessRuleException(
+                "CSV file must contain at least one data row.");
+        }
+
+        return lines;
+    }
+
+    private static List<string> ParseCsvRow(
+        string row)
+    {
+        var values =
+            new List<string>();
+
+        var currentValue =
+            new StringBuilder();
+
+        var insideQuotes =
+            false;
+
+        for (var index = 0; index < row.Length; index++)
+        {
+            var character =
+                row[index];
+
+            if (character == '"')
+            {
+                if (insideQuotes &&
+                    index + 1 < row.Length &&
+                    row[index + 1] == '"')
+                {
+                    currentValue.Append('"');
+
+                    index++;
+
+                    continue;
+                }
+
+                insideQuotes =
+                    !insideQuotes;
+
+                continue;
+            }
+
+            if (character == ',' &&
+                !insideQuotes)
+            {
+                values.Add(
+                    currentValue.ToString());
+
+                currentValue.Clear();
+
+                continue;
+            }
+
+            currentValue.Append(character);
+        }
+
+        if (insideQuotes)
+        {
+            throw new BusinessRuleException(
+                "CSV row contains an unclosed quote.");
+        }
+
+        values.Add(
+            currentValue.ToString());
+
+        return values;
+    }
+
+    private static string GetRequiredCsvValue(
+        Dictionary<string, string> row,
+        string columnName)
+    {
+        if (!row.TryGetValue(columnName, out var value) ||
+            string.IsNullOrWhiteSpace(value))
+        {
+            throw new BusinessRuleException(
+                $"CSV column '{columnName}' is required.");
+        }
+
+        return value.Trim();
+    }
+
+    private static string? GetOptionalCsvValue(
+        Dictionary<string, string> row,
+        string columnName)
+    {
+        if (!row.TryGetValue(columnName, out var value) ||
+            string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
+    }
+
+    private static int ParseRequiredInt(
+        string value,
+        string fieldName)
+    {
+        if (int.TryParse(
+            value,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var result))
+        {
+            return result;
+        }
+
+        throw new BusinessRuleException(
+            $"CSV column '{fieldName}' must be a valid number.");
+    }
+
+    private static decimal ParseRequiredDecimal(
+        string value,
+        string fieldName)
+    {
+        if (decimal.TryParse(
+            value,
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var result))
+        {
+            return result;
+        }
+
+        throw new BusinessRuleException(
+            $"CSV column '{fieldName}' must be a valid amount.");
+    }
+
+    private static decimal? ParseOptionalDecimal(
+        string? value,
+        string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return ParseRequiredDecimal(
+            value,
+            fieldName);
+    }
+
+    private static DateTime ParseRequiredDate(
+        string value,
+        string fieldName)
+    {
+        if (DateTime.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal |
+            DateTimeStyles.AdjustToUniversal,
+            out var result))
+        {
+            return result;
+        }
+
+        throw new BusinessRuleException(
+            $"CSV column '{fieldName}' must be a valid date.");
+    }
+
+    private static DateTime? ParseOptionalDate(
+        string? value,
+        string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return ParseRequiredDate(
+            value,
+            fieldName);
     }
 
     private static string NormalizeCurrency(

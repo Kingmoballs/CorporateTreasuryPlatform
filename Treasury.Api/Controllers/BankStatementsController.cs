@@ -1,8 +1,10 @@
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Treasury.Application.DTOs.BankStatements;
 using Treasury.Application.Interfaces;
 using Treasury.Shared.Constants;
+using Treasury.Api.DTOs;
 
 namespace Treasury.Api.Controllers;
 
@@ -26,6 +28,63 @@ public class BankStatementsController
     {
         _bankStatementService =
             bankStatementService;
+    }
+
+    [HttpPost("imports/csv")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportStatementCsv(
+        [FromForm] BankStatementCsvUploadRequest request)
+    {
+        if (request.File is null ||
+            request.File.Length == 0)
+        {
+            return BadRequest(
+                "CSV file is required.");
+        }
+
+        using var reader =
+            new StreamReader(
+                request.File.OpenReadStream(),
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true);
+
+        var csvContent =
+            await reader.ReadToEndAsync();
+
+        var result =
+            await _bankStatementService
+                .ImportStatementFromCsv(
+                    new CreateBankStatementCsvImportDto
+                    {
+                        AccountId =
+                            request.AccountId,
+
+                        FileName =
+                            request.File.FileName,
+
+                        CsvContent =
+                            csvContent,
+
+                        StatementReference =
+                            request.StatementReference,
+
+                        Currency =
+                            request.Currency,
+
+                        StatementFromUtc =
+                            request.StatementFromUtc,
+
+                        StatementToUtc =
+                            request.StatementToUtc,
+
+                        OpeningBalance =
+                            request.OpeningBalance,
+
+                        ClosingBalance =
+                            request.ClosingBalance
+                    });
+
+        return Ok(result);
     }
 
     [HttpPost("imports")]

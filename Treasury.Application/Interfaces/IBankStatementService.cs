@@ -40,4 +40,7 @@ public interface IBankStatementService
     
     Task<BookSideExceptionReportDto>
         GetBookSideExceptionReport(Guid importId);
+        
+    Task<BankStatementImportResponseDto> ImportStatementFromCsv(
+        CreateBankStatementCsvImportDto dto);
 }
