@@ -34,4 +34,10 @@ public interface ITreasuryTransactionRepository
             DateTime transactionDateUtc,
             int dateToleranceDays);
 
+    Task<List<TreasuryTransaction>>
+        GetUnmatchedCompletedTransactionsForReconciliation(
+            Guid accountId,
+            string currency,
+            DateTime? fromUtc,
+            DateTime? toUtc);
 }

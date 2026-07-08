@@ -480,6 +480,97 @@ public class BankStatementService
         };
     }
 
+    public async Task<BookSideExceptionReportDto>
+        GetBookSideExceptionReport(Guid importId)
+    {
+        var statementImport =
+            await _bankStatementRepository.GetImportById(
+                importId);
+
+        if (statementImport is null)
+        {
+            throw new ResourceNotFoundException(
+                "Bank statement import not found.");
+        }
+
+        var transactions =
+            await _transactionRepository
+                .GetUnmatchedCompletedTransactionsForReconciliation(
+                    statementImport.AccountId,
+                    statementImport.Currency,
+                    statementImport.StatementFromUtc,
+                    statementImport.StatementToUtc);
+
+        var mappedTransactions =
+            transactions
+                .Select(transaction =>
+                    MapBookSideTransaction(
+                        transaction,
+                        statementImport.AccountId))
+                .ToList();
+
+        var totalInflowAmount =
+            mappedTransactions
+                .Where(transaction =>
+                    transaction.SignedAmount > 0)
+                .Sum(transaction =>
+                    transaction.SignedAmount);
+
+        var totalOutflowAmount =
+            mappedTransactions
+                .Where(transaction =>
+                    transaction.SignedAmount < 0)
+                .Sum(transaction =>
+                    Math.Abs(transaction.SignedAmount));
+
+        return new BookSideExceptionReportDto
+        {
+            ImportId =
+                statementImport.Id,
+
+            AccountId =
+                statementImport.AccountId,
+
+            AccountName =
+                statementImport.Account?.Name
+                ?? string.Empty,
+
+            FileName =
+                statementImport.FileName,
+
+            StatementReference =
+                statementImport.StatementReference,
+
+            Currency =
+                statementImport.Currency,
+
+            StatementFromUtc =
+                statementImport.StatementFromUtc,
+
+            StatementToUtc =
+                statementImport.StatementToUtc,
+
+            GeneratedAtUtc =
+                DateTime.UtcNow,
+
+            UnmatchedTransactionCount =
+                mappedTransactions.Count,
+
+            NetUnmatchedAmount =
+                mappedTransactions.Sum(transaction =>
+                    transaction.SignedAmount),
+
+            TotalUnmatchedInflowAmount =
+                totalInflowAmount,
+
+            TotalUnmatchedOutflowAmount =
+                totalOutflowAmount,
+
+            Transactions =
+                mappedTransactions
+        };
+    }
+
     public async Task<List<BankStatementLineResponseDto>>
         GetUnmatchedLines(
             Guid? accountId,
@@ -1230,6 +1321,73 @@ public class BankStatementService
 
             CreatedAtUtc =
                 line.CreatedAtUtc
+        };
+    }
+
+    private static UnmatchedTreasuryTransactionDto
+        MapBookSideTransaction(
+            TreasuryTransaction transaction,
+            Guid accountId)
+    {
+        var isInflow =
+            transaction.DestinationAccountId == accountId;
+
+        var signedAmount =
+            isInflow
+                ? transaction.Amount
+                : -transaction.Amount;
+
+        return new UnmatchedTreasuryTransactionDto
+        {
+            Id =
+                transaction.Id,
+
+            Reference =
+                transaction.Reference,
+
+            TransactionType =
+                transaction.TransactionType,
+
+            Status =
+                transaction.Status,
+
+            SourceAccountId =
+                transaction.SourceAccountId,
+
+            DestinationAccountId =
+                transaction.DestinationAccountId,
+
+            CashDirection =
+                isInflow
+                    ? "Inflow"
+                    : "Outflow",
+
+            Amount =
+                transaction.Amount,
+
+            SignedAmount =
+                signedAmount,
+
+            Currency =
+                transaction.Currency,
+
+            Description =
+                transaction.Description,
+
+            Category =
+                transaction.Category,
+
+            CounterpartyName =
+                transaction.CounterpartyName,
+
+            ExternalReference =
+                transaction.ExternalReference,
+
+            CreatedAtUtc =
+                transaction.CreatedAtUtc,
+
+            CompletedAtUtc =
+                transaction.CompletedAtUtc
         };
     }
 }

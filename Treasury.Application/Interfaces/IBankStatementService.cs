@@ -37,4 +37,7 @@ public interface IBankStatementService
 
     Task<BankStatementExceptionReportDto>
         GetExceptionReport(Guid importId);
+    
+    Task<BookSideExceptionReportDto>
+        GetBookSideExceptionReport(Guid importId);
 }

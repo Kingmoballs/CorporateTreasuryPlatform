@@ -233,4 +233,60 @@ public class TreasuryTransactionRepository
             .Take(5)
             .ToListAsync();
     }
+
+    public async Task<List<TreasuryTransaction>>
+        GetUnmatchedCompletedTransactionsForReconciliation(
+            Guid accountId,
+            string currency,
+            DateTime? fromUtc,
+            DateTime? toUtc)
+    {
+        var normalizedCurrency =
+            currency.Trim().ToUpperInvariant();
+
+        var alreadyMatchedTransactionIds =
+            _context.BankStatementLines
+                .Where(line =>
+                    line.MatchedTreasuryTransactionId != null)
+                .Select(line =>
+                    line.MatchedTreasuryTransactionId!.Value);
+
+        var query =
+            _context.TreasuryTransactions
+                .AsNoTracking()
+                .Where(transaction =>
+                    transaction.Status ==
+                        TransactionStatuses.Completed &&
+                    transaction.Currency ==
+                        normalizedCurrency &&
+                    !alreadyMatchedTransactionIds
+                        .Contains(transaction.Id))
+                .Where(transaction =>
+                    transaction.SourceAccountId == accountId ||
+                    transaction.DestinationAccountId == accountId);
+
+        if (fromUtc.HasValue)
+        {
+            query =
+                query.Where(transaction =>
+                    (transaction.CompletedAtUtc ??
+                        transaction.CreatedAtUtc) >=
+                    fromUtc.Value);
+        }
+
+        if (toUtc.HasValue)
+        {
+            query =
+                query.Where(transaction =>
+                    (transaction.CompletedAtUtc ??
+                        transaction.CreatedAtUtc) <=
+                    toUtc.Value);
+        }
+
+        return await query
+            .OrderBy(transaction =>
+                transaction.CompletedAtUtc ??
+                transaction.CreatedAtUtc)
+            .ToListAsync();
+    }
 }

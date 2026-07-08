@@ -72,6 +72,17 @@ public class BankStatementsController
         return Ok(result);
     }
 
+    [HttpGet("imports/{id}/book-exceptions")]
+    public async Task<IActionResult> GetBookSideExceptionReport(
+        Guid id)
+    {
+        var result =
+            await _bankStatementService
+                .GetBookSideExceptionReport(id);
+
+        return Ok(result);
+    }
+
     [HttpPost("imports/{id}/auto-match")]
     public async Task<IActionResult> AutoMatchImport(
         Guid id,
