@@ -75,6 +75,19 @@ public class CashFlowForecastsController
         return Ok(result);
     }
 
+    [HttpPost("{id}/realize")]
+    public async Task<IActionResult> Realize(
+        Guid id,
+        RealizeCashFlowForecastItemDto dto)
+    {
+        var result =
+            await _forecastService.Realize(
+                id,
+                dto.TreasuryTransactionId);
+
+        return Ok(result);
+    }
+
     [HttpGet("report")]
     public async Task<IActionResult> GetForecastReport(
         [FromQuery] Guid? accountId,

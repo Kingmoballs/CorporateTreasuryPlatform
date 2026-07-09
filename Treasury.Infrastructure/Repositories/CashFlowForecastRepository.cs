@@ -86,6 +86,27 @@ public class CashFlowForecastRepository
             .Update(forecastItem);
     }
 
+    public async Task<bool> TreasuryTransactionAlreadyRealized(
+        Guid treasuryTransactionId,
+        Guid? excludeForecastItemId = null)
+    {
+        var query =
+            _context.CashFlowForecastItems
+                .AsQueryable()
+                .Where(item =>
+                    item.RealizedTreasuryTransactionId ==
+                    treasuryTransactionId);
+
+        if (excludeForecastItemId.HasValue)
+        {
+            query =
+                query.Where(item =>
+                    item.Id != excludeForecastItemId.Value);
+        }
+
+        return await query.AnyAsync();
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();

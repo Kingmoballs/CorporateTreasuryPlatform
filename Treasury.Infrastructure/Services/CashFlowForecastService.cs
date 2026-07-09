@@ -38,19 +38,22 @@ public class CashFlowForecastService
     private readonly ICurrentUserService
         _currentUserService;
 
+    private readonly ITreasuryTransactionRepository
+        _transactionRepository;
+
     public CashFlowForecastService(
         ICashFlowForecastRepository forecastRepository,
         IAccountRepository accountRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ITreasuryTransactionRepository transactionRepository)
     {
-        _forecastRepository =
-            forecastRepository;
+        _forecastRepository = forecastRepository;
 
-        _accountRepository =
-            accountRepository;
+        _accountRepository = accountRepository;
 
-        _currentUserService =
-            currentUserService;
+        _currentUserService = currentUserService;
+        
+        _transactionRepository = transactionRepository;
     }
 
     public async Task<CashFlowForecastItemResponseDto>
@@ -228,6 +231,87 @@ public class CashFlowForecastService
             _currentUserService.UserId;
 
         forecastItem.CancelledAtUtc =
+            DateTime.UtcNow;
+
+        forecastItem.UpdatedAtUtc =
+            DateTime.UtcNow;
+
+        forecastItem.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _forecastRepository.Update(
+            forecastItem);
+
+        await _forecastRepository.SaveChanges();
+
+        var savedItem =
+            await _forecastRepository.GetById(id);
+
+        return MapItem(
+            savedItem ?? forecastItem);
+    }
+
+    public async Task<CashFlowForecastItemResponseDto>
+        Realize(
+            Guid id,
+            Guid treasuryTransactionId)
+    {
+        if (treasuryTransactionId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Treasury transaction is required.");
+        }
+
+        var forecastItem =
+            await _forecastRepository.GetById(id);
+
+        if (forecastItem is null)
+        {
+            throw new ResourceNotFoundException(
+                "Cash flow forecast item not found.");
+        }
+
+        if (forecastItem.Status !=
+            CashFlowForecastStatus.Active)
+        {
+            throw new ConflictException(
+                "Only active forecast items can be realized.");
+        }
+
+        var transaction =
+            await _transactionRepository.GetById(
+                treasuryTransactionId);
+
+        if (transaction is null)
+        {
+            throw new ResourceNotFoundException(
+                "Treasury transaction not found.");
+        }
+
+        EnsureTransactionCanRealizeForecast(
+            forecastItem,
+            transaction);
+
+        var alreadyRealized =
+            await _forecastRepository
+                .TreasuryTransactionAlreadyRealized(
+                    treasuryTransactionId,
+                    forecastItem.Id);
+
+        if (alreadyRealized)
+        {
+            throw new ConflictException(
+                "This treasury transaction has already " +
+                "been linked to another forecast item.");
+        }
+
+        forecastItem.Status =
+            CashFlowForecastStatus.Realized;
+
+        forecastItem.RealizedTreasuryTransactionId =
+            transaction.Id;
+
+        forecastItem.RealizedAtUtc =
             DateTime.UtcNow;
 
         forecastItem.UpdatedAtUtc =
@@ -545,6 +629,99 @@ public class CashFlowForecastService
         }
     }
 
+    private static void EnsureTransactionCanRealizeForecast(
+        CashFlowForecastItem forecastItem,
+        TreasuryTransaction transaction)
+    {
+        if (transaction.Status !=
+            TransactionStatuses.Completed)
+        {
+            throw new ConflictException(
+                "Only completed treasury transactions " +
+                "can realize a forecast item.");
+        }
+
+        if (!string.Equals(
+            transaction.Currency,
+            forecastItem.Currency,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction currency does " +
+                "not match the forecast currency.");
+        }
+
+        if (transaction.Amount != forecastItem.Amount)
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction amount does " +
+                "not match the forecast amount.");
+        }
+
+        /*
+        * Account-specific forecasts must match the exact
+        * account side of the treasury transaction.
+        */
+        if (forecastItem.AccountId.HasValue)
+        {
+            if (forecastItem.Direction ==
+                CashFlowDirections.Inflow &&
+                transaction.DestinationAccountId !=
+                    forecastItem.AccountId.Value)
+            {
+                throw new BusinessRuleException(
+                    "The treasury transaction does not " +
+                    "represent cash coming into the " +
+                    "forecast account.");
+            }
+
+            if (forecastItem.Direction ==
+                CashFlowDirections.Outflow &&
+                transaction.SourceAccountId !=
+                    forecastItem.AccountId.Value)
+            {
+                throw new BusinessRuleException(
+                    "The treasury transaction does not " +
+                    "represent cash leaving the " +
+                    "forecast account.");
+            }
+
+            return;
+        }
+
+        /*
+        * Consolidated currency forecasts should not be realized
+        * with internal transfers because internal transfers do not
+        * change total cash for that currency.
+        */
+        if (transaction.TransactionType ==
+            TransactionTypes.InternalTransfer)
+        {
+            throw new BusinessRuleException(
+                "A consolidated forecast item cannot be " +
+                "realized by an internal transfer. Use an " +
+                "account-specific forecast item instead.");
+        }
+
+        if (forecastItem.Direction ==
+            CashFlowDirections.Inflow &&
+            transaction.DestinationAccountId is null)
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction does not represent " +
+                "a cash inflow.");
+        }
+
+        if (forecastItem.Direction ==
+            CashFlowDirections.Outflow &&
+            transaction.SourceAccountId is null)
+        {
+            throw new BusinessRuleException(
+                "The treasury transaction does not represent " +
+                "a cash outflow.");
+        }
+    }
+
     private static ForecastPeriod NormalizeForecastPeriod(
         DateTime fromUtc,
         DateTime toUtc)
@@ -552,17 +729,17 @@ public class CashFlowForecastService
         var normalizedFrom =
             NormalizeUtc(fromUtc).Date;
 
-        var normalizedTo =
+        var normalizedToDate =
             NormalizeUtc(toUtc).Date;
 
-        if (normalizedFrom > normalizedTo)
+        if (normalizedFrom > normalizedToDate)
         {
             throw new BusinessRuleException(
                 "Forecast start date cannot be later " +
                 "than forecast end date.");
         }
 
-        if ((normalizedTo - normalizedFrom).TotalDays >
+        if ((normalizedToDate - normalizedFrom).TotalDays >
             MaximumForecastDays)
         {
             throw new BusinessRuleException(
@@ -570,9 +747,14 @@ public class CashFlowForecastService
                 $"{MaximumForecastDays} days.");
         }
 
+        var inclusiveToUtc =
+            normalizedToDate
+                .AddDays(1)
+                .AddTicks(-1);
+
         return new ForecastPeriod(
             normalizedFrom,
-            normalizedTo);
+            inclusiveToUtc);
     }
 
     private static string NormalizeDirection(
@@ -724,6 +906,8 @@ public class CashFlowForecastService
                 item.RealizedAtUtc
         };
     }
+
+    
 
     private sealed record ForecastPeriod(
         DateTime FromUtc,

@@ -25,4 +25,8 @@ public interface ICashFlowForecastService
         DateTime fromUtc,
         DateTime toUtc,
         decimal minimumLiquidityThreshold);
+
+    Task<CashFlowForecastItemResponseDto> Realize(
+        Guid id,
+        Guid treasuryTransactionId);
 }

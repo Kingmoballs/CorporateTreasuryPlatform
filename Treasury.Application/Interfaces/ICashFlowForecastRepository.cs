@@ -16,5 +16,9 @@ public interface ICashFlowForecastRepository
 
     void Update(CashFlowForecastItem forecastItem);
 
+    Task<bool> TreasuryTransactionAlreadyRealized(
+        Guid treasuryTransactionId,
+        Guid? excludeForecastItemId = null);
+
     Task SaveChanges();
 }
