@@ -201,6 +201,14 @@ builder.Services.AddScoped<
     IBankStatementService,
     BankStatementService>();
 
+builder.Services.AddScoped<
+    ICashFlowForecastRepository,
+    CashFlowForecastRepository>();
+
+builder.Services.AddScoped<
+    ICashFlowForecastService,
+    CashFlowForecastService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 

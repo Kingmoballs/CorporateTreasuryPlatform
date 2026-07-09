@@ -38,6 +38,8 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
 
+    public DbSet<CashFlowForecastItem> CashFlowForecastItems => Set<CashFlowForecastItem>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -650,6 +652,125 @@ public class TreasuryDbContext : DbContext
                     "CK_BankStatementLines_ReconciliationStatus",
                     "\"ReconciliationStatus\" IN " +
                     "('Unmatched', 'Matched', 'Reconciled', 'Ignored')");
+            });
+
+        var cashFlowForecastItem =
+            modelBuilder.Entity<CashFlowForecastItem>();
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        cashFlowForecastItem
+            .HasOne(item =>
+                item.Account)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        cashFlowForecastItem
+            .HasOne(item =>
+                item.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        cashFlowForecastItem
+            .HasOne(item =>
+                item.CancelledByUser)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.CancelledByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        cashFlowForecastItem
+            .HasOne(item =>
+                item.RealizedTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.RealizedTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        cashFlowForecastItem
+            .HasIndex(item => new
+            {
+                item.Currency,
+                item.Status,
+                item.ExpectedDateUtc
+            });
+
+        cashFlowForecastItem
+            .HasIndex(item => new
+            {
+                item.AccountId,
+                item.Status,
+                item.ExpectedDateUtc
+            });
+
+        cashFlowForecastItem
+            .HasIndex(item =>
+                item.RealizedTreasuryTransactionId)
+            .IsUnique();
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.Direction)
+            .HasMaxLength(20);
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.Status)
+            .HasMaxLength(20);
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.SourceType)
+            .HasMaxLength(50);
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.Category)
+            .HasMaxLength(100);
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.CounterpartyName)
+            .HasMaxLength(200);
+
+        cashFlowForecastItem
+            .Property(item =>
+                item.Description)
+            .HasMaxLength(500);
+
+        cashFlowForecastItem
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_CashFlowForecastItems_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_CashFlowForecastItems_Currency_Length",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_CashFlowForecastItems_Direction",
+                    "\"Direction\" IN ('Inflow', 'Outflow')");
+
+                table.HasCheckConstraint(
+                    "CK_CashFlowForecastItems_Status",
+                    "\"Status\" IN ('Active', 'Cancelled', 'Realized')");
+
+                table.HasCheckConstraint(
+                    "CK_CashFlowForecastItems_SourceType",
+                    "\"SourceType\" IN " +
+                    "('Manual', 'CustomerReceipt', 'SupplierPayment', " +
+                    "'Payroll', 'Tax', 'Loan', 'Investment', 'Other')");
             });
         
         var approvalPolicy =
