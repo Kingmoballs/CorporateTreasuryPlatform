@@ -504,7 +504,10 @@ public class BankStatementReconciliationIntegrationTests
             new BankStatementRepository(context),
             new AccountRepository(context),
             CreateCurrentUser(userId),
-            new TreasuryTransactionRepository(context));
+            new TreasuryTransactionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                CreateCurrentUser(userId)));
     }
 
     private static ICurrentUserService CreateCurrentUser(

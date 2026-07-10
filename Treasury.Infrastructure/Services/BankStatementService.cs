@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Treasury.Application.Common.Exceptions;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.BankStatements;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
@@ -25,11 +26,15 @@ public class BankStatementService
     private readonly ITreasuryTransactionRepository
         _transactionRepository;
 
+    private readonly IAuditLogService
+        _auditLogService;
+
     public BankStatementService(
         IBankStatementRepository bankStatementRepository,
         IAccountRepository accountRepository,
         ICurrentUserService currentUserService,
-        ITreasuryTransactionRepository transactionRepository)
+        ITreasuryTransactionRepository transactionRepository,
+        IAuditLogService auditLogService)
     {
         _bankStatementRepository =
             bankStatementRepository;
@@ -42,6 +47,9 @@ public class BankStatementService
         
         _transactionRepository =
             transactionRepository;
+        
+        _auditLogService =
+            auditLogService;
     }
 
     public async Task<BankStatementImportResponseDto>
@@ -211,9 +219,14 @@ public class BankStatementService
             await _bankStatementRepository.GetImportById(
                 statementImport.Id);
 
-        return MapImport(
-            savedImport
-            ?? statementImport);
+        var response =
+            MapImport(
+                savedImport
+                ?? statementImport);
+
+        await RecordStatementImportAudit(response);
+
+        return response;
     }
 
     public async Task<BankStatementImportResponseDto>
@@ -758,6 +771,14 @@ public class BankStatementService
 
         await _bankStatementRepository.SaveChanges();
 
+        if (result.MatchedLineCount > 0)
+        {
+            await RecordAutoMatchAudit(
+                statementImport,
+                result,
+                dateToleranceDays);
+        }
+
         return result;
     }
 
@@ -834,6 +855,9 @@ public class BankStatementService
                 "been matched to another bank statement line.");
         }
 
+        var beforeValues =
+            SnapshotLine(line);
+
         line.ReconciliationStatus =
             ReconciliationStatus.Matched;
 
@@ -855,8 +879,22 @@ public class BankStatementService
             await _bankStatementRepository.GetLineById(
                 line.Id);
 
-        return MapLine(
-            savedLine ?? line);
+        var response =
+            MapLine(savedLine ?? line);
+
+        await RecordLineAudit(
+            AuditActionTypes.Matched,
+            $"Bank statement line {response.LineNumber} was manually matched.",
+            beforeValues,
+            response,
+            new
+            {
+                Module = "Bank Statement Reconciliation",
+                MatchType = "Manual",
+                TreasuryTransactionId = transaction.Id
+            });
+
+        return response;
     }
 
     public async Task<BankStatementLineResponseDto>
@@ -889,6 +927,9 @@ public class BankStatementService
                 "be reconciled.");
         }
 
+        var beforeValues =
+            SnapshotLine(line);
+
         line.ReconciliationStatus =
             ReconciliationStatus.Reconciled;
 
@@ -910,8 +951,21 @@ public class BankStatementService
             await _bankStatementRepository.GetLineById(
                 line.Id);
 
-        return MapLine(
-            savedLine ?? line);
+        var response =
+            MapLine(savedLine ?? line);
+
+        await RecordLineAudit(
+            AuditActionTypes.Reconciled,
+            $"Bank statement line {response.LineNumber} was reconciled.",
+            beforeValues,
+            response,
+            new
+            {
+                Module = "Bank Statement Reconciliation",
+                ReconciliationAction = "Reconciled"
+            });
+
+        return response;
     }
 
     public async Task<BankStatementLineResponseDto>
@@ -944,6 +998,12 @@ public class BankStatementService
                 "be unmatched.");
         }
 
+        var previousTreasuryTransactionId =
+            line.MatchedTreasuryTransactionId;
+
+        var beforeValues =
+            SnapshotLine(line);
+
         line.ReconciliationStatus =
             ReconciliationStatus.Unmatched;
 
@@ -971,8 +1031,22 @@ public class BankStatementService
             await _bankStatementRepository.GetLineById(
                 line.Id);
 
-        return MapLine(
-            savedLine ?? line);
+        var response =
+            MapLine(savedLine ?? line);
+
+        await RecordLineAudit(
+            AuditActionTypes.Updated,
+            $"Bank statement line {response.LineNumber} was unmatched.",
+            beforeValues,
+            response,
+            new
+            {
+                Module = "Bank Statement Reconciliation",
+                ReconciliationAction = "Unmatched",
+                PreviousTreasuryTransactionId = previousTreasuryTransactionId
+            });
+
+        return response;
     }
 
     public async Task<BankStatementLineResponseDto>
@@ -1005,6 +1079,9 @@ public class BankStatementService
                 "ignoring it.");
         }
 
+        var beforeValues =
+            SnapshotLine(line);
+
         line.ReconciliationStatus =
             ReconciliationStatus.Ignored;
 
@@ -1032,8 +1109,209 @@ public class BankStatementService
             await _bankStatementRepository.GetLineById(
                 line.Id);
 
-        return MapLine(
-            savedLine ?? line);
+        var response =
+            MapLine(savedLine ?? line);
+
+        await RecordLineAudit(
+            AuditActionTypes.Ignored,
+            $"Bank statement line {response.LineNumber} was ignored.",
+            beforeValues,
+            response,
+            new
+            {
+                Module = "Bank Statement Reconciliation",
+                ReconciliationAction = "Ignored"
+            });
+
+        return response;
+    }
+
+    private async Task RecordStatementImportAudit(
+        BankStatementImportResponseDto statementImport)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Imported,
+
+                EntityType =
+                    AuditEntityTypes.BankStatementImport,
+
+                EntityId =
+                    statementImport.Id,
+
+                EntityReference =
+                    statementImport.StatementReference
+                    ?? statementImport.FileName,
+
+                Summary =
+                    $"Bank statement {statementImport.FileName} " +
+                    $"was imported with {statementImport.LineCount} line(s).",
+
+                AfterValues =
+                    SnapshotImport(statementImport),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Bank Statement Reconciliation",
+                        statementImport.AccountId,
+                        statementImport.AccountName
+                    }
+            });
+    }
+
+    private async Task RecordAutoMatchAudit(
+        BankStatementImport statementImport,
+        BankStatementReconciliationResultDto result,
+        int dateToleranceDays)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Matched,
+
+                EntityType =
+                    AuditEntityTypes.BankStatementImport,
+
+                EntityId =
+                    statementImport.Id,
+
+                EntityReference =
+                    statementImport.StatementReference
+                    ?? statementImport.FileName,
+
+                Summary =
+                    $"Auto-match completed for bank statement " +
+                    $"{statementImport.FileName}; " +
+                    $"{result.MatchedLineCount} line(s) matched.",
+
+                Metadata =
+                    new
+                    {
+                        Module = "Bank Statement Reconciliation",
+                        MatchType = "Automatic",
+                        DateToleranceDays = dateToleranceDays,
+                        result.CandidateLineCount,
+                        result.MatchedLineCount,
+                        result.UnmatchedLineCount,
+                        result.AmbiguousMatchCount,
+                        result.MatchedLineIds
+                    }
+            });
+    }
+
+    private async Task RecordLineAudit(
+        string action,
+        string summary,
+        object? beforeValues,
+        BankStatementLineResponseDto line,
+        object? metadata)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    action,
+
+                EntityType =
+                    AuditEntityTypes.BankStatementLine,
+
+                EntityId =
+                    line.Id,
+
+                EntityReference =
+                    line.BankReference
+                    ?? $"Line {line.LineNumber}",
+
+                Summary =
+                    summary,
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotLine(line),
+
+                Metadata =
+                    metadata
+            });
+    }
+
+    private static object SnapshotImport(
+        BankStatementImportResponseDto statementImport)
+    {
+        return new
+        {
+            statementImport.Id,
+            statementImport.AccountId,
+            statementImport.AccountName,
+            statementImport.FileName,
+            statementImport.StatementReference,
+            statementImport.Currency,
+            statementImport.StatementFromUtc,
+            statementImport.StatementToUtc,
+            statementImport.OpeningBalance,
+            statementImport.ClosingBalance,
+            statementImport.LineCount,
+            statementImport.UploadedByUserId,
+            statementImport.UploadedAtUtc
+        };
+    }
+
+    private static object SnapshotLine(
+        BankStatementLine line)
+    {
+        return new
+        {
+            line.Id,
+            line.BankStatementImportId,
+            line.AccountId,
+            line.LineNumber,
+            line.TransactionDateUtc,
+            line.ValueDateUtc,
+            line.Description,
+            line.BankReference,
+            line.CounterpartyName,
+            line.Amount,
+            line.Currency,
+            line.BalanceAfterTransaction,
+            line.ReconciliationStatus,
+            line.MatchedTreasuryTransactionId,
+            line.MatchedAtUtc,
+            line.ReconciledByUserId,
+            line.ReconciledAtUtc,
+            line.CreatedAtUtc
+        };
+    }
+
+    private static object SnapshotLine(
+        BankStatementLineResponseDto line)
+    {
+        return new
+        {
+            line.Id,
+            line.BankStatementImportId,
+            line.AccountId,
+            line.LineNumber,
+            line.TransactionDateUtc,
+            line.ValueDateUtc,
+            line.Description,
+            line.BankReference,
+            line.CounterpartyName,
+            line.Amount,
+            line.Currency,
+            line.BalanceAfterTransaction,
+            line.ReconciliationStatus,
+            line.MatchedTreasuryTransactionId,
+            line.MatchedTreasuryTransactionReference,
+            line.MatchedAtUtc,
+            line.ReconciledByUserId,
+            line.ReconciledAtUtc,
+            line.CreatedAtUtc
+        };
     }
 
     private static void ValidateImportDto(

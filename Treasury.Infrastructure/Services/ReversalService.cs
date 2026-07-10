@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Reversals;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.Transactions;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
@@ -35,6 +36,9 @@ public class ReversalService : IReversalService
     private readonly IApprovalDecisionRepository
         _approvalDecisionRepository;
 
+    private readonly IAuditLogService
+        _auditLogService;
+
     public ReversalService(
         IAccountRepository accountRepository,
         ILedgerRepository ledgerRepository,
@@ -46,7 +50,8 @@ public class ReversalService : IReversalService
             transactionService,
         ICurrentUserService currentUserService,
         IApprovalPolicyService approvalPolicyService,
-        IApprovalDecisionRepository approvalDecisionRepository)
+        IApprovalDecisionRepository approvalDecisionRepository,
+        IAuditLogService auditLogService)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
@@ -62,6 +67,8 @@ public class ReversalService : IReversalService
             approvalPolicyService;
         _approvalDecisionRepository =
             approvalDecisionRepository;
+        _auditLogService =
+            auditLogService;
     }
 
     public async Task<ReversalRequestResponseDto>
@@ -194,6 +201,9 @@ public class ReversalService : IReversalService
 
             EnsureDifferentReviewer(
                 request.RequestedByUserId);
+            
+            var beforeValues =
+                SnapshotReversalRequest(request);
 
             var currentUserId =
                 _currentUserService.UserId;
@@ -247,6 +257,12 @@ public class ReversalService : IReversalService
 
                 await _accountRepository
                     .SaveChanges();
+                
+                await RecordReversalApprovedAudit(
+                    beforeValues,
+                    request,
+                    isFinalApproval: false,
+                    reversal: null);
 
                 await _accountRepository
                     .CommitTransaction();
@@ -301,6 +317,12 @@ public class ReversalService : IReversalService
             await _accountRepository
                 .SaveChanges();
 
+            await RecordReversalApprovedAudit(
+                beforeValues,
+                request,
+                isFinalApproval: true,
+                reversal);
+
             await _accountRepository
                 .CommitTransaction();
 
@@ -352,6 +374,9 @@ public class ReversalService : IReversalService
 
         EnsureDifferentReviewer(
             request.RequestedByUserId);
+        
+        var beforeValues =
+            SnapshotReversalRequest(request);
 
         var currentUserId =
             _currentUserService.UserId;
@@ -412,6 +437,10 @@ public class ReversalService : IReversalService
         {
             await _reversalRequestRepository
                 .SaveChanges();
+            
+             await RecordReversalRejectedAudit(
+                beforeValues,
+                request);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -423,6 +452,114 @@ public class ReversalService : IReversalService
         return MapRequest(
             request,
             request.OriginalTransaction);
+    }
+
+    private async Task RecordReversalApprovedAudit(
+        object beforeValues,
+        ReversalRequest request,
+        bool isFinalApproval,
+        TreasuryTransaction? reversal)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Approved,
+
+                EntityType =
+                    AuditEntityTypes.ReversalRequest,
+
+                EntityId =
+                    request.Id,
+
+                EntityReference =
+                    request.OriginalTransaction?.Reference
+                    ?? request.OriginalTransactionId.ToString(),
+
+                Summary =
+                    isFinalApproval
+                        ? $"Reversal request {request.Id} received final approval."
+                        : $"Reversal request {request.Id} received partial approval.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotReversalRequest(request),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Reversal Approvals",
+                        IsFinalApproval = isFinalApproval,
+                        request.ApprovalCount,
+                        request.RequiredApprovalCount,
+                        ReversalTransactionId = reversal?.Id,
+                        ReversalTransactionReference = reversal?.Reference
+                    }
+            });
+    }
+
+    private async Task RecordReversalRejectedAudit(
+        object beforeValues,
+        ReversalRequest request)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Rejected,
+
+                EntityType =
+                    AuditEntityTypes.ReversalRequest,
+
+                EntityId =
+                    request.Id,
+
+                EntityReference =
+                    request.OriginalTransaction?.Reference
+                    ?? request.OriginalTransactionId.ToString(),
+
+                Summary =
+                    $"Reversal request {request.Id} was rejected.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotReversalRequest(request),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Reversal Approvals",
+                        request.RejectionReason,
+                        request.ApprovalCount,
+                        request.RequiredApprovalCount
+                    }
+            });
+    }
+
+    private static object SnapshotReversalRequest(
+        ReversalRequest request)
+    {
+        return new
+        {
+            request.Id,
+            request.OriginalTransactionId,
+            OriginalTransactionReference =
+                request.OriginalTransaction?.Reference,
+            request.Reason,
+            request.Status,
+            request.RequestedByUserId,
+            request.ReviewedByUserId,
+            request.ReviewedAtUtc,
+            request.RejectionReason,
+            request.ApprovalCount,
+            request.RequiredApprovalCount,
+            request.CreatedAtUtc,
+            request.ExpiresAtUtc
+        };
     }
 
     private async Task<TreasuryTransaction>

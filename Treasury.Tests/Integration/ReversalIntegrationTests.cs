@@ -537,7 +537,10 @@ public class ReversalIntegrationTests
             new PaymentRequestRepository(
                 context),
             approvalPolicyService.Object,
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                CreateCurrentUser(userId)));
     }
 
     private static ReversalService
@@ -577,7 +580,10 @@ public class ReversalIntegrationTests
                 transactionRepository),
             CreateCurrentUser(userId),
             approvalPolicyService.Object,
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                CreateCurrentUser(userId)));
     }
 
     private static ICurrentUserService

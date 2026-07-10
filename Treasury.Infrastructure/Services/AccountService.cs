@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.Accounts;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.Ledger;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
@@ -24,14 +25,16 @@ public class AccountService : IAccountService
     private readonly ICurrentUserService
         _currentUserService;
 
+    private readonly IAuditLogService
+        _auditLogService;
+
     public AccountService(
         IAccountRepository accountRepository,
-        IAccountTypeRepository
-            accountTypeRepository,
+        IAccountTypeRepository accountTypeRepository,
         ILedgerRepository ledgerRepository,
-        ITreasuryTransactionRepository
-            transactionRepository,
-        ICurrentUserService currentUserService)
+        ITreasuryTransactionRepository transactionRepository,
+        ICurrentUserService currentUserService,
+        IAuditLogService auditLogService)
     {
         _accountRepository =
             accountRepository;
@@ -47,6 +50,9 @@ public class AccountService : IAccountService
 
         _currentUserService =
             currentUserService;
+        
+        _auditLogService =
+            auditLogService;
     }
 
     private static void ValidateAccountRequest(
@@ -247,36 +253,44 @@ public class AccountService : IAccountService
             await _accountRepository
                 .SaveChanges();
 
+            var response =
+                new AccountResponseDto
+                {
+                    Id = account.Id,
+
+                    Name = account.Name,
+
+                    AccountNumber =
+                        account.AccountNumber,
+
+                    AccountType =
+                        accountType.Name,
+
+                    Balance =
+                        account.Balance,
+
+                    ReservedBalance =
+                        account.ReservedBalance,
+
+                    AvailableBalance =
+                        account.AvailableBalance,
+
+                    Currency =
+                        account.Currency,
+
+                    OpeningBalanceTransactionReference =
+                        openingTransaction?.Reference
+                };
+
+            await RecordAccountCreatedAudit(
+                account,
+                accountType.Name,
+                openingTransaction?.Reference);
+
             await _accountRepository
                 .CommitTransaction();
 
-            return new AccountResponseDto
-            {
-                Id = account.Id,
-
-                Name = account.Name,
-
-                AccountNumber =
-                    account.AccountNumber,
-
-                AccountType =
-                    accountType.Name,
-
-                Balance =
-                    account.Balance,
-                
-                 ReservedBalance =
-                    account.ReservedBalance,
-
-                AvailableBalance =
-                    account.AvailableBalance,
-
-                Currency =
-                    account.Currency,
-
-                OpeningBalanceTransactionReference =
-                    openingTransaction?.Reference
-            };
+            return response;
         }
         catch
         {
@@ -285,6 +299,71 @@ public class AccountService : IAccountService
 
             throw;
         }
+    }
+
+
+    private async Task RecordAccountCreatedAudit(
+        Account account,
+        string accountTypeName,
+        string? openingBalanceTransactionReference)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Created,
+
+                EntityType =
+                    AuditEntityTypes.Account,
+
+                EntityId =
+                    account.Id,
+
+                EntityReference =
+                    account.AccountNumber,
+
+                Summary =
+                    $"Account {account.Name} was created.",
+
+                AfterValues =
+                    SnapshotAccount(
+                        account,
+                        accountTypeName,
+                        openingBalanceTransactionReference),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Accounts",
+                        HasOpeningBalance =
+                            account.Balance > 0,
+                        OpeningBalanceTransactionReference =
+                            openingBalanceTransactionReference
+                    }
+            });
+    }
+
+    private static object SnapshotAccount(
+        Account account,
+        string accountTypeName,
+        string? openingBalanceTransactionReference)
+    {
+        return new
+        {
+            account.Id,
+            account.Name,
+            account.AccountNumber,
+            AccountType = accountTypeName,
+            account.AccountTypeId,
+            account.Balance,
+            account.ReservedBalance,
+            account.AvailableBalance,
+            account.Currency,
+            account.IsActive,
+            account.CreatedAt,
+            OpeningBalanceTransactionReference =
+                openingBalanceTransactionReference
+        };
     }
 
     public async Task<List<AccountResponseDto>>

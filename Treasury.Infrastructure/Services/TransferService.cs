@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Treasury.Application.DTOs.Transfers;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -30,60 +31,10 @@ public class TransferService : ITransferService
     
     private readonly IApprovalDecisionRepository
         _approvalDecisionRepository;
+    
+    private readonly IAuditLogService
+        _auditLogService;
 
-    private void EnsureDifferentReviewer(
-        Guid? requestedByUserId)
-    {
-        /*
-        * Older requests may not have requester metadata,
-        * so maker-checker applies when the ID is available.
-        */
-        if (requestedByUserId.HasValue &&
-            requestedByUserId.Value ==
-                _currentUserService.UserId)
-        {
-            throw new ForbiddenOperationException(
-                "You cannot approve or reject " +
-                "your own transfer request.");
-        }
-    }
-
-    private void ReserveFunds(
-        Account account,
-        decimal amount)
-    {
-        if (account.AvailableBalance < amount)
-        {
-            throw new BusinessRuleException(
-                "Insufficient available funds.");
-        }
-
-        account.ReservedBalance += amount;
-
-        account.ConcurrencyToken =
-            Guid.NewGuid();
-
-        _accountRepository.Update(account);
-    }
-
-    private void ReleaseReservedFunds(
-        Account account,
-        decimal amount)
-    {
-        if (account.ReservedBalance < amount)
-        {
-            throw new ConflictException(
-                "The account does not contain the " +
-                "expected transfer reservation.");
-        }
-
-        account.ReservedBalance -= amount;
-
-        account.ConcurrencyToken =
-            Guid.NewGuid();
-
-        _accountRepository.Update(account);
-    }
 
     public TransferService(
         IAccountRepository accountRepository,
@@ -94,7 +45,8 @@ public class TransferService : ITransferService
         ITreasuryTransactionRepository
             transactionRepository,
         IApprovalPolicyService approvalPolicyService,
-        IApprovalDecisionRepository approvalDecisionRepository)
+        IApprovalDecisionRepository approvalDecisionRepository,
+        IAuditLogService auditLogService)
     {
         _accountRepository = accountRepository;
         _ledgerRepository = ledgerRepository;
@@ -108,6 +60,8 @@ public class TransferService : ITransferService
             approvalPolicyService;
         _approvalDecisionRepository =
             approvalDecisionRepository;
+        _auditLogService =
+            auditLogService;
     }
 
     public async Task<TransferResponseDto>
@@ -288,6 +242,9 @@ public class TransferService : ITransferService
 
             EnsureDifferentReviewer(
                 request.RequestedByUserId);
+            
+            var beforeValues =
+                SnapshotTransferRequest(request);
 
             var currentUserId =
                 _currentUserService.UserId;
@@ -341,6 +298,12 @@ public class TransferService : ITransferService
 
                 await _accountRepository
                     .SaveChanges();
+
+                await RecordTransferApprovedAudit(
+                    beforeValues,
+                    request,
+                    isFinalApproval: false,
+                    transaction: null);
 
                 await _accountRepository
                     .CommitTransaction();
@@ -403,6 +366,12 @@ public class TransferService : ITransferService
             await _accountRepository
                 .SaveChanges();
 
+            await RecordTransferApprovedAudit(
+                beforeValues,
+                request,
+                isFinalApproval: true,
+                transaction);
+
             await _accountRepository
                 .CommitTransaction();
 
@@ -463,6 +432,9 @@ public class TransferService : ITransferService
 
             EnsureDifferentReviewer(
                 request.RequestedByUserId);
+            
+            var beforeValues =
+                SnapshotTransferRequest(request);
 
             var currentUserId =
                 _currentUserService.UserId;
@@ -536,6 +508,10 @@ public class TransferService : ITransferService
 
             await _accountRepository
                 .SaveChanges();
+
+            await RecordTransferRejectedAudit(
+                beforeValues,
+                request);
 
             await _accountRepository
                 .CommitTransaction();
@@ -809,6 +785,112 @@ public class TransferService : ITransferService
         return transaction;
     }
 
+    private async Task RecordTransferApprovedAudit(
+        object beforeValues,
+        TransferRequest request,
+        bool isFinalApproval,
+        TreasuryTransaction? transaction)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Approved,
+
+                EntityType =
+                    AuditEntityTypes.TransferRequest,
+
+                EntityId =
+                    request.Id,
+
+                EntityReference =
+                    request.Id.ToString(),
+
+                Summary =
+                    isFinalApproval
+                        ? $"Transfer request {request.Id} received final approval."
+                        : $"Transfer request {request.Id} received partial approval.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotTransferRequest(request),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Transfer Approvals",
+                        IsFinalApproval = isFinalApproval,
+                        request.ApprovalCount,
+                        request.RequiredApprovalCount,
+                        TransactionId = transaction?.Id,
+                        TransactionReference = transaction?.Reference
+                    }
+            });
+    }
+
+    private async Task RecordTransferRejectedAudit(
+        object beforeValues,
+        TransferRequest request)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Rejected,
+
+                EntityType =
+                    AuditEntityTypes.TransferRequest,
+
+                EntityId =
+                    request.Id,
+
+                EntityReference =
+                    request.Id.ToString(),
+
+                Summary =
+                    $"Transfer request {request.Id} was rejected.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotTransferRequest(request),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Transfer Approvals",
+                        request.RejectionReason,
+                        request.ApprovalCount,
+                        request.RequiredApprovalCount
+                    }
+            });
+    }
+
+    private static object SnapshotTransferRequest(
+        TransferRequest request)
+    {
+        return new
+        {
+            request.Id,
+            request.FromAccountId,
+            request.ToAccountId,
+            request.Amount,
+            request.Description,
+            request.Status,
+            request.RequestedByUserId,
+            request.ReviewedByUserId,
+            request.ReviewedAtUtc,
+            request.RejectionReason,
+            request.ApprovalCount,
+            request.RequiredApprovalCount,
+            request.CreatedAt,
+            request.ExpiresAtUtc
+        };
+    }
+
     private static TransferResponseDto
         CreateResponse(
             Guid fromAccountId,
@@ -883,6 +965,60 @@ public class TransferService : ITransferService
             Timestamp =
                 DateTime.UtcNow
         };
+    }
+
+    private void EnsureDifferentReviewer(
+        Guid? requestedByUserId)
+    {
+        /*
+        * Older requests may not have requester metadata,
+        * so maker-checker applies when the ID is available.
+        */
+        if (requestedByUserId.HasValue &&
+            requestedByUserId.Value ==
+                _currentUserService.UserId)
+        {
+            throw new ForbiddenOperationException(
+                "You cannot approve or reject " +
+                "your own transfer request.");
+        }
+    }
+
+    private void ReserveFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.AvailableBalance < amount)
+        {
+            throw new BusinessRuleException(
+                "Insufficient available funds.");
+        }
+
+        account.ReservedBalance += amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
+    }
+
+    private void ReleaseReservedFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.ReservedBalance < amount)
+        {
+            throw new ConflictException(
+                "The account does not contain the " +
+                "expected transfer reservation.");
+        }
+
+        account.ReservedBalance -= amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
     }
 
 }

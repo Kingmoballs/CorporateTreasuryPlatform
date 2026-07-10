@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.ApprovalPolicies;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -13,18 +14,23 @@ public class ApprovalPolicyService
     private readonly IApprovalPolicyRepository
         _policyRepository;
 
-    private readonly ICurrentUserService
-        _currentUserService;
+    private readonly ICurrentUserService _currentUserService;
+    
+    private readonly IAuditLogService _auditLogService;
 
     public ApprovalPolicyService(
         IApprovalPolicyRepository policyRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IAuditLogService auditLogService)
     {
         _policyRepository =
             policyRepository;
 
         _currentUserService =
             currentUserService;
+
+        _auditLogService = 
+            auditLogService;
     }
 
     public async Task<decimal> GetThreshold(
@@ -128,6 +134,14 @@ public class ApprovalPolicyService
                 operationType,
                 currency);
 
+        var isNewPolicy =
+            policy is null;
+
+        var beforeValues =
+            policy is null
+                ? null
+                : SnapshotPolicy(policy);
+
         if (policy is null)
         {
             policy = new ApprovalPolicy
@@ -204,7 +218,95 @@ public class ApprovalPolicyService
                 "by another administrator.");
         }
 
-        return Map(policy);
+        var response =
+            Map(policy);
+
+        await RecordApprovalPolicyAudit(
+            isNewPolicy,
+            beforeValues,
+            response);
+
+        return response;
+    }
+
+    private async Task RecordApprovalPolicyAudit(
+        bool isNewPolicy,
+        object? beforeValues,
+        ApprovalPolicyDto policy)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    isNewPolicy
+                        ? AuditActionTypes.Created
+                        : AuditActionTypes.Updated,
+
+                EntityType =
+                    AuditEntityTypes.ApprovalPolicy,
+
+                EntityId =
+                    policy.Id,
+
+                EntityReference =
+                    $"{policy.OperationType}-{policy.Currency}",
+
+                Summary =
+                    isNewPolicy
+                        ? $"Approval policy for {policy.OperationType} " +
+                        $"{policy.Currency} was created."
+                        : $"Approval policy for {policy.OperationType} " +
+                        $"{policy.Currency} was updated.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotPolicy(policy),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Approval Policies",
+                        policy.OperationType,
+                        policy.Currency
+                    }
+            });
+    }
+
+    private static object SnapshotPolicy(
+        ApprovalPolicy policy)
+    {
+        return new
+        {
+            policy.Id,
+            policy.OperationType,
+            policy.Currency,
+            policy.ThresholdAmount,
+            policy.RequiredApprovalCount,
+            policy.PendingRequestExpiryHours,
+            policy.IsActive,
+            policy.UpdatedByUserId,
+            policy.CreatedAtUtc,
+            policy.UpdatedAtUtc
+        };
+    }
+
+    private static object SnapshotPolicy(
+        ApprovalPolicyDto policy)
+    {
+        return new
+        {
+            policy.Id,
+            policy.OperationType,
+            policy.Currency,
+            policy.ThresholdAmount,
+            policy.RequiredApprovalCount,
+            policy.PendingRequestExpiryHours,
+            policy.IsActive,
+            policy.CreatedAtUtc,
+            policy.UpdatedAtUtc
+        };
     }
 
     private static string

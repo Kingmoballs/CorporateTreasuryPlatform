@@ -423,7 +423,10 @@ public class PendingRequestExpiryIntegrationTests
             CreateCurrentUser(userId),
             new TreasuryTransactionRepository(context),
             CreateApprovalPolicyService(),
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                CreateCurrentUser(userId)));
     }
 
     private static CashMovementService CreateCashMovementService(
@@ -437,7 +440,10 @@ public class PendingRequestExpiryIntegrationTests
             CreateCurrentUser(userId),
             new PaymentRequestRepository(context),
             CreateApprovalPolicyService(),
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                CreateCurrentUser(userId)));
     }
 
     private static ReversalService CreateReversalService(
@@ -455,7 +461,10 @@ public class PendingRequestExpiryIntegrationTests
             new TreasuryTransactionService(transactionRepository),
             CreateCurrentUser(userId),
             CreateApprovalPolicyService(),
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                CreateCurrentUser(userId)));
     }
 
     private static ICurrentUserService CreateCurrentUser(

@@ -1,4 +1,5 @@
 using Treasury.Application.Common.Exceptions;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.CashFlowForecasts;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
@@ -40,12 +41,16 @@ public class CashFlowForecastService
 
     private readonly ITreasuryTransactionRepository
         _transactionRepository;
+    
+    private readonly IAuditLogService
+        _auditLogService;
 
     public CashFlowForecastService(
         ICashFlowForecastRepository forecastRepository,
         IAccountRepository accountRepository,
         ICurrentUserService currentUserService,
-        ITreasuryTransactionRepository transactionRepository)
+        ITreasuryTransactionRepository transactionRepository,
+        IAuditLogService auditLogService)
     {
         _forecastRepository = forecastRepository;
 
@@ -54,6 +59,8 @@ public class CashFlowForecastService
         _currentUserService = currentUserService;
         
         _transactionRepository = transactionRepository;
+
+        _auditLogService = auditLogService;
     }
 
     public async Task<CashFlowForecastItemResponseDto>
@@ -157,8 +164,12 @@ public class CashFlowForecastService
             await _forecastRepository.GetById(
                 forecastItem.Id);
 
-        return MapItem(
-            savedItem ?? forecastItem);
+        var response =
+            MapItem(savedItem ?? forecastItem);
+
+        await RecordForecastCreatedAudit(response);
+
+        return response;
     }
 
     public async Task<CashFlowForecastItemResponseDto>
@@ -224,6 +235,9 @@ public class CashFlowForecastService
                 "Only active forecast items can be cancelled.");
         }
 
+        var beforeValues =
+            SnapshotForecast(forecastItem);
+
         forecastItem.Status =
             CashFlowForecastStatus.Cancelled;
 
@@ -247,8 +261,14 @@ public class CashFlowForecastService
         var savedItem =
             await _forecastRepository.GetById(id);
 
-        return MapItem(
-            savedItem ?? forecastItem);
+        var response =
+            MapItem(savedItem ?? forecastItem);
+
+        await RecordForecastCancelledAudit(
+            beforeValues,
+            response);
+
+        return response;
     }
 
     public async Task<CashFlowForecastItemResponseDto>
@@ -305,6 +325,9 @@ public class CashFlowForecastService
                 "been linked to another forecast item.");
         }
 
+        var beforeValues =
+            SnapshotForecast(forecastItem);
+
         forecastItem.Status =
             CashFlowForecastStatus.Realized;
 
@@ -328,8 +351,14 @@ public class CashFlowForecastService
         var savedItem =
             await _forecastRepository.GetById(id);
 
-        return MapItem(
-            savedItem ?? forecastItem);
+        var response =
+            MapItem(savedItem ?? forecastItem);
+
+        await RecordForecastRealizedAudit(
+            beforeValues,
+            response);
+
+        return response;
     }
 
     public async Task<CashFlowForecastReportDto>
@@ -907,7 +936,164 @@ public class CashFlowForecastService
         };
     }
 
-    
+    private async Task RecordForecastCreatedAudit(
+        CashFlowForecastItemResponseDto item)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Created,
+
+                EntityType =
+                    AuditEntityTypes.CashFlowForecastItem,
+
+                EntityId =
+                    item.Id,
+
+                EntityReference =
+                    item.Id.ToString(),
+
+                Summary =
+                    $"Cash flow forecast item {item.Direction} " +
+                    $"{item.Amount:N2} {item.Currency} was created.",
+
+                AfterValues =
+                    SnapshotForecast(item),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Cash Flow Forecasts"
+                    }
+            });
+    }
+
+    private async Task RecordForecastCancelledAudit(
+        object beforeValues,
+        CashFlowForecastItemResponseDto item)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Cancelled,
+
+                EntityType =
+                    AuditEntityTypes.CashFlowForecastItem,
+
+                EntityId =
+                    item.Id,
+
+                EntityReference =
+                    item.Id.ToString(),
+
+                Summary =
+                    $"Cash flow forecast item {item.Id} was cancelled.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotForecast(item),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Cash Flow Forecasts"
+                    }
+            });
+    }
+
+    private async Task RecordForecastRealizedAudit(
+        object beforeValues,
+        CashFlowForecastItemResponseDto item)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Realized,
+
+                EntityType =
+                    AuditEntityTypes.CashFlowForecastItem,
+
+                EntityId =
+                    item.Id,
+
+                EntityReference =
+                    item.Id.ToString(),
+
+                Summary =
+                    $"Cash flow forecast item {item.Id} was realized.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotForecast(item),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Cash Flow Forecasts",
+                        item.RealizedTreasuryTransactionId
+                    }
+            });
+    }
+
+    private static object SnapshotForecast(
+        CashFlowForecastItem item)
+    {
+        return new
+        {
+            item.Id,
+            item.AccountId,
+            item.Direction,
+            item.Amount,
+            item.Currency,
+            item.ExpectedDateUtc,
+            item.Category,
+            item.CounterpartyName,
+            item.Description,
+            item.SourceType,
+            item.Status,
+            item.CreatedByUserId,
+            item.CreatedAtUtc,
+            item.UpdatedAtUtc,
+            item.CancelledByUserId,
+            item.CancelledAtUtc,
+            item.RealizedTreasuryTransactionId,
+            item.RealizedAtUtc
+        };
+    }
+
+    private static object SnapshotForecast(
+        CashFlowForecastItemResponseDto item)
+    {
+        return new
+        {
+            item.Id,
+            item.AccountId,
+            item.AccountName,
+            item.Direction,
+            item.Amount,
+            item.Currency,
+            item.ExpectedDateUtc,
+            item.Category,
+            item.CounterpartyName,
+            item.Description,
+            item.SourceType,
+            item.Status,
+            item.CreatedByUserId,
+            item.CreatedAtUtc,
+            item.UpdatedAtUtc,
+            item.CancelledByUserId,
+            item.CancelledAtUtc,
+            item.RealizedTreasuryTransactionId,
+            item.RealizedAtUtc
+        };
+    }
 
     private sealed record ForecastPeriod(
         DateTime FromUtc,

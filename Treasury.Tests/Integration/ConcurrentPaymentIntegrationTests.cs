@@ -214,7 +214,10 @@ public class ConcurrentPaymentIntegrationTests
             currentUserService.Object,
             paymentRequestRepository,
             approvalPolicyService.Object,
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                currentUserService.Object));
     }
 
     private static CreateCashPaymentDto

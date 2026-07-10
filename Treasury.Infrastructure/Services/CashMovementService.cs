@@ -1,5 +1,6 @@
 using Treasury.Application.DTOs.CashMovements;
 using Treasury.Application.Interfaces;
+using Treasury.Application.DTOs.Audit;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Common;
 using Treasury.Shared.Constants;
@@ -32,55 +33,10 @@ public class CashMovementService
     private readonly IApprovalDecisionRepository
         _approvalDecisionRepository;
     
-    private void EnsureDifferentReviewer(
-        Guid requestedByUserId,
-        string requestType)
-    {
-        if (requestedByUserId ==
-            _currentUserService.UserId)
-        {
-            throw new ForbiddenOperationException(
-                $"You cannot approve or reject " +
-                $"your own {requestType} request.");
-        }
-    }
-
-    private void ReservePaymentFunds(
-        Account account,
-        decimal amount)
-    {
-        if (account.AvailableBalance < amount)
-        {
-            throw new BusinessRuleException(
-                "Insufficient available funds.");
-        }
-
-        account.ReservedBalance += amount;
-
-        account.ConcurrencyToken =
-            Guid.NewGuid();
-
-        _accountRepository.Update(account);
-    }
-
-    private void ReleasePaymentFunds(
-        Account account,
-        decimal amount)
-    {
-        if (account.ReservedBalance < amount)
-        {
-            throw new ConflictException(
-                "The expected payment reservation " +
-                "was not found.");
-        }
-
-        account.ReservedBalance -= amount;
-
-        account.ConcurrencyToken =
-            Guid.NewGuid();
-
-        _accountRepository.Update(account);
-    }
+    private readonly IAuditLogService
+        _auditLogService;
+    
+    
 
     public CashMovementService(
         IAccountRepository accountRepository,
@@ -90,7 +46,8 @@ public class CashMovementService
         ICurrentUserService currentUserService,
         IPaymentRequestRepository paymentRequestRepository,
         IApprovalPolicyService approvalPolicyService,
-        IApprovalDecisionRepository approvalDecisionRepository)
+        IApprovalDecisionRepository approvalDecisionRepository,
+        IAuditLogService auditLogService)
     {
         _accountRepository =
             accountRepository;
@@ -112,6 +69,9 @@ public class CashMovementService
 
         _approvalDecisionRepository =
             approvalDecisionRepository;
+        
+        _auditLogService =
+            auditLogService;
     }
 
     public async Task<CashMovementResponseDto>
@@ -612,6 +572,9 @@ public class CashMovementService
             EnsureDifferentReviewer(
                 request.RequestedByUserId,
                 "payment");
+            
+            var beforeValues =
+                SnapshotPaymentRequest(request);
 
             var currentUserId =
                 _currentUserService.UserId;
@@ -662,6 +625,12 @@ public class CashMovementService
                 await _accountRepository
                     .SaveChanges();
 
+                await RecordPaymentApprovedAudit(
+                    beforeValues,
+                    request,
+                    isFinalApproval: false,
+                    transaction: null);
+
                 await _accountRepository
                     .CommitTransaction();
 
@@ -710,6 +679,12 @@ public class CashMovementService
 
             await _accountRepository
                 .SaveChanges();
+
+            await RecordPaymentApprovedAudit(
+                beforeValues,
+                request,
+                isFinalApproval: true,
+                transaction);
 
             await _accountRepository
                 .CommitTransaction();
@@ -761,6 +736,9 @@ public class CashMovementService
             EnsureDifferentReviewer(
                 request.RequestedByUserId,
                 "payment");
+            
+            var beforeValues =
+                SnapshotPaymentRequest(request);
             
             var currentUserId =
                 _currentUserService.UserId;
@@ -833,6 +811,10 @@ public class CashMovementService
 
             await _paymentRequestRepository
                 .SaveChanges();
+            
+            await RecordPaymentRejectedAudit(
+                beforeValues,
+                request);
 
             await _accountRepository
                 .CommitTransaction();
@@ -858,6 +840,116 @@ public class CashMovementService
 
             throw;
         }
+    }
+
+    private async Task RecordPaymentApprovedAudit(
+        object beforeValues,
+        PaymentRequest request,
+        bool isFinalApproval,
+        TreasuryTransaction? transaction)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Approved,
+
+                EntityType =
+                    AuditEntityTypes.PaymentRequest,
+
+                EntityId =
+                    request.Id,
+
+                EntityReference =
+                    request.Id.ToString(),
+
+                Summary =
+                    isFinalApproval
+                        ? $"Payment request {request.Id} received final approval."
+                        : $"Payment request {request.Id} received partial approval.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotPaymentRequest(request),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Cash Payment Approvals",
+                        IsFinalApproval = isFinalApproval,
+                        request.ApprovalCount,
+                        request.RequiredApprovalCount,
+                        TransactionId = transaction?.Id,
+                        TransactionReference = transaction?.Reference
+                    }
+            });
+    }
+
+    private async Task RecordPaymentRejectedAudit(
+        object beforeValues,
+        PaymentRequest request)
+    {
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Rejected,
+
+                EntityType =
+                    AuditEntityTypes.PaymentRequest,
+
+                EntityId =
+                    request.Id,
+
+                EntityReference =
+                    request.Id.ToString(),
+
+                Summary =
+                    $"Payment request {request.Id} was rejected.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    SnapshotPaymentRequest(request),
+
+                Metadata =
+                    new
+                    {
+                        Module = "Cash Payment Approvals",
+                        request.RejectionReason,
+                        request.ApprovalCount,
+                        request.RequiredApprovalCount
+                    }
+            });
+    }
+
+    private static object SnapshotPaymentRequest(
+        PaymentRequest request)
+    {
+        return new
+        {
+            request.Id,
+            request.AccountId,
+            request.Amount,
+            request.Currency,
+            request.BeneficiaryName,
+            request.Category,
+            request.ExternalReference,
+            request.IdempotencyKey,
+            request.Description,
+            request.Status,
+            request.RequestedByUserId,
+            request.ReviewedByUserId,
+            request.ReviewedAtUtc,
+            request.RejectionReason,
+            request.ApprovalCount,
+            request.RequiredApprovalCount,
+            request.CreatedAtUtc,
+            request.ExpiresAtUtc
+        };
     }
 
     private async Task<Account>
@@ -1228,5 +1320,55 @@ public class CashMovementService
                 transaction.CompletedAtUtc
                 ?? transaction.CreatedAtUtc
         };
+    }
+
+    private void EnsureDifferentReviewer(
+        Guid requestedByUserId,
+        string requestType)
+    {
+        if (requestedByUserId ==
+            _currentUserService.UserId)
+        {
+            throw new ForbiddenOperationException(
+                $"You cannot approve or reject " +
+                $"your own {requestType} request.");
+        }
+    }
+
+    private void ReservePaymentFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.AvailableBalance < amount)
+        {
+            throw new BusinessRuleException(
+                "Insufficient available funds.");
+        }
+
+        account.ReservedBalance += amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
+    }
+
+    private void ReleasePaymentFunds(
+        Account account,
+        decimal amount)
+    {
+        if (account.ReservedBalance < amount)
+        {
+            throw new ConflictException(
+                "The expected payment reservation " +
+                "was not found.");
+        }
+
+        account.ReservedBalance -= amount;
+
+        account.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _accountRepository.Update(account);
     }
 }

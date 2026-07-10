@@ -92,7 +92,8 @@ public class TransferServiceTests
             currentUserService.Object,
             transactionRepository.Object,
             approvalPolicyService.Object,
-            approvalDecisionRepository.Object);
+            approvalDecisionRepository.Object,
+            Mock.Of<IAuditLogService>());
 
         // Act
         var exception =

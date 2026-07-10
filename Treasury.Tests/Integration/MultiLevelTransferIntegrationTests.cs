@@ -382,7 +382,11 @@ public class MultiLevelTransferIntegrationTests
             currentUser.Object,
             new TreasuryTransactionRepository(context),
             approvalPolicyService.Object,
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                currentUser.Object)
+            );
     }
 
     private static async Task<SeededData>

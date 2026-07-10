@@ -40,6 +40,10 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<CashFlowForecastItem> CashFlowForecastItems => Set<CashFlowForecastItem>();
 
+    public DbSet<FxRate> FxRates => Set<FxRate>();
+
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -57,6 +61,16 @@ public class TreasuryDbContext : DbContext
             throw new InvalidOperationException(
                 "Ledger entries are immutable and " +
                 "cannot be modified or deleted.");
+        }
+
+        var changedAuditLogs = ChangeTracker
+            .Entries<AuditLog>()
+            .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (changedAuditLogs)
+        {
+            throw new InvalidOperationException(
+                "Audit logs are immutable and cannot be modified or deleted.");
         }
 
         var changedCompletedTransactions =
@@ -773,6 +787,86 @@ public class TreasuryDbContext : DbContext
                     "'Payroll', 'Tax', 'Loan', 'Investment', 'Other')");
             });
         
+        var fxRate =
+            modelBuilder.Entity<FxRate>();
+
+        fxRate
+            .Property(rate =>
+                rate.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        fxRate
+            .HasOne(rate =>
+                rate.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(rate =>
+                rate.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        fxRate
+            .HasIndex(rate => new
+            {
+                rate.FromCurrency,
+                rate.ToCurrency,
+                rate.RateDateUtc
+            })
+            .IsUnique();
+
+        fxRate
+            .HasIndex(rate => new
+            {
+                rate.ToCurrency,
+                rate.RateDateUtc
+            });
+
+        fxRate
+            .Property(rate =>
+                rate.FromCurrency)
+            .HasMaxLength(3);
+
+        fxRate
+            .Property(rate =>
+                rate.ToCurrency)
+            .HasMaxLength(3);
+
+        fxRate
+            .Property(rate =>
+                rate.SourceType)
+            .HasMaxLength(50);
+
+        fxRate
+            .Property(rate =>
+                rate.SourceReference)
+            .HasMaxLength(200);
+
+        fxRate
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_FxRates_FromCurrency_Length",
+                    "char_length(\"FromCurrency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_FxRates_ToCurrency_Length",
+                    "char_length(\"ToCurrency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_FxRates_DifferentCurrencies",
+                    "\"FromCurrency\" <> \"ToCurrency\"");
+
+                table.HasCheckConstraint(
+                    "CK_FxRates_Rate_Positive",
+                    "\"Rate\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_FxRates_SourceType",
+                    "\"SourceType\" IN " +
+                    "('Manual', 'CentralBank', 'Bank', " +
+                    "'Market', 'Other')");
+            });
+        
         var approvalPolicy =
             modelBuilder.Entity<ApprovalPolicy>();
 
@@ -837,79 +931,79 @@ public class TreasuryDbContext : DbContext
                     "BETWEEN 1 AND 168");
             });
 
-            var approvalDecision =
+        var approvalDecision =
                 modelBuilder.Entity<ApprovalDecision>();
 
-            approvalDecision
-                .HasIndex(decision => new
-                {
-                    decision.TransferRequestId,
-                    decision.ApproverUserId
-                })
-                .IsUnique();
+        approvalDecision
+            .HasIndex(decision => new
+            {
+                decision.TransferRequestId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
 
-            approvalDecision
-                .HasIndex(decision => new
-                {
-                    decision.PaymentRequestId,
-                    decision.ApproverUserId
-                })
-                .IsUnique();
+        approvalDecision
+            .HasIndex(decision => new
+            {
+                decision.PaymentRequestId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
 
-            approvalDecision
-                .HasIndex(decision => new
-                {
-                    decision.ReversalRequestId,
-                    decision.ApproverUserId
-                })
-                .IsUnique();
+        approvalDecision
+            .HasIndex(decision => new
+            {
+                decision.ReversalRequestId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
 
-            approvalDecision
-                .HasOne<TransferRequest>()
-                .WithMany()
-                .HasForeignKey(decision =>
-                    decision.TransferRequestId)
-                .OnDelete(DeleteBehavior.Restrict);
+        approvalDecision
+            .HasOne<TransferRequest>()
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.TransferRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-            approvalDecision
-                .HasOne<PaymentRequest>()
-                .WithMany()
-                .HasForeignKey(decision =>
-                    decision.PaymentRequestId)
-                .OnDelete(DeleteBehavior.Restrict);
+        approvalDecision
+            .HasOne<PaymentRequest>()
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.PaymentRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-            approvalDecision
-                .HasOne<ReversalRequest>()
-                .WithMany()
-                .HasForeignKey(decision =>
-                    decision.ReversalRequestId)
-                .OnDelete(DeleteBehavior.Restrict);
+        approvalDecision
+            .HasOne<ReversalRequest>()
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.ReversalRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-            approvalDecision
-                .HasOne(decision =>
-                    decision.Approver)
-                .WithMany()
-                .HasForeignKey(decision =>
-                    decision.ApproverUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-            approvalDecision
-                .ToTable(table =>
-                {
-                    table.HasCheckConstraint(
-                        "CK_ApprovalDecisions_Decision",
-                        "\"Decision\" IN " +
-                        "('Approved', 'Rejected')");
+        approvalDecision
+            .HasOne(decision =>
+                decision.Approver)
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.ApproverUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        approvalDecision
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_ApprovalDecisions_Decision",
+                    "\"Decision\" IN " +
+                    "('Approved', 'Rejected')");
 
-                    /*
-                    * PostgreSQL num_nonnulls ensures a decision
-                    * belongs to exactly one request type.
-                    */
-                    table.HasCheckConstraint(
-                        "CK_ApprovalDecisions_OneRequest",
-                        "num_nonnulls(" +
-                        "\"TransferRequestId\", " +
-                        "\"PaymentRequestId\", " +
-                        "\"ReversalRequestId\") = 1");
-                });
+                /*
+                * PostgreSQL num_nonnulls ensures a decision
+                * belongs to exactly one request type.
+                */
+                table.HasCheckConstraint(
+                    "CK_ApprovalDecisions_OneRequest",
+                    "num_nonnulls(" +
+                    "\"TransferRequestId\", " +
+                    "\"PaymentRequestId\", " +
+                    "\"ReversalRequestId\") = 1");
+            });
     }
 }

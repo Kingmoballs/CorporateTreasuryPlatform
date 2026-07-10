@@ -77,7 +77,10 @@ public class CashReceiptIntegrationTests
                 currentUserService.Object,
                 paymentRequestRepository,
                 approvalPolicyService.Object,
-                new ApprovalDecisionRepository(context));
+                new ApprovalDecisionRepository(context),
+                new AuditLogService(
+                    new AuditLogRepository(context),
+                    currentUserService.Object));
 
         var dto = new CreateCashReceiptDto
         {

@@ -209,6 +209,21 @@ builder.Services.AddScoped<
     ICashFlowForecastService,
     CashFlowForecastService>();
 
+builder.Services.AddScoped<
+    IFxRateRepository,
+    FxRateRepository>();
+
+builder.Services.AddScoped<
+    IFxRateService,
+    FxRateService>();
+
+builder.Services.AddScoped<
+    IAuditLogRepository, 
+    AuditLogRepository>();
+builder.Services.AddScoped<
+    IAuditLogService, 
+    AuditLogService>();
+
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];
 

@@ -1,0 +1,18 @@
+namespace Treasury.Application.DTOs.Fx;
+
+public class CreateFxRateDto
+{
+    public string FromCurrency { get; set; } = string.Empty;
+
+    public string ToCurrency { get; set; } = string.Empty;
+
+    public decimal Rate { get; set; }
+
+    public DateTime RateDateUtc { get; set; }
+
+    public string SourceType { get; set; } = "Manual";
+
+    public string? SourceReference { get; set; }
+
+    public bool IsActive { get; set; } = true;
+}

@@ -669,7 +669,10 @@ public class FundReservationIntegrationTests
             currentUser.Object,
             paymentRequestRepository,
             approvalPolicyService.Object,
-            new ApprovalDecisionRepository(context));
+            new ApprovalDecisionRepository(context),
+            new AuditLogService(
+                new AuditLogRepository(context),
+                currentUser.Object));
     }
 
     private static CreateCashPaymentDto
