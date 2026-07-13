@@ -1,5 +1,8 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.BankStatements;
@@ -235,6 +238,55 @@ public class BankStatementService
     {
         var lines =
             ParseCsvLines(dto.CsvContent);
+
+        var importDto =
+            new CreateBankStatementImportDto
+            {
+                AccountId =
+                    dto.AccountId,
+
+                FileName =
+                    dto.FileName,
+
+                StatementReference =
+                    dto.StatementReference,
+
+                Currency =
+                    dto.Currency,
+
+                StatementFromUtc =
+                    dto.StatementFromUtc,
+
+                StatementToUtc =
+                    dto.StatementToUtc,
+
+                OpeningBalance =
+                    dto.OpeningBalance,
+
+                ClosingBalance =
+                    dto.ClosingBalance,
+
+                Lines =
+                    lines
+            };
+
+        return await ImportStatement(importDto);
+    }
+
+    public async Task<BankStatementImportResponseDto>
+        ImportStatementFromPdf(
+            CreateBankStatementPdfImportDto dto)
+    {
+        if (dto.PdfContent.Length == 0)
+        {
+            throw new BusinessRuleException(
+                "PDF content is required.");
+        }
+
+        var lines =
+            ParsePdfLines(
+                dto.PdfContent,
+                dto.Currency);
 
         var importDto =
             new CreateBankStatementImportDto
@@ -1696,6 +1748,206 @@ public class BankStatementService
         }
 
         return value.Trim();
+    }
+
+    private const string PdfDatePattern =
+        @"(?:\d{4}-\d{2}-\d{2}|\d{2}[/-]\d{2}[/-]\d{4}|\d{2}\s+[A-Za-z]{3,9}\s+\d{4}|\d{2}-[A-Za-z]{3,9}-\d{4})";
+
+    private const string PdfAmountPattern =
+        @"[+-]?\(?\d[\d,]*(?:\.\d{1,2})?\)?(?:CR|DR)?";
+
+    private static readonly Regex PdfTransactionLineRegex =
+        new(
+            @"^\s*(?<transactionDate>" + PdfDatePattern + @")\s+" +
+            @"(?:(?<valueDate>" + PdfDatePattern + @")\s+)?" +
+            @"(?<description>.+?)\s+" +
+            @"(?<amount>" + PdfAmountPattern + @")\s+" +
+            @"(?<balance>" + PdfAmountPattern + @")\s*$",
+            RegexOptions.IgnoreCase |
+            RegexOptions.Compiled);
+
+    private static List<CreateBankStatementLineDto> ParsePdfLines(
+        byte[] pdfContent,
+        string currency)
+    {
+        var statementCurrency =
+            NormalizeCurrency(currency);
+
+        var extractedText =
+            ExtractPdfText(pdfContent);
+
+        var physicalLines =
+            extractedText
+                .Split(
+                    ["\r\n", "\n"],
+                    StringSplitOptions.RemoveEmptyEntries)
+                .Select(line =>
+                    Regex.Replace(line.Trim(), @"\s+", " "))
+                .Where(line =>
+                    !string.IsNullOrWhiteSpace(line))
+                .ToList();
+
+        var parsedLines =
+            new List<CreateBankStatementLineDto>();
+
+        foreach (var line in physicalLines)
+        {
+            var match =
+                PdfTransactionLineRegex.Match(line);
+
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            parsedLines.Add(
+                new CreateBankStatementLineDto
+                {
+                    LineNumber =
+                        parsedLines.Count + 1,
+
+                    TransactionDateUtc =
+                        ParsePdfDate(
+                            match.Groups["transactionDate"].Value),
+
+                    ValueDateUtc =
+                        match.Groups["valueDate"].Success
+                            ? ParsePdfDate(
+                                match.Groups["valueDate"].Value)
+                            : null,
+
+                    Description =
+                        match.Groups["description"].Value.Trim(),
+
+                    BankReference =
+                        null,
+
+                    CounterpartyName =
+                        null,
+
+                    Amount =
+                        ParsePdfAmount(
+                            match.Groups["amount"].Value),
+
+                    Currency =
+                        statementCurrency,
+
+                    BalanceAfterTransaction =
+                        ParsePdfAmount(
+                            match.Groups["balance"].Value)
+                });
+        }
+
+        if (parsedLines.Count == 0)
+        {
+            throw new BusinessRuleException(
+                "No transaction lines could be read from the PDF. " +
+                "Ensure the PDF is text-based and each transaction line " +
+                "contains date, description, amount, and balance.");
+        }
+
+        return parsedLines;
+    }
+
+    private static string ExtractPdfText(
+        byte[] pdfContent)
+    {
+        using var stream =
+            new MemoryStream(pdfContent);
+
+        using var document =
+            PdfDocument.Open(stream);
+
+        var builder =
+            new StringBuilder();
+
+        foreach (var page in document.GetPages())
+        {
+            builder.AppendLine(
+                ContentOrderTextExtractor.GetText(page));
+        }
+
+        var text =
+            builder.ToString();
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new BusinessRuleException(
+                "No readable text was found in the PDF. " +
+                "Scanned PDFs require OCR and are not supported yet.");
+        }
+
+        return text;
+    }
+
+    private static DateTime ParsePdfDate(
+        string value)
+    {
+        string[] formats =
+        [
+            "yyyy-MM-dd",
+            "dd/MM/yyyy",
+            "dd-MM-yyyy",
+            "MM/dd/yyyy",
+            "MM-dd-yyyy",
+            "dd MMM yyyy",
+            "dd MMMM yyyy",
+            "dd-MMM-yyyy",
+            "dd-MMMM-yyyy"
+        ];
+
+        if (DateTime.TryParseExact(
+            value.Trim(),
+            formats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal |
+            DateTimeStyles.AdjustToUniversal,
+            out var result))
+        {
+            return result;
+        }
+
+        throw new BusinessRuleException(
+            $"PDF date '{value}' is not in a supported format.");
+    }
+
+    private static decimal ParsePdfAmount(
+        string value)
+    {
+        var normalized =
+            value.Trim();
+
+        var isNegative =
+            normalized.StartsWith("-") ||
+            normalized.StartsWith("(") ||
+            normalized.EndsWith(
+                "DR",
+                StringComparison.OrdinalIgnoreCase);
+
+        normalized =
+            normalized
+                .Replace(",", string.Empty)
+                .Replace("(", string.Empty)
+                .Replace(")", string.Empty)
+                .Replace("+", string.Empty)
+                .Replace("-", string.Empty)
+                .Replace("CR", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Replace("DR", string.Empty, StringComparison.OrdinalIgnoreCase)
+                .Trim();
+
+        if (!decimal.TryParse(
+            normalized,
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var amount))
+        {
+            throw new BusinessRuleException(
+                $"PDF amount '{value}' is not a valid amount.");
+        }
+
+        return isNegative
+            ? -amount
+            : amount;
     }
 
     private static int ParseRequiredInt(

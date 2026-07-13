@@ -87,6 +87,71 @@ public class BankStatementsController
         return Ok(result);
     }
 
+    [HttpPost("imports/pdf")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportStatementPdf(
+        [FromForm] BankStatementPdfUploadRequest request)
+    {
+        if (request.File is null ||
+            request.File.Length == 0)
+        {
+            return BadRequest(
+                "PDF file is required.");
+        }
+
+        var extension =
+            Path.GetExtension(request.File.FileName);
+
+        if (!string.Equals(
+            extension,
+            ".pdf",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(
+                "Only PDF files are allowed.");
+        }
+
+        await using var stream =
+            new MemoryStream();
+
+        await request.File.CopyToAsync(stream);
+
+        var result =
+            await _bankStatementService
+                .ImportStatementFromPdf(
+                    new CreateBankStatementPdfImportDto
+                    {
+                        AccountId =
+                            request.AccountId,
+
+                        FileName =
+                            request.File.FileName,
+
+                        PdfContent =
+                            stream.ToArray(),
+
+                        StatementReference =
+                            request.StatementReference,
+
+                        Currency =
+                            request.Currency,
+
+                        StatementFromUtc =
+                            request.StatementFromUtc,
+
+                        StatementToUtc =
+                            request.StatementToUtc,
+
+                        OpeningBalance =
+                            request.OpeningBalance,
+
+                        ClosingBalance =
+                            request.ClosingBalance
+                    });
+
+        return Ok(result);
+    }
+
     [HttpPost("imports")]
     public async Task<IActionResult> ImportStatement(
         CreateBankStatementImportDto dto)

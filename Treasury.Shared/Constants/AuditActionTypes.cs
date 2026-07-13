@@ -16,4 +16,6 @@ public static class AuditActionTypes
     public const string Imported = "Imported";
     public const string LoggedIn = "LoggedIn";
     public const string RoleChanged = "RoleChanged";
+    public const string Resolved = "Resolved";
+    public const string Dismissed = "Dismissed";
 }

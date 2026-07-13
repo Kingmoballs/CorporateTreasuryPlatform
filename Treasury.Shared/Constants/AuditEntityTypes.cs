@@ -16,5 +16,6 @@ public static class AuditEntityTypes
     public const string BankStatementLine = "BankStatementLine";
     public const string CashFlowForecastItem = "CashFlowForecastItem";
     public const string FxRate = "FxRate";
+    public const string TreasuryAlert = "TreasuryAlert";
     public const string System = "System";
 }

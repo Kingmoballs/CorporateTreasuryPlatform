@@ -220,9 +220,53 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IAuditLogRepository, 
     AuditLogRepository>();
+
 builder.Services.AddScoped<
     IAuditLogService, 
     AuditLogService>();
+
+builder.Services.AddScoped<
+    ITreasuryAlertRepository,
+    TreasuryAlertRepository>();
+
+builder.Services.AddScoped<
+    ITreasuryAlertService,
+    TreasuryAlertService>();
+
+builder.Services.AddScoped<
+    ITreasuryAlertMonitoringService,
+    TreasuryAlertMonitoringService>();
+
+builder.Services
+    .AddOptions<TreasuryAlertMonitoringWorkerOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            TreasuryAlertMonitoringWorkerOptions
+                .SectionName))
+    .Validate(
+        options =>
+            options.IntervalMinutes >= 1 &&
+            options.IntervalMinutes <= 1440,
+        "Treasury alert monitoring interval must be between 1 and 1440 minutes.")
+    .Validate(
+        options =>
+            options.ForecastDays >= 1 &&
+            options.ForecastDays <= 180,
+        "Forecast days must be between 1 and 180.")
+    .Validate(
+        options =>
+            options.PendingApprovalAgeHours >= 1 &&
+            options.PendingApprovalAgeHours <= 168,
+        "Pending approval age must be between 1 and 168 hours.")
+    .Validate(
+        options =>
+            options.ReconciliationLookbackDays >= 1 &&
+            options.ReconciliationLookbackDays <= 365,
+        "Reconciliation lookback days must be between 1 and 365.")
+    .ValidateOnStart();
+
+builder.Services.AddHostedService<
+    TreasuryAlertMonitoringWorker>();
 
 var jwtKey = builder.Configuration[
     "JwtSettings:SecretKey"];

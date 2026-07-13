@@ -43,4 +43,7 @@ public interface IBankStatementService
         
     Task<BankStatementImportResponseDto> ImportStatementFromCsv(
         CreateBankStatementCsvImportDto dto);
+
+    Task<BankStatementImportResponseDto> ImportStatementFromPdf(
+        CreateBankStatementPdfImportDto dto);
 }

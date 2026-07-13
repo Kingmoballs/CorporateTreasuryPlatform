@@ -44,6 +44,8 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    public DbSet<TreasuryAlert> TreasuryAlerts => Set<TreasuryAlert>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -865,6 +867,247 @@ public class TreasuryDbContext : DbContext
                     "\"SourceType\" IN " +
                     "('Manual', 'CentralBank', 'Bank', " +
                     "'Market', 'Other')");
+            });
+
+        
+        var auditLog =
+            modelBuilder.Entity<AuditLog>();
+
+        auditLog
+            .HasOne(log =>
+                log.ActorUser)
+            .WithMany()
+            .HasForeignKey(log =>
+                log.ActorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        auditLog
+            .HasIndex(log =>
+                log.OccurredAtUtc);
+
+        auditLog
+            .HasIndex(log => new
+            {
+                log.EntityType,
+                log.EntityId
+            });
+
+        auditLog
+            .HasIndex(log => new
+            {
+                log.ActorUserId,
+                log.OccurredAtUtc
+            });
+
+        auditLog
+            .HasIndex(log =>
+                log.Action);
+
+        auditLog
+            .Property(log =>
+                log.Action)
+            .HasMaxLength(50);
+
+        auditLog
+            .Property(log =>
+                log.EntityType)
+            .HasMaxLength(100);
+
+        auditLog
+            .Property(log =>
+                log.EntityReference)
+            .HasMaxLength(200);
+
+        auditLog
+            .Property(log =>
+                log.Summary)
+            .HasMaxLength(500);
+
+        auditLog
+            .Property(log =>
+                log.ActorEmail)
+            .HasMaxLength(200);
+
+        auditLog
+            .Property(log =>
+                log.ActorRole)
+            .HasMaxLength(100);
+
+        auditLog
+            .Property(log =>
+                log.IpAddress)
+            .HasMaxLength(100);
+
+        auditLog
+            .Property(log =>
+                log.UserAgent)
+            .HasMaxLength(500);
+
+        auditLog
+            .Property(log =>
+                log.BeforeValuesJson)
+            .HasColumnType("jsonb");
+
+        auditLog
+            .Property(log =>
+                log.AfterValuesJson)
+            .HasColumnType("jsonb");
+
+        auditLog
+            .Property(log =>
+                log.MetadataJson)
+            .HasColumnType("jsonb");
+
+        auditLog.ToTable(table =>
+        {
+            table.HasCheckConstraint(
+                "CK_AuditLogs_Action",
+                "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged')");
+
+            table.HasCheckConstraint(
+                "CK_AuditLogs_EntityType",
+                "\"EntityType\" IN ('User','Role','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','System')");
+        });
+
+        var treasuryAlert =
+            modelBuilder.Entity<TreasuryAlert>();
+
+        treasuryAlert
+            .Property(alert =>
+                alert.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        treasuryAlert
+            .HasOne(alert =>
+                alert.Account)
+            .WithMany()
+            .HasForeignKey(alert =>
+                alert.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        treasuryAlert
+            .HasOne(alert =>
+                alert.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(alert =>
+                alert.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        treasuryAlert
+            .HasOne(alert =>
+                alert.ClosedByUser)
+            .WithMany()
+            .HasForeignKey(alert =>
+                alert.ClosedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        treasuryAlert
+            .HasIndex(alert => new
+            {
+                alert.Status,
+                alert.Severity
+            });
+
+        treasuryAlert
+            .HasIndex(alert => new
+            {
+                alert.AlertType,
+                alert.Status
+            });
+
+        treasuryAlert
+            .HasIndex(alert =>
+                alert.CreatedAtUtc);
+
+        treasuryAlert
+            .HasIndex(alert =>
+                alert.AccountId);
+
+        treasuryAlert
+            .HasIndex(alert => new
+            {
+                alert.SourceEntityType,
+                alert.SourceEntityId
+            });
+
+        treasuryAlert
+            .Property(alert =>
+                alert.AlertType)
+            .HasMaxLength(100);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.Severity)
+            .HasMaxLength(50);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.Status)
+            .HasMaxLength(50);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.Title)
+            .HasMaxLength(200);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.Message)
+            .HasMaxLength(1000);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.Currency)
+            .HasMaxLength(3);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.SourceModule)
+            .HasMaxLength(100);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.SourceEntityType)
+            .HasMaxLength(100);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.SourceReference)
+            .HasMaxLength(200);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.ClosureNote)
+            .HasMaxLength(500);
+
+        treasuryAlert
+            .Property(alert =>
+                alert.MetadataJson)
+            .HasColumnType("jsonb");
+
+        treasuryAlert
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_TreasuryAlerts_Status",
+                    "\"Status\" IN ('Open', 'Resolved', 'Dismissed')");
+
+                table.HasCheckConstraint(
+                    "CK_TreasuryAlerts_Severity",
+                    "\"Severity\" IN ('Info', 'Warning', 'Critical')");
+
+                table.HasCheckConstraint(
+                    "CK_TreasuryAlerts_AlertType",
+                    "\"AlertType\" IN " +
+                    "('LowLiquidity', 'ForecastLiquidityGap', " +
+                    "'PendingApproval', 'ReconciliationException', " +
+                    "'FxExposure', 'AuditException', 'System')");
+
+                table.HasCheckConstraint(
+                    "CK_TreasuryAlerts_Currency_Length",
+                    "\"Currency\" IS NULL OR char_length(\"Currency\") = 3");
             });
         
         var approvalPolicy =
