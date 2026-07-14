@@ -1,7 +1,9 @@
+using System.Text;
 using System.Text.Json;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Application.DTOs.Exports;
 
 namespace Treasury.Infrastructure.Services;
 
@@ -85,6 +87,70 @@ public class AuditLogService : IAuditLogService
             PageSize = query.PageSize,
             TotalCount = result.TotalCount,
             TotalPages = (int)Math.Ceiling(result.TotalCount / (double)query.PageSize)
+        };
+    }
+
+    public async Task<CsvExportDto> ExportCsv(
+        AuditLogQueryDto query,
+        int maxRows = 5000)
+    {
+        if (query.FromUtc.HasValue &&
+            query.ToUtc.HasValue &&
+            query.FromUtc.Value > query.ToUtc.Value)
+        {
+            throw new ArgumentException(
+                "FromUtc cannot be later than ToUtc.");
+        }
+
+        if (maxRows < 1 || maxRows > 50000)
+        {
+            throw new ArgumentException(
+                "Max rows must be between 1 and 50000.");
+        }
+
+        var auditLogs =
+            await _auditLogRepository.GetForExport(
+                query,
+                maxRows);
+
+        var builder =
+            new StringBuilder();
+
+        builder.AppendLine(
+            "OccurredAtUtc,Action,EntityType,EntityId,EntityReference,Summary,ActorUserId,ActorEmail,ActorRole,IpAddress,UserAgent,BeforeValuesJson,AfterValuesJson,MetadataJson");
+
+        foreach (var log in auditLogs)
+        {
+            builder.AppendLine(
+                string.Join(
+                    ",",
+                    new[]
+                    {
+                        CsvExportHelper.Escape(log.OccurredAtUtc),
+                        CsvExportHelper.Escape(log.Action),
+                        CsvExportHelper.Escape(log.EntityType),
+                        CsvExportHelper.Escape(log.EntityId),
+                        CsvExportHelper.Escape(log.EntityReference),
+                        CsvExportHelper.Escape(log.Summary),
+                        CsvExportHelper.Escape(log.ActorUserId),
+                        CsvExportHelper.Escape(log.ActorEmail),
+                        CsvExportHelper.Escape(log.ActorRole),
+                        CsvExportHelper.Escape(log.IpAddress),
+                        CsvExportHelper.Escape(log.UserAgent),
+                        CsvExportHelper.Escape(log.BeforeValuesJson),
+                        CsvExportHelper.Escape(log.AfterValuesJson),
+                        CsvExportHelper.Escape(log.MetadataJson)
+                    }));
+        }
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"audit-logs-{DateTime.UtcNow:yyyyMMddHHmmss}.csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    builder.ToString())
         };
     }
 

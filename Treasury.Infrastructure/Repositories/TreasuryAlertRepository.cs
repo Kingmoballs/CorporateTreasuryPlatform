@@ -170,6 +170,73 @@ public class TreasuryAlertRepository : ITreasuryAlertRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<TreasuryAlert>> GetForExport(
+        TreasuryAlertQueryDto query,
+        int maxRows)
+    {
+        var alerts =
+            _context.TreasuryAlerts
+                .AsNoTracking()
+                .Include(alert =>
+                    alert.Account)
+                .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query.Status))
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.Status == query.Status);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.AlertType))
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.AlertType == query.AlertType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Severity))
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.Severity == query.Severity);
+        }
+
+        if (query.AccountId.HasValue)
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.AccountId == query.AccountId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Currency))
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.Currency == query.Currency);
+        }
+
+        if (query.FromUtc.HasValue)
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.CreatedAtUtc >= query.FromUtc.Value);
+        }
+
+        if (query.ToUtc.HasValue)
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.CreatedAtUtc <= query.ToUtc.Value);
+        }
+
+        return await alerts
+            .OrderByDescending(alert =>
+                alert.CreatedAtUtc)
+            .Take(maxRows)
+            .ToListAsync();
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();

@@ -22,6 +22,10 @@ public interface ITreasuryAlertRepository
     
     Task<IReadOnlyList<TreasuryAlert>> GetForSummary(
         TreasuryAlertSummaryQueryDto query);
+    
+    Task<IReadOnlyList<TreasuryAlert>> GetForExport(
+        TreasuryAlertQueryDto query,
+        int maxRows);
 
     Task SaveChanges();
 }

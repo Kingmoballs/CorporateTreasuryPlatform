@@ -63,32 +63,23 @@ public class TreasuryAlertsController : ControllerBase
             await _alertService.Search(
                 new TreasuryAlertQueryDto
                 {
-                    Status =
-                        status,
+                    Status = status,
 
-                    AlertType =
-                        alertType,
+                    AlertType = alertType,
 
-                    Severity =
-                        severity,
+                    Severity = severity,
 
-                    AccountId =
-                        accountId,
+                    AccountId = accountId,
 
-                    Currency =
-                        currency,
+                    Currency = currency,
 
-                    FromUtc =
-                        fromUtc,
+                    FromUtc = fromUtc,
 
-                    ToUtc =
-                        toUtc,
+                    ToUtc = toUtc,
 
-                    Page =
-                        page,
+                    Page = page,
 
-                    PageSize =
-                        pageSize
+                    PageSize = pageSize
                 });
 
         return Ok(result);
@@ -105,20 +96,53 @@ public class TreasuryAlertsController : ControllerBase
             await _alertService.GetSummary(
                 new TreasuryAlertSummaryQueryDto
                 {
-                    AccountId =
-                        accountId,
+                    AccountId = accountId,
 
-                    Currency =
-                        currency,
+                    Currency = currency,
 
-                    FromUtc =
-                        fromUtc,
+                    FromUtc = fromUtc,
 
-                    ToUtc =
-                        toUtc
+                    ToUtc = toUtc
                 });
 
         return Ok(result);
+    }
+
+    [HttpGet("export/csv")]
+    public async Task<IActionResult> ExportAlertsCsv(
+        [FromQuery] string? status,
+        [FromQuery] string? alertType,
+        [FromQuery] string? severity,
+        [FromQuery] Guid? accountId,
+        [FromQuery] string? currency,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] int maxRows = 5000)
+    {
+        var result =
+            await _alertService.ExportCsv(
+                new TreasuryAlertQueryDto
+                {
+                    Status = status,
+
+                    AlertType = alertType,
+
+                    Severity = severity,
+
+                    AccountId = accountId,
+
+                    Currency = currency,
+
+                    FromUtc = fromUtc,
+
+                    ToUtc = toUtc
+                },
+                maxRows);
+
+        return File(
+            result.Content,
+            result.ContentType,
+            result.FileName);
     }
 
     [HttpPost("{id}/resolve")]

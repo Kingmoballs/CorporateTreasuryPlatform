@@ -1,8 +1,10 @@
 using System.Text.Json;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.TreasuryAlerts;
+using Treasury.Application.DTOs.Exports;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -325,6 +327,103 @@ public class TreasuryAlertService : ITreasuryAlertService
                     .Take(5)
                     .Select(Map)
                     .ToList()
+        };
+    }
+
+    public async Task<CsvExportDto> ExportCsv(
+        TreasuryAlertQueryDto query,
+        int maxRows = 5000)
+    {
+        if (query.FromUtc.HasValue &&
+            query.ToUtc.HasValue &&
+            query.FromUtc.Value > query.ToUtc.Value)
+        {
+            throw new BusinessRuleException(
+                "Start date cannot be later than end date.");
+        }
+
+        if (maxRows < 1 || maxRows > 50000)
+        {
+            throw new BusinessRuleException(
+                "Max rows must be between 1 and 50000.");
+        }
+
+        query.Status =
+            string.IsNullOrWhiteSpace(query.Status)
+                ? null
+                : NormalizeAllowedValue(
+                    query.Status,
+                    AllowedStatuses,
+                    "Invalid alert status.");
+
+        query.AlertType =
+            string.IsNullOrWhiteSpace(query.AlertType)
+                ? null
+                : NormalizeAllowedValue(
+                    query.AlertType,
+                    AllowedAlertTypes,
+                    "Invalid alert type.");
+
+        query.Severity =
+            string.IsNullOrWhiteSpace(query.Severity)
+                ? null
+                : NormalizeAllowedValue(
+                    query.Severity,
+                    AllowedSeverities,
+                    "Invalid alert severity.");
+
+        query.Currency =
+            string.IsNullOrWhiteSpace(query.Currency)
+                ? null
+                : NormalizeCurrency(query.Currency);
+
+        var alerts =
+            await _alertRepository.GetForExport(
+                query,
+                maxRows);
+
+        var builder =
+            new StringBuilder();
+
+        builder.AppendLine(
+            "CreatedAtUtc,AlertType,Severity,Status,Title,Message,AccountId,AccountName,Currency,SourceModule,SourceEntityType,SourceEntityId,SourceReference,CreatedByUserId,ClosedByUserId,ClosedAtUtc,ClosureNote,MetadataJson");
+
+        foreach (var alert in alerts)
+        {
+            builder.AppendLine(
+                string.Join(
+                    ",",
+                    new[]
+                    {
+                        CsvExportHelper.Escape(alert.CreatedAtUtc),
+                        CsvExportHelper.Escape(alert.AlertType),
+                        CsvExportHelper.Escape(alert.Severity),
+                        CsvExportHelper.Escape(alert.Status),
+                        CsvExportHelper.Escape(alert.Title),
+                        CsvExportHelper.Escape(alert.Message),
+                        CsvExportHelper.Escape(alert.AccountId),
+                        CsvExportHelper.Escape(alert.Account?.Name),
+                        CsvExportHelper.Escape(alert.Currency),
+                        CsvExportHelper.Escape(alert.SourceModule),
+                        CsvExportHelper.Escape(alert.SourceEntityType),
+                        CsvExportHelper.Escape(alert.SourceEntityId),
+                        CsvExportHelper.Escape(alert.SourceReference),
+                        CsvExportHelper.Escape(alert.CreatedByUserId),
+                        CsvExportHelper.Escape(alert.ClosedByUserId),
+                        CsvExportHelper.Escape(alert.ClosedAtUtc),
+                        CsvExportHelper.Escape(alert.ClosureNote),
+                        CsvExportHelper.Escape(alert.MetadataJson)
+                    }));
+        }
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"treasury-alerts-{DateTime.UtcNow:yyyyMMddHHmmss}.csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    builder.ToString())
         };
     }
 

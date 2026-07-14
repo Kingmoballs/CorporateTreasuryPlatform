@@ -43,4 +43,44 @@ public class AuditLogsController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("export/csv")]
+    public async Task<IActionResult> ExportAuditLogsCsv(
+        [FromQuery] Guid? actorUserId,
+        [FromQuery] string? action,
+        [FromQuery] string? entityType,
+        [FromQuery] Guid? entityId,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] int maxRows = 5000)
+    {
+        var result =
+            await _auditLogService.ExportCsv(
+                new AuditLogQueryDto
+                {
+                    ActorUserId =
+                        actorUserId,
+
+                    Action =
+                        action,
+
+                    EntityType =
+                        entityType,
+
+                    EntityId =
+                        entityId,
+
+                    FromUtc =
+                        fromUtc,
+
+                    ToUtc =
+                        toUtc
+                },
+                maxRows);
+
+        return File(
+            result.Content,
+            result.ContentType,
+            result.FileName);
+    }
 }

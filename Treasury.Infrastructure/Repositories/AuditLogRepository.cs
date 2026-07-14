@@ -71,6 +71,64 @@ public class AuditLogRepository : IAuditLogRepository
         return (items, totalCount);
     }
 
+    public async Task<IReadOnlyList<AuditLog>> GetForExport(
+        AuditLogQueryDto query,
+        int maxRows)
+    {
+        var auditLogs =
+            _context.AuditLogs
+                .AsNoTracking()
+                .AsQueryable();
+
+        if (query.ActorUserId.HasValue)
+        {
+            auditLogs =
+                auditLogs.Where(log =>
+                    log.ActorUserId == query.ActorUserId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Action))
+        {
+            auditLogs =
+                auditLogs.Where(log =>
+                    log.Action == query.Action);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.EntityType))
+        {
+            auditLogs =
+                auditLogs.Where(log =>
+                    log.EntityType == query.EntityType);
+        }
+
+        if (query.EntityId.HasValue)
+        {
+            auditLogs =
+                auditLogs.Where(log =>
+                    log.EntityId == query.EntityId.Value);
+        }
+
+        if (query.FromUtc.HasValue)
+        {
+            auditLogs =
+                auditLogs.Where(log =>
+                    log.OccurredAtUtc >= query.FromUtc.Value);
+        }
+
+        if (query.ToUtc.HasValue)
+        {
+            auditLogs =
+                auditLogs.Where(log =>
+                    log.OccurredAtUtc <= query.ToUtc.Value);
+        }
+
+        return await auditLogs
+            .OrderByDescending(log =>
+                log.OccurredAtUtc)
+            .Take(maxRows)
+            .ToListAsync();
+    }
+
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();

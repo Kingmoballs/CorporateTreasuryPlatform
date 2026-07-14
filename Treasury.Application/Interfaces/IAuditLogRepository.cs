@@ -10,5 +10,9 @@ public interface IAuditLogRepository
     Task<(IReadOnlyList<AuditLog> Items, int TotalCount)> Search(
         AuditLogQueryDto query);
 
+    Task<IReadOnlyList<AuditLog>> GetForExport(
+        AuditLogQueryDto query,
+        int maxRows);
+
     Task SaveChanges();
 }
