@@ -16,4 +16,7 @@ public static class TransactionTypes
     
     public const string Reversal =
         "Reversal";
+    
+    public const string InvestmentPlacement =
+        "InvestmentPlacement";
 }

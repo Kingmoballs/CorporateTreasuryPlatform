@@ -10,4 +10,7 @@ public static class ApprovalOperationTypes
 
     public const string TransactionReversal =
         "TransactionReversal";
+    
+    public const string InvestmentPlacement =
+        "InvestmentPlacement";
 }

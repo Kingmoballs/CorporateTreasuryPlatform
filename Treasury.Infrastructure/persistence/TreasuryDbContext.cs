@@ -46,6 +46,8 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<TreasuryAlert> TreasuryAlerts => Set<TreasuryAlert>();
 
+    public DbSet<InvestmentPlacement> InvestmentPlacements => Set<InvestmentPlacement>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -962,11 +964,11 @@ public class TreasuryDbContext : DbContext
         {
             table.HasCheckConstraint(
                 "CK_AuditLogs_Action",
-                "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged')");
+                "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Activated','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged')");
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
-                "\"EntityType\" IN ('User','Role','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','System')");
+                "\"EntityType\" IN ('User','Role','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','System')");
         });
 
         var treasuryAlert =
@@ -1110,6 +1112,241 @@ public class TreasuryDbContext : DbContext
                     "\"Currency\" IS NULL OR char_length(\"Currency\") = 3");
             });
         
+        var investmentPlacement =
+            modelBuilder.Entity<InvestmentPlacement>();
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.Reference)
+            .IsUnique();
+
+        investmentPlacement
+            .HasIndex(placement => new
+            {
+                placement.Status,
+                placement.MaturityDateUtc
+            });
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.SourceAccountId);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.SourceAccount)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.SourceAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.CancelledByUser)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.CancelledByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.Reference)
+            .HasMaxLength(50);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.InvestmentType)
+            .HasMaxLength(50);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.InstitutionName)
+            .HasMaxLength(200);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.Currency)
+            .HasMaxLength(3);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.Status)
+            .HasMaxLength(50)
+            .HasDefaultValue("Draft");
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ExternalReference)
+            .HasMaxLength(100);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.Notes)
+            .HasMaxLength(1000);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.CancellationReason)
+            .HasMaxLength(500);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.PrincipalAmount)
+            .HasPrecision(18, 2);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.AnnualInterestRate)
+            .HasPrecision(9, 6);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ExpectedInterestAmount)
+            .HasPrecision(18, 2);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ExpectedMaturityAmount)
+            .HasPrecision(18, 2);
+        
+        investmentPlacement
+            .HasOne(placement =>
+                placement.FundingTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.FundingTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.MaturityForecastItem)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.MaturityForecastItemId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.ActivatedByUser)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.ActivatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.ActivationIdempotencyKey)
+            .IsUnique();
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.FundingTreasuryTransactionId)
+            .IsUnique();
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.MaturityForecastItemId)
+            .IsUnique();
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ActivationIdempotencyKey)
+            .HasMaxLength(100);
+        
+        investmentPlacement
+            .HasOne(placement =>
+                placement.ActivationRequestedByUser)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.ActivationRequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.ActivationRejectedByUser)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.ActivationRejectedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasIndex(placement => new
+            {
+                placement.Status,
+                placement.ActivationExpiresAtUtc
+            });
+
+        investmentPlacement
+            .Property(placement =>
+                placement.RequiredApprovalCount)
+            .HasDefaultValue(0);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ApprovalCount)
+            .HasDefaultValue(0);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ActivationRejectionReason)
+            .HasMaxLength(500);
+
+        investmentPlacement
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_PrincipalAmount_Positive",
+                    "\"PrincipalAmount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_InterestRate",
+                    "\"AnnualInterestRate\" BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_DayCountBasis",
+                    "\"DayCountBasis\" IN (360, 365)");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_MaturityDate",
+                    "\"MaturityDateUtc\" > \"StartDateUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_Currency_Length",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_InvestmentType",
+                    "\"InvestmentType\" IN ('FixedDeposit')");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_Status",
+                    "\"Status\" IN " +
+                    "('Draft', 'PendingActivation', 'Active', " +
+                    "'Matured', 'Redeemed', 'ActivationRejected', " +
+                    "'ActivationExpired', 'Cancelled')");
+                
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_ApprovalCounts",
+                    "\"RequiredApprovalCount\" BETWEEN 0 AND 5 " +
+                    "AND \"ApprovalCount\" >= 0 " +
+                    "AND \"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
+            });
+        
         var approvalPolicy =
             modelBuilder.Entity<ApprovalPolicy>();
 
@@ -1161,7 +1398,8 @@ public class TreasuryDbContext : DbContext
                     "\"OperationType\" IN " +
                     "('InternalTransfer', " +
                     "'CashPayment', " +
-                    "'TransactionReversal')");
+                    "'TransactionReversal', " +
+                    "'InvestmentPlacement')");
                 
                 table.HasCheckConstraint(
                     "CK_ApprovalPolicies_RequiredApprovalCount",
@@ -1229,6 +1467,22 @@ public class TreasuryDbContext : DbContext
             .HasForeignKey(decision =>
                 decision.ApproverUserId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        approvalDecision
+            .HasIndex(decision => new
+            {
+                decision.InvestmentPlacementId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
+
+        approvalDecision
+            .HasOne<InvestmentPlacement>()
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.InvestmentPlacementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         approvalDecision
             .ToTable(table =>
             {

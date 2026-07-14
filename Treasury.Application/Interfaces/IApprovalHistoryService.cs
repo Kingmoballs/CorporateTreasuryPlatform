@@ -12,4 +12,8 @@ public interface IApprovalHistoryService
 
     Task<List<ApprovalDecisionDto>>
         GetReversalHistory(Guid requestId);
+    
+    Task<List<ApprovalDecisionDto>>
+        GetInvestmentPlacementHistory(
+            Guid investmentPlacementId);
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260714122748_AddInvestmentPlacementActivation")]
+    partial class AddInvestmentPlacementActivation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -119,9 +122,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("InvestmentPlacementId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("PaymentRequestId")
                         .HasColumnType("uuid");
 
@@ -134,9 +134,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ApproverUserId");
-
-                    b.HasIndex("InvestmentPlacementId", "ApproverUserId")
-                        .IsUnique();
 
                     b.HasIndex("PaymentRequestId", "ApproverUserId")
                         .IsUnique();
@@ -211,7 +208,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_ApprovalPolicies_Currency", "char_length(\"Currency\") = 3");
 
-                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment', 'TransactionReversal', 'InvestmentPlacement')");
+                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment', 'TransactionReversal')");
 
                             t.HasCheckConstraint("CK_ApprovalPolicies_PendingRequestExpiryHours", "\"PendingRequestExpiryHours\" BETWEEN 1 AND 168");
 
@@ -635,37 +632,13 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ActivatedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("ActivationExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("ActivationIdempotencyKey")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<DateTime?>("ActivationRejectedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ActivationRejectedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ActivationRejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime?>("ActivationRequestedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ActivationRequestedByUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("AnnualInterestRate")
                         .HasPrecision(9, 6)
                         .HasColumnType("numeric(9,6)");
-
-                    b.Property<int>("ApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
@@ -741,11 +714,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<int>("RequiredApprovalCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
                     b.Property<Guid>("SourceAccountId")
                         .HasColumnType("uuid");
 
@@ -769,10 +737,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("ActivationIdempotencyKey")
                         .IsUnique();
 
-                    b.HasIndex("ActivationRejectedByUserId");
-
-                    b.HasIndex("ActivationRequestedByUserId");
-
                     b.HasIndex("CancelledByUserId");
 
                     b.HasIndex("CreatedByUserId");
@@ -788,14 +752,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SourceAccountId");
 
-                    b.HasIndex("Status", "ActivationExpiresAtUtc");
-
                     b.HasIndex("Status", "MaturityDateUtc");
 
                     b.ToTable("InvestmentPlacements", t =>
                         {
-                            t.HasCheckConstraint("CK_InvestmentPlacements_ApprovalCounts", "\"RequiredApprovalCount\" BETWEEN 0 AND 5 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
-
                             t.HasCheckConstraint("CK_InvestmentPlacements_Currency_Length", "char_length(\"Currency\") = 3");
 
                             t.HasCheckConstraint("CK_InvestmentPlacements_DayCountBasis", "\"DayCountBasis\" IN (360, 365)");
@@ -808,7 +768,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_InvestmentPlacements_PrincipalAmount_Positive", "\"PrincipalAmount\" > 0");
 
-                            t.HasCheckConstraint("CK_InvestmentPlacements_Status", "\"Status\" IN ('Draft', 'PendingActivation', 'Active', 'Matured', 'Redeemed', 'ActivationRejected', 'ActivationExpired', 'Cancelled')");
+                            t.HasCheckConstraint("CK_InvestmentPlacements_Status", "\"Status\" IN ('Draft', 'Active', 'Matured', 'Redeemed', 'Cancelled')");
                         });
                 });
 
@@ -1383,11 +1343,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.InvestmentPlacement", null)
-                        .WithMany()
-                        .HasForeignKey("InvestmentPlacementId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Treasury.Domain.Entities.PaymentRequest", null)
                         .WithMany()
                         .HasForeignKey("PaymentRequestId")
@@ -1523,16 +1478,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ActivatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Treasury.Domain.Entities.User", "ActivationRejectedByUser")
-                        .WithMany()
-                        .HasForeignKey("ActivationRejectedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.User", "ActivationRequestedByUser")
-                        .WithMany()
-                        .HasForeignKey("ActivationRequestedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Treasury.Domain.Entities.User", "CancelledByUser")
                         .WithMany()
                         .HasForeignKey("CancelledByUserId")
@@ -1560,10 +1505,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ActivatedByUser");
-
-                    b.Navigation("ActivationRejectedByUser");
-
-                    b.Navigation("ActivationRequestedByUser");
 
                     b.Navigation("CancelledByUser");
 

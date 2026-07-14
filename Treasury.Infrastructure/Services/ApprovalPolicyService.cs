@@ -343,6 +343,16 @@ public class ApprovalPolicyService
                 .TransactionReversal;
         }
 
+        if (string.Equals(
+                operationType,
+                ApprovalOperationTypes
+                    .InvestmentPlacement,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return ApprovalOperationTypes
+                .InvestmentPlacement;
+        }
+
         throw new RequestValidationException(
             "Unsupported approval operation type.");
     }

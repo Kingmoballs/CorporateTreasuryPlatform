@@ -52,4 +52,17 @@ public class ApprovalHistoryController
             await _historyService
                 .GetReversalHistory(requestId));
     }
+
+    [HttpGet("investment-placements/{placementId:guid}")]
+    public async Task<IActionResult>
+        GetInvestmentPlacementHistory(
+            Guid placementId)
+    {
+        var result =
+            await _historyService
+                .GetInvestmentPlacementHistory(
+                    placementId);
+
+        return Ok(result);
+    }
 }

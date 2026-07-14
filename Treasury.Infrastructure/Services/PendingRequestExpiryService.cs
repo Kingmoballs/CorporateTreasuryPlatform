@@ -74,6 +74,21 @@ public class PendingRequestExpiryService
                         request.ExpiresAtUtc)
                     .Take(BatchSize)
                     .ToListAsync(cancellationToken);
+            
+            var investmentPlacements =
+                await _context.InvestmentPlacements
+                    .Where(placement =>
+                        placement.Status ==
+                            InvestmentPlacementStatuses
+                                .PendingActivation &&
+                        placement.ActivationExpiresAtUtc
+                            .HasValue &&
+                        placement.ActivationExpiresAtUtc.Value <=
+                            processedAtUtc)
+                    .OrderBy(placement =>
+                        placement.ActivationExpiresAtUtc)
+                    .Take(BatchSize)
+                    .ToListAsync(cancellationToken);
 
             /*
              * Transfer and payment requests hold account
@@ -86,6 +101,9 @@ public class PendingRequestExpiryService
                     .Concat(
                         payments.Select(request =>
                             request.AccountId))
+                    .Concat(
+                        investmentPlacements.Select(placement =>
+                            placement.SourceAccountId))
                     .Distinct()
                     .ToList();
 
@@ -154,6 +172,33 @@ public class PendingRequestExpiryService
                     Guid.NewGuid();
             }
 
+            foreach (var placement in investmentPlacements)
+            {
+                if (!accounts.TryGetValue(
+                        placement.SourceAccountId,
+                        out var account))
+                {
+                    throw new ConflictException(
+                        "The source account for an expired " +
+                        "investment activation was not found.");
+                }
+
+                ReleaseReservation(
+                    account,
+                    placement.PrincipalAmount,
+                    "investment activation");
+
+                placement.Status =
+                    InvestmentPlacementStatuses
+                        .ActivationExpired;
+
+                placement.UpdatedAtUtc =
+                    processedAtUtc;
+
+                placement.ConcurrencyToken =
+                    Guid.NewGuid();
+            }
+
             await _context.SaveChangesAsync(
                 cancellationToken);
 
@@ -172,7 +217,10 @@ public class PendingRequestExpiryService
                     payments.Count,
 
                 ExpiredReversalCount =
-                    reversals.Count
+                    reversals.Count,
+                
+                ExpiredInvestmentPlacementCount =
+                    investmentPlacements.Count
             };
         }
         catch (DbUpdateConcurrencyException)

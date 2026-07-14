@@ -42,6 +42,16 @@ public class ApprovalHistoryService
                 .GetForReversal(requestId));
     }
 
+    public async Task<List<ApprovalDecisionDto>>
+        GetInvestmentPlacementHistory(
+            Guid investmentPlacementId)
+    {
+        return Map(
+            await _decisionRepository
+                .GetForInvestmentPlacement(
+                    investmentPlacementId));
+    }
+
     private static List<ApprovalDecisionDto>
         Map(IEnumerable<ApprovalDecision> decisions)
     {

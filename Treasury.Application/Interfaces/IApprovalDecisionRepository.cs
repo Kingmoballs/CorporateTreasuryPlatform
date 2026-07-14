@@ -26,4 +26,12 @@ public interface IApprovalDecisionRepository
 
     Task<List<ApprovalDecision>>
         GetForReversal(Guid reversalRequestId);
+
+    Task<bool> HasInvestmentPlacementDecision(
+        Guid investmentPlacementId,
+        Guid approverUserId);
+
+    Task<List<ApprovalDecision>>
+        GetForInvestmentPlacement(
+            Guid investmentPlacementId);
 }

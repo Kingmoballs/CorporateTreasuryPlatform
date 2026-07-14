@@ -210,6 +210,14 @@ builder.Services.AddScoped<
     CashFlowForecastService>();
 
 builder.Services.AddScoped<
+    IInvestmentPlacementRepository,
+    InvestmentPlacementRepository>();
+
+builder.Services.AddScoped<
+    IInvestmentPlacementService,
+    InvestmentPlacementService>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 

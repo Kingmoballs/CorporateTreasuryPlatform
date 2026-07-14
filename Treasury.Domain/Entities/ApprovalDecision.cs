@@ -10,6 +10,8 @@ public class ApprovalDecision
 
     public Guid? ReversalRequestId { get; set; }
 
+    public Guid? InvestmentPlacementId { get; set; }
+
     public Guid ApproverUserId { get; set; }
 
     public User Approver { get; set; }

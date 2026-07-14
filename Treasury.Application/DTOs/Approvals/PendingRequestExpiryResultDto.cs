@@ -13,5 +13,9 @@ public class PendingRequestExpiryResultDto
     public int TotalExpiredCount =>
         ExpiredTransferCount +
         ExpiredPaymentCount +
-        ExpiredReversalCount;
+        ExpiredReversalCount +
+        ExpiredInvestmentPlacementCount;
+    
+    public int ExpiredInvestmentPlacementCount
+        { get; set; }
 }

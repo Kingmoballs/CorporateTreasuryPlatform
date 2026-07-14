@@ -18,4 +18,5 @@ public static class AuditActionTypes
     public const string RoleChanged = "RoleChanged";
     public const string Resolved = "Resolved";
     public const string Dismissed = "Dismissed";
+    public const string Activated = "Activated";
 }
