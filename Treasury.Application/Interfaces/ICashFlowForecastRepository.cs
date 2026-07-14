@@ -13,6 +13,12 @@ public interface ICashFlowForecastRepository
         string? currency,
         DateTime fromUtc,
         DateTime toUtc);
+    
+    Task<List<CashFlowForecastItem>> GetForVarianceReport(
+        Guid? accountId,
+        string currency,
+        DateTime fromUtc,
+        DateTime toUtc);
 
     void Update(CashFlowForecastItem forecastItem);
 

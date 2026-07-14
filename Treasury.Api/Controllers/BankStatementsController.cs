@@ -207,6 +207,34 @@ public class BankStatementsController
         return Ok(result);
     }
 
+    [HttpGet("imports/{id}/exceptions/export/csv")]
+    public async Task<IActionResult> ExportExceptionReportCsv(
+        Guid id)
+    {
+        var export =
+            await _bankStatementService
+                .ExportExceptionReportCsv(id);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
+
+    [HttpGet("imports/{id}/book-exceptions/export/csv")]
+    public async Task<IActionResult> ExportBookSideExceptionReportCsv(
+        Guid id)
+    {
+        var export =
+            await _bankStatementService
+                .ExportBookSideExceptionReportCsv(id);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
+
     [HttpPost("imports/{id}/auto-match")]
     public async Task<IActionResult> AutoMatchImport(
         Guid id,

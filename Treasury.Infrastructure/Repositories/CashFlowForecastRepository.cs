@@ -79,6 +79,44 @@ public class CashFlowForecastRepository
             .ToListAsync();
     }
 
+    public async Task<List<CashFlowForecastItem>> GetForVarianceReport(
+        Guid? accountId,
+        string currency,
+        DateTime fromUtc,
+        DateTime toUtc)
+    {
+        var normalizedCurrency =
+            currency.Trim().ToUpperInvariant();
+
+        var query =
+            _context.CashFlowForecastItems
+                .AsNoTracking()
+                .Include(item =>
+                    item.Account)
+                .Where(item =>
+                    item.Status !=
+                    CashFlowForecastStatus.Cancelled)
+                .Where(item =>
+                    item.Currency == normalizedCurrency)
+                .Where(item =>
+                    item.ExpectedDateUtc >= fromUtc &&
+                    item.ExpectedDateUtc <= toUtc);
+
+        if (accountId.HasValue)
+        {
+            query =
+                query.Where(item =>
+                    item.AccountId == accountId.Value);
+        }
+
+        return await query
+            .OrderBy(item =>
+                item.ExpectedDateUtc)
+            .ThenBy(item =>
+                item.Category)
+            .ToListAsync();
+    }
+
     public void Update(
         CashFlowForecastItem forecastItem)
     {

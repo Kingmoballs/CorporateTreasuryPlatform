@@ -55,4 +55,21 @@ public class TreasuryReportingController
 
         return Ok(result);
     }
+
+    [HttpGet("liquidity/export/csv")]
+    public async Task<IActionResult> ExportLiquidityReportCsv(
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc)
+    {
+        var export =
+            await _reportingService
+                .ExportLiquidityReportCsv(
+                    fromUtc,
+                    toUtc);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
 }

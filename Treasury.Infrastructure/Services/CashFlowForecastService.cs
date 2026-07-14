@@ -1,4 +1,6 @@
+using System.Text;
 using Treasury.Application.Common.Exceptions;
+using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.CashFlowForecasts;
 using Treasury.Application.Interfaces;
@@ -504,6 +506,281 @@ public class CashFlowForecastService
         };
     }
 
+    public async Task<CashFlowForecastVarianceReportDto>
+        GetVarianceReport(
+            CashFlowForecastVarianceQueryDto query)
+    {
+        var normalizedPeriod =
+            NormalizeForecastPeriod(
+                query.FromUtc,
+                query.ToUtc);
+
+        Account? account =
+            null;
+
+        string normalizedCurrency;
+
+        if (query.AccountId.HasValue)
+        {
+            account =
+                await _accountRepository.GetById(
+                    query.AccountId.Value);
+
+            if (account is null)
+            {
+                throw new ResourceNotFoundException(
+                    "Account not found.");
+            }
+
+            normalizedCurrency =
+                NormalizeCurrency(account.Currency);
+
+            if (!string.IsNullOrWhiteSpace(query.Currency) &&
+                !string.Equals(
+                    NormalizeCurrency(query.Currency),
+                    normalizedCurrency,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BusinessRuleException(
+                    "Currency does not match the selected account.");
+            }
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(query.Currency))
+            {
+                throw new BusinessRuleException(
+                    "Currency is required when no account is selected.");
+            }
+
+            normalizedCurrency =
+                NormalizeCurrency(query.Currency);
+        }
+
+        var forecastItems =
+            await _forecastRepository.GetForVarianceReport(
+                query.AccountId,
+                normalizedCurrency,
+                normalizedPeriod.FromUtc,
+                normalizedPeriod.ToUtc);
+
+        var actualTransactions =
+            await _transactionRepository
+                .GetCompletedCashFlowTransactionsForVariance(
+                    query.AccountId,
+                    normalizedCurrency,
+                    normalizedPeriod.FromUtc,
+                    normalizedPeriod.ToUtc);
+
+        var actualMovements =
+            actualTransactions
+                .Select(transaction =>
+                    MapActualCashFlowMovement(
+                        transaction,
+                        query.AccountId))
+                .Where(movement =>
+                    movement is not null)
+                .Select(movement =>
+                    movement!)
+                .ToList();
+
+        var bucketKeys =
+            forecastItems
+                .Select(item =>
+                    new VarianceBucketKey(
+                        NormalizeCurrency(item.Currency),
+                        NormalizeCategory(item.Category)))
+                .Concat(
+                    actualMovements.Select(movement =>
+                        new VarianceBucketKey(
+                            movement.Currency,
+                            movement.Category)))
+                .Distinct()
+                .OrderBy(key =>
+                    key.Currency)
+                .ThenBy(key =>
+                    key.Category)
+                .ToList();
+
+        var buckets =
+            bucketKeys
+                .Select(key =>
+                    BuildVarianceBucket(
+                        key,
+                        forecastItems,
+                        actualMovements))
+                .ToList();
+
+        var totalForecastedInflow =
+            buckets.Sum(bucket =>
+                bucket.ForecastedInflow);
+
+        var totalActualInflow =
+            buckets.Sum(bucket =>
+                bucket.ActualInflow);
+
+        var totalForecastedOutflow =
+            buckets.Sum(bucket =>
+                bucket.ForecastedOutflow);
+
+        var totalActualOutflow =
+            buckets.Sum(bucket =>
+                bucket.ActualOutflow);
+
+        var forecastedNetMovement =
+            totalForecastedInflow - totalForecastedOutflow;
+
+        var actualNetMovement =
+            totalActualInflow - totalActualOutflow;
+
+        var netVariance =
+            actualNetMovement - forecastedNetMovement;
+
+        return new CashFlowForecastVarianceReportDto
+        {
+            GeneratedAtUtc =
+                DateTime.UtcNow,
+
+            AccountId =
+                query.AccountId,
+
+            AccountName =
+                account?.Name,
+
+            Currency =
+                normalizedCurrency,
+
+            FromUtc =
+                normalizedPeriod.FromUtc,
+
+            ToUtc =
+                normalizedPeriod.ToUtc,
+
+            ForecastItemCount =
+                forecastItems.Count,
+
+            ActualTransactionCount =
+                actualMovements.Count,
+
+            TotalForecastedInflow =
+                totalForecastedInflow,
+
+            TotalActualInflow =
+                totalActualInflow,
+
+            TotalInflowVariance =
+                totalActualInflow - totalForecastedInflow,
+
+            TotalForecastedOutflow =
+                totalForecastedOutflow,
+
+            TotalActualOutflow =
+                totalActualOutflow,
+
+            TotalOutflowVariance =
+                totalActualOutflow - totalForecastedOutflow,
+
+            ForecastedNetMovement =
+                forecastedNetMovement,
+
+            ActualNetMovement =
+                actualNetMovement,
+
+            NetVariance =
+                netVariance,
+
+            NetVariancePercentage =
+                CalculateVariancePercentage(
+                    forecastedNetMovement,
+                    netVariance),
+
+            Buckets =
+                buckets
+        };
+    }
+
+    public async Task<CsvExportDto> ExportVarianceReportCsv(
+        CashFlowForecastVarianceQueryDto query)
+    {
+        var report =
+            await GetVarianceReport(query);
+
+        var csv =
+            new StringBuilder();
+
+        /*
+        * Section 1: report-level summary.
+        */
+        csv.AppendLine(
+            "ReportType,GeneratedAtUtc,AccountId,AccountName,Currency,FromUtc,ToUtc,ForecastItemCount,ActualTransactionCount,TotalForecastedInflow,TotalActualInflow,TotalInflowVariance,TotalForecastedOutflow,TotalActualOutflow,TotalOutflowVariance,ForecastedNetMovement,ActualNetMovement,NetVariance,NetVariancePercentage");
+
+        csv.AppendLine(string.Join(
+            ",",
+            CsvExportHelper.Escape("CashFlowForecastVarianceSummary"),
+            CsvExportHelper.Escape(report.GeneratedAtUtc),
+            CsvExportHelper.Escape(report.AccountId),
+            CsvExportHelper.Escape(report.AccountName),
+            CsvExportHelper.Escape(report.Currency),
+            CsvExportHelper.Escape(report.FromUtc),
+            CsvExportHelper.Escape(report.ToUtc),
+            CsvExportHelper.Escape(report.ForecastItemCount),
+            CsvExportHelper.Escape(report.ActualTransactionCount),
+            CsvExportHelper.Escape(report.TotalForecastedInflow),
+            CsvExportHelper.Escape(report.TotalActualInflow),
+            CsvExportHelper.Escape(report.TotalInflowVariance),
+            CsvExportHelper.Escape(report.TotalForecastedOutflow),
+            CsvExportHelper.Escape(report.TotalActualOutflow),
+            CsvExportHelper.Escape(report.TotalOutflowVariance),
+            CsvExportHelper.Escape(report.ForecastedNetMovement),
+            CsvExportHelper.Escape(report.ActualNetMovement),
+            CsvExportHelper.Escape(report.NetVariance),
+            CsvExportHelper.Escape(report.NetVariancePercentage)));
+
+        csv.AppendLine();
+
+        /*
+        * Section 2: category-level variance buckets.
+        */
+        csv.AppendLine(
+            "Currency,Category,ForecastItemCount,ActualTransactionCount,ForecastedInflow,ActualInflow,InflowVariance,ForecastedOutflow,ActualOutflow,OutflowVariance,ForecastedNetMovement,ActualNetMovement,NetVariance,NetVariancePercentage");
+
+        foreach (var bucket in report.Buckets)
+        {
+            csv.AppendLine(string.Join(
+                ",",
+                CsvExportHelper.Escape(bucket.Currency),
+                CsvExportHelper.Escape(bucket.Category),
+                CsvExportHelper.Escape(bucket.ForecastItemCount),
+                CsvExportHelper.Escape(bucket.ActualTransactionCount),
+                CsvExportHelper.Escape(bucket.ForecastedInflow),
+                CsvExportHelper.Escape(bucket.ActualInflow),
+                CsvExportHelper.Escape(bucket.InflowVariance),
+                CsvExportHelper.Escape(bucket.ForecastedOutflow),
+                CsvExportHelper.Escape(bucket.ActualOutflow),
+                CsvExportHelper.Escape(bucket.OutflowVariance),
+                CsvExportHelper.Escape(bucket.ForecastedNetMovement),
+                CsvExportHelper.Escape(bucket.ActualNetMovement),
+                CsvExportHelper.Escape(bucket.NetVariance),
+                CsvExportHelper.Escape(bucket.NetVariancePercentage)));
+        }
+
+        var timestamp =
+            DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"cash-flow-forecast-variance-{report.Currency}-{timestamp}.csv",
+
+            ContentType =
+                "text/csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    csv.ToString())
+        };
+    }
+
     private static List<CashFlowForecastDailyBucketDto>
         BuildDailyForecasts(
             List<CashFlowForecastItem> items,
@@ -871,6 +1148,259 @@ public class CashFlowForecastService
             value,
             DateTimeKind.Utc);
     }
+
+    private static CashFlowForecastVarianceBucketDto
+        BuildVarianceBucket(
+            VarianceBucketKey key,
+            IReadOnlyList<CashFlowForecastItem> forecastItems,
+            IReadOnlyList<ActualCashFlowMovement> actualMovements)
+    {
+        var bucketForecasts =
+            forecastItems
+                .Where(item =>
+                    string.Equals(
+                        NormalizeCurrency(item.Currency),
+                        key.Currency,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        NormalizeCategory(item.Category),
+                        key.Category,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        var bucketActuals =
+            actualMovements
+                .Where(movement =>
+                    string.Equals(
+                        movement.Currency,
+                        key.Currency,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        movement.Category,
+                        key.Category,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        var forecastedInflow =
+            bucketForecasts
+                .Where(item =>
+                    item.Direction ==
+                    CashFlowDirections.Inflow)
+                .Sum(item =>
+                    item.Amount);
+
+        var forecastedOutflow =
+            bucketForecasts
+                .Where(item =>
+                    item.Direction ==
+                    CashFlowDirections.Outflow)
+                .Sum(item =>
+                    item.Amount);
+
+        var actualInflow =
+            bucketActuals
+                .Where(movement =>
+                    movement.Direction ==
+                    CashFlowDirections.Inflow)
+                .Sum(movement =>
+                    movement.Amount);
+
+        var actualOutflow =
+            bucketActuals
+                .Where(movement =>
+                    movement.Direction ==
+                    CashFlowDirections.Outflow)
+                .Sum(movement =>
+                    movement.Amount);
+
+        var forecastedNet =
+            forecastedInflow - forecastedOutflow;
+
+        var actualNet =
+            actualInflow - actualOutflow;
+
+        var netVariance =
+            actualNet - forecastedNet;
+
+        return new CashFlowForecastVarianceBucketDto
+        {
+            Currency =
+                key.Currency,
+
+            Category =
+                key.Category,
+
+            ForecastItemCount =
+                bucketForecasts.Count,
+
+            ActualTransactionCount =
+                bucketActuals.Count,
+
+            ForecastedInflow =
+                forecastedInflow,
+
+            ActualInflow =
+                actualInflow,
+
+            InflowVariance =
+                actualInflow - forecastedInflow,
+
+            ForecastedOutflow =
+                forecastedOutflow,
+
+            ActualOutflow =
+                actualOutflow,
+
+            OutflowVariance =
+                actualOutflow - forecastedOutflow,
+
+            ForecastedNetMovement =
+                forecastedNet,
+
+            ActualNetMovement =
+                actualNet,
+
+            NetVariance =
+                netVariance,
+
+            NetVariancePercentage =
+                CalculateVariancePercentage(
+                    forecastedNet,
+                    netVariance)
+        };
+    }
+
+    private static ActualCashFlowMovement?
+        MapActualCashFlowMovement(
+            TreasuryTransaction transaction,
+            Guid? accountId)
+    {
+        var currency =
+            NormalizeCurrency(transaction.Currency);
+
+        var category =
+            NormalizeCategory(
+                transaction.Category ??
+                transaction.ReversesTransaction?.Category);
+
+        if (accountId.HasValue)
+        {
+            /*
+            * Account-specific actual movement is based on
+            * whether cash entered or left the selected account.
+            */
+            if (transaction.DestinationAccountId ==
+                accountId.Value)
+            {
+                return new ActualCashFlowMovement(
+                    currency,
+                    category,
+                    CashFlowDirections.Inflow,
+                    transaction.Amount);
+            }
+
+            if (transaction.SourceAccountId ==
+                accountId.Value)
+            {
+                return new ActualCashFlowMovement(
+                    currency,
+                    category,
+                    CashFlowDirections.Outflow,
+                    transaction.Amount);
+            }
+
+            return null;
+        }
+
+        if (transaction.TransactionType ==
+            TransactionTypes.CashReceipt)
+        {
+            return new ActualCashFlowMovement(
+                currency,
+                category,
+                CashFlowDirections.Inflow,
+                transaction.Amount);
+        }
+
+        if (transaction.TransactionType ==
+            TransactionTypes.CashPayment)
+        {
+            return new ActualCashFlowMovement(
+                currency,
+                category,
+                CashFlowDirections.Outflow,
+                transaction.Amount);
+        }
+
+        if (transaction.TransactionType ==
+            TransactionTypes.Reversal &&
+            transaction.ReversesTransaction?
+                .TransactionType ==
+                TransactionTypes.CashPayment)
+        {
+            /*
+            * Reversing a payment brings cash back in.
+            */
+            return new ActualCashFlowMovement(
+                currency,
+                category,
+                CashFlowDirections.Inflow,
+                transaction.Amount);
+        }
+
+        if (transaction.TransactionType ==
+            TransactionTypes.Reversal &&
+            transaction.ReversesTransaction?
+                .TransactionType ==
+                TransactionTypes.CashReceipt)
+        {
+            /*
+            * Reversing a receipt sends cash back out.
+            */
+            return new ActualCashFlowMovement(
+                currency,
+                category,
+                CashFlowDirections.Outflow,
+                transaction.Amount);
+        }
+
+        return null;
+    }
+
+    private static string NormalizeCategory(
+        string? category)
+    {
+        return string.IsNullOrWhiteSpace(category)
+            ? "Uncategorized"
+            : category.Trim();
+    }
+
+    private static decimal? CalculateVariancePercentage(
+        decimal forecastedAmount,
+        decimal varianceAmount)
+    {
+        if (forecastedAmount == 0)
+        {
+            return null;
+        }
+
+        return Math.Round(
+            varianceAmount /
+            Math.Abs(forecastedAmount) *
+            100,
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private sealed record VarianceBucketKey(
+        string Currency,
+        string Category);
+
+    private sealed record ActualCashFlowMovement(
+        string Currency,
+        string Category,
+        string Direction,
+        decimal Amount);
 
     private static CashFlowForecastItemResponseDto MapItem(
         CashFlowForecastItem item)

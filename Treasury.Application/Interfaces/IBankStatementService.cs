@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.BankStatements;
+using Treasury.Application.DTOs.Exports;
 
 namespace Treasury.Application.Interfaces;
 
@@ -40,6 +41,12 @@ public interface IBankStatementService
     
     Task<BookSideExceptionReportDto>
         GetBookSideExceptionReport(Guid importId);
+    
+    Task<CsvExportDto> ExportExceptionReportCsv(
+        Guid importId);
+
+    Task<CsvExportDto> ExportBookSideExceptionReportCsv(
+        Guid importId);
         
     Task<BankStatementImportResponseDto> ImportStatementFromCsv(
         CreateBankStatementCsvImportDto dto);

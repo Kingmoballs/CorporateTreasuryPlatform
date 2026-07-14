@@ -38,7 +38,7 @@ public class CashFlowForecastsController
         return Ok(result);
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(
         Guid id)
     {
@@ -105,5 +105,30 @@ public class CashFlowForecastsController
                 minimumLiquidityThreshold);
 
         return Ok(result);
+    }
+
+    [HttpGet("variance")]
+    public async Task<IActionResult> GetVarianceReport(
+        [FromQuery] CashFlowForecastVarianceQueryDto query)
+    {
+        var result =
+            await _forecastService
+                .GetVarianceReport(query);
+
+        return Ok(result);
+    }
+
+    [HttpGet("variance/export/csv")]
+    public async Task<IActionResult> ExportVarianceReportCsv(
+        [FromQuery] CashFlowForecastVarianceQueryDto query)
+    {
+        var export =
+            await _forecastService
+                .ExportVarianceReportCsv(query);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
     }
 }

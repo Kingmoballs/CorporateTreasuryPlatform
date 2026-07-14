@@ -1,3 +1,5 @@
+using System.Text;
+using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Reporting;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
@@ -706,6 +708,71 @@ public class TreasuryReportingService
                 DateTime.UtcNow,
 
             Currencies = currencyReports
+        };
+    }
+
+    public async Task<CsvExportDto> ExportLiquidityReportCsv(
+        DateTime? fromUtc,
+        DateTime? toUtc)
+    {
+        var report =
+            await GetLiquidityReport(
+                fromUtc,
+                toUtc);
+
+        var csv = new StringBuilder();
+
+        /*
+        * This export gives Finance/Treasury a flat,
+        * Excel-friendly liquidity report by currency.
+        */
+        csv.AppendLine(
+            "ActivityFromUtc,ActivityToUtc,CashPositionAsOfUtc,Currency,CurrentTotalCash,ReservedCash,AvailableLiquidity,CommittedCash,InvestmentBalance,OtherBalance,AvailableLiquidityRatio,ExternalReceiptCount,ExternalReceiptAmount,ExternalPaymentCount,ExternalPaymentAmount,NetExternalCashFlow,CompletedInternalTransferCount,CompletedInternalTransferVolume,PendingInternalTransferCount,PendingInternalTransferAmount,ReversedReceiptCount,ReversedReceiptAmount,ReversedPaymentCount,ReversedPaymentAmount");
+
+        foreach (var currency in report.Currencies)
+        {
+            csv.AppendLine(string.Join(
+                ",",
+                CsvExportHelper.Escape(report.ActivityFromUtc),
+                CsvExportHelper.Escape(report.ActivityToUtc),
+                CsvExportHelper.Escape(report.CashPositionAsOfUtc),
+                CsvExportHelper.Escape(currency.Currency),
+                CsvExportHelper.Escape(currency.CurrentTotalCash),
+                CsvExportHelper.Escape(currency.ReservedCash),
+                CsvExportHelper.Escape(currency.AvailableLiquidity),
+                CsvExportHelper.Escape(currency.CommittedCash),
+                CsvExportHelper.Escape(currency.InvestmentBalance),
+                CsvExportHelper.Escape(currency.OtherBalance),
+                CsvExportHelper.Escape(currency.AvailableLiquidityRatio),
+                CsvExportHelper.Escape(currency.ExternalReceiptCount),
+                CsvExportHelper.Escape(currency.ExternalReceiptAmount),
+                CsvExportHelper.Escape(currency.ExternalPaymentCount),
+                CsvExportHelper.Escape(currency.ExternalPaymentAmount),
+                CsvExportHelper.Escape(currency.NetExternalCashFlow),
+                CsvExportHelper.Escape(currency.CompletedInternalTransferCount),
+                CsvExportHelper.Escape(currency.CompletedInternalTransferVolume),
+                CsvExportHelper.Escape(currency.PendingInternalTransferCount),
+                CsvExportHelper.Escape(currency.PendingInternalTransferAmount),
+                CsvExportHelper.Escape(currency.ReversedReceiptCount),
+                CsvExportHelper.Escape(currency.ReversedReceiptAmount),
+                CsvExportHelper.Escape(currency.ReversedPaymentCount),
+                CsvExportHelper.Escape(currency.ReversedPaymentAmount)));
+        }
+
+        var timestamp =
+            DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"liquidity-report-{timestamp}.csv",
+
+            ContentType =
+                "text/csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    csv.ToString())
         };
     }
 }

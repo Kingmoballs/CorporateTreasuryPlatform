@@ -15,7 +15,14 @@ public interface ITreasuryTransactionRepository
         IReadOnlyList<TreasuryTransaction> Items,
         int TotalCount)>
         Search(TransactionQueryDto query);
-    
+
+    Task<IReadOnlyList<TreasuryTransaction>> GetForExport(
+        TransactionQueryDto query,
+        int maxRows);
+
+    Task<IReadOnlyList<TreasuryTransaction>> GetForActivitySummary(
+        TreasuryActivitySummaryQueryDto query);
+        
     Task<TreasuryTransaction?>
         GetByIdempotencyKey(
             string idempotencyKey);
@@ -40,4 +47,11 @@ public interface ITreasuryTransactionRepository
             string currency,
             DateTime? fromUtc,
             DateTime? toUtc);
+    
+    Task<IReadOnlyList<TreasuryTransaction>>
+        GetCompletedCashFlowTransactionsForVariance(
+            Guid? accountId,
+            string currency,
+            DateTime fromUtc,
+            DateTime toUtc);
 }

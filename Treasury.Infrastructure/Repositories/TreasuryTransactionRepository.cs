@@ -122,6 +122,191 @@ public class TreasuryTransactionRepository
         return (items, totalCount);
     }
 
+    public async Task<IReadOnlyList<TreasuryTransaction>>
+        GetForExport(
+            TransactionQueryDto query,
+            int maxRows)
+    {
+        var transactions =
+            _context.TreasuryTransactions
+                .AsNoTracking()
+                .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(
+            query.Currency))
+        {
+            var currency =
+                query.Currency
+                    .Trim()
+                    .ToUpperInvariant();
+
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.Currency == currency);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+            query.Status))
+        {
+            var status =
+                query.Status.Trim();
+
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.Status == status);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+            query.TransactionType))
+        {
+            var transactionType =
+                query.TransactionType.Trim();
+
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.TransactionType ==
+                        transactionType);
+        }
+
+        if (query.FromUtc.HasValue)
+        {
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.CreatedAtUtc >=
+                        query.FromUtc.Value);
+        }
+
+        if (query.ToUtc.HasValue)
+        {
+            /*
+            * The export end date is exclusive,
+            * matching the normal search endpoint.
+            */
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.CreatedAtUtc <
+                        query.ToUtc.Value);
+        }
+
+        return await transactions
+            .OrderByDescending(transaction =>
+                transaction.CreatedAtUtc)
+            .Take(maxRows)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<TreasuryTransaction>>
+        GetForActivitySummary(
+            TreasuryActivitySummaryQueryDto query)
+    {
+        var transactions =
+            _context.TreasuryTransactions
+                .AsNoTracking()
+                .Include(transaction =>
+                    transaction.ReversesTransaction)
+                .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(
+            query.Currency))
+        {
+            var currency =
+                query.Currency
+                    .Trim()
+                    .ToUpperInvariant();
+
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.Currency == currency);
+        }
+
+        if (query.FromUtc.HasValue)
+        {
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.CreatedAtUtc >=
+                        query.FromUtc.Value);
+        }
+
+        if (query.ToUtc.HasValue)
+        {
+            /*
+            * The report end date is exclusive.
+            * Example: ToUtc = 2026-08-01 means include
+            * transactions before August 1st.
+            */
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.CreatedAtUtc <
+                        query.ToUtc.Value);
+        }
+
+        return await transactions
+            .OrderByDescending(transaction =>
+                transaction.CreatedAtUtc)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<TreasuryTransaction>>
+        GetCompletedCashFlowTransactionsForVariance(
+            Guid? accountId,
+            string currency,
+            DateTime fromUtc,
+            DateTime toUtc)
+    {
+        var normalizedCurrency =
+            currency.Trim().ToUpperInvariant();
+
+        var transactions =
+            _context.TreasuryTransactions
+                .AsNoTracking()
+                .Include(transaction =>
+                    transaction.ReversesTransaction)
+                .Where(transaction =>
+                    transaction.Status ==
+                    TransactionStatuses.Completed)
+                .Where(transaction =>
+                    transaction.Currency == normalizedCurrency)
+                .Where(transaction =>
+                    (transaction.CompletedAtUtc ??
+                    transaction.CreatedAtUtc) >= fromUtc &&
+                    (transaction.CompletedAtUtc ??
+                    transaction.CreatedAtUtc) <= toUtc)
+                .AsQueryable();
+
+        if (accountId.HasValue)
+        {
+            /*
+            * Account-specific variance includes movements
+            * into or out of the selected account.
+            */
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.SourceAccountId == accountId.Value ||
+                    transaction.DestinationAccountId == accountId.Value);
+        }
+        else
+        {
+            /*
+            * Consolidated currency variance excludes
+            * internal transfers because they do not change
+            * total cash for the currency.
+            */
+            transactions =
+                transactions.Where(transaction =>
+                    transaction.TransactionType ==
+                        TransactionTypes.CashReceipt ||
+                    transaction.TransactionType ==
+                        TransactionTypes.CashPayment ||
+                    transaction.TransactionType ==
+                        TransactionTypes.Reversal);
+        }
+
+        return await transactions
+            .OrderBy(transaction =>
+                transaction.CreatedAtUtc)
+            .ToListAsync();
+    }
+
     public async Task<TreasuryTransaction?>
         GetByIdempotencyKey(
             string idempotencyKey)

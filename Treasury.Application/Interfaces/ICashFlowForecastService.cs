@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.CashFlowForecasts;
+using Treasury.Application.DTOs.Exports;
 
 namespace Treasury.Application.Interfaces;
 
@@ -25,6 +26,12 @@ public interface ICashFlowForecastService
         DateTime fromUtc,
         DateTime toUtc,
         decimal minimumLiquidityThreshold);
+
+    Task<CashFlowForecastVarianceReportDto> GetVarianceReport(
+        CashFlowForecastVarianceQueryDto query);
+
+    Task<CsvExportDto> ExportVarianceReportCsv(
+        CashFlowForecastVarianceQueryDto query);
 
     Task<CashFlowForecastItemResponseDto> Realize(
         Guid id,

@@ -6,6 +6,7 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.BankStatements;
+using Treasury.Application.DTOs.Exports;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -676,6 +677,163 @@ public class BankStatementService
 
             Transactions =
                 mappedTransactions
+        };
+    }
+
+    public async Task<CsvExportDto> ExportExceptionReportCsv(
+        Guid importId)
+    {
+        var report =
+            await GetExceptionReport(importId);
+
+        var csv = new StringBuilder();
+
+        /*
+        * Section 1: summary of bank-side exceptions.
+        */
+        csv.AppendLine(
+            "ReportType,ImportId,AccountId,AccountName,FileName,StatementReference,Currency,GeneratedAtUtc,ActionRequiredLineCount,UnmatchedLineCount,MatchedPendingReconciliationCount");
+
+        csv.AppendLine(string.Join(
+            ",",
+            CsvExportHelper.Escape("BankStatementExceptionSummary"),
+            CsvExportHelper.Escape(report.ImportId),
+            CsvExportHelper.Escape(report.AccountId),
+            CsvExportHelper.Escape(report.AccountName),
+            CsvExportHelper.Escape(report.FileName),
+            CsvExportHelper.Escape(report.StatementReference),
+            CsvExportHelper.Escape(report.Currency),
+            CsvExportHelper.Escape(report.GeneratedAtUtc),
+            CsvExportHelper.Escape(report.ActionRequiredLineCount),
+            CsvExportHelper.Escape(report.UnmatchedLineCount),
+            CsvExportHelper.Escape(report.MatchedPendingReconciliationCount)));
+
+        csv.AppendLine();
+
+        /*
+        * Section 2: detailed bank statement lines requiring attention.
+        */
+        csv.AppendLine(
+            "LineId,BankStatementImportId,AccountId,LineNumber,TransactionDateUtc,ValueDateUtc,Description,BankReference,CounterpartyName,Amount,Currency,BalanceAfterTransaction,ReconciliationStatus,MatchedTreasuryTransactionId,MatchedTreasuryTransactionReference,MatchedAtUtc,ReconciledByUserId,ReconciledAtUtc,CreatedAtUtc");
+
+        foreach (var line in report.Lines)
+        {
+            csv.AppendLine(string.Join(
+                ",",
+                CsvExportHelper.Escape(line.Id),
+                CsvExportHelper.Escape(line.BankStatementImportId),
+                CsvExportHelper.Escape(line.AccountId),
+                CsvExportHelper.Escape(line.LineNumber),
+                CsvExportHelper.Escape(line.TransactionDateUtc),
+                CsvExportHelper.Escape(line.ValueDateUtc),
+                CsvExportHelper.Escape(line.Description),
+                CsvExportHelper.Escape(line.BankReference),
+                CsvExportHelper.Escape(line.CounterpartyName),
+                CsvExportHelper.Escape(line.Amount),
+                CsvExportHelper.Escape(line.Currency),
+                CsvExportHelper.Escape(line.BalanceAfterTransaction),
+                CsvExportHelper.Escape(line.ReconciliationStatus),
+                CsvExportHelper.Escape(line.MatchedTreasuryTransactionId),
+                CsvExportHelper.Escape(line.MatchedTreasuryTransactionReference),
+                CsvExportHelper.Escape(line.MatchedAtUtc),
+                CsvExportHelper.Escape(line.ReconciledByUserId),
+                CsvExportHelper.Escape(line.ReconciledAtUtc),
+                CsvExportHelper.Escape(line.CreatedAtUtc)));
+        }
+
+        var timestamp =
+            DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"bank-statement-exceptions-{report.ImportId}-{timestamp}.csv",
+
+            ContentType =
+                "text/csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    csv.ToString())
+        };
+    }
+
+    public async Task<CsvExportDto> ExportBookSideExceptionReportCsv(
+        Guid importId)
+    {
+        var report =
+            await GetBookSideExceptionReport(importId);
+
+        var csv = new StringBuilder();
+
+        /*
+        * Section 1: summary of book-side exceptions.
+        */
+        csv.AppendLine(
+            "ReportType,ImportId,AccountId,AccountName,FileName,StatementReference,Currency,StatementFromUtc,StatementToUtc,GeneratedAtUtc,UnmatchedTransactionCount,NetUnmatchedAmount,TotalUnmatchedInflowAmount,TotalUnmatchedOutflowAmount");
+
+        csv.AppendLine(string.Join(
+            ",",
+            CsvExportHelper.Escape("BookSideExceptionSummary"),
+            CsvExportHelper.Escape(report.ImportId),
+            CsvExportHelper.Escape(report.AccountId),
+            CsvExportHelper.Escape(report.AccountName),
+            CsvExportHelper.Escape(report.FileName),
+            CsvExportHelper.Escape(report.StatementReference),
+            CsvExportHelper.Escape(report.Currency),
+            CsvExportHelper.Escape(report.StatementFromUtc),
+            CsvExportHelper.Escape(report.StatementToUtc),
+            CsvExportHelper.Escape(report.GeneratedAtUtc),
+            CsvExportHelper.Escape(report.UnmatchedTransactionCount),
+            CsvExportHelper.Escape(report.NetUnmatchedAmount),
+            CsvExportHelper.Escape(report.TotalUnmatchedInflowAmount),
+            CsvExportHelper.Escape(report.TotalUnmatchedOutflowAmount)));
+
+        csv.AppendLine();
+
+        /*
+        * Section 2: treasury book transactions not yet found
+        * on the imported bank statement.
+        */
+        csv.AppendLine(
+            "TreasuryTransactionId,Reference,TransactionType,Status,SourceAccountId,DestinationAccountId,CashDirection,Amount,SignedAmount,Currency,Description,Category,CounterpartyName,ExternalReference,CreatedAtUtc,CompletedAtUtc");
+
+        foreach (var transaction in report.Transactions)
+        {
+            csv.AppendLine(string.Join(
+                ",",
+                CsvExportHelper.Escape(transaction.Id),
+                CsvExportHelper.Escape(transaction.Reference),
+                CsvExportHelper.Escape(transaction.TransactionType),
+                CsvExportHelper.Escape(transaction.Status),
+                CsvExportHelper.Escape(transaction.SourceAccountId),
+                CsvExportHelper.Escape(transaction.DestinationAccountId),
+                CsvExportHelper.Escape(transaction.CashDirection),
+                CsvExportHelper.Escape(transaction.Amount),
+                CsvExportHelper.Escape(transaction.SignedAmount),
+                CsvExportHelper.Escape(transaction.Currency),
+                CsvExportHelper.Escape(transaction.Description),
+                CsvExportHelper.Escape(transaction.Category),
+                CsvExportHelper.Escape(transaction.CounterpartyName),
+                CsvExportHelper.Escape(transaction.ExternalReference),
+                CsvExportHelper.Escape(transaction.CreatedAtUtc),
+                CsvExportHelper.Escape(transaction.CompletedAtUtc)));
+        }
+
+        var timestamp =
+            DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"book-side-exceptions-{report.ImportId}-{timestamp}.csv",
+
+            ContentType =
+                "text/csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    csv.ToString())
         };
     }
 

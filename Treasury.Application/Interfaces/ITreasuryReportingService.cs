@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.Reporting;
+using Treasury.Application.DTOs.Exports;
 
 namespace Treasury.Application.Interfaces;
 
@@ -14,4 +15,8 @@ public interface ITreasuryReportingService
         GetLiquidityReport(
             DateTime? fromUtc,
             DateTime? toUtc);
+    
+    Task<CsvExportDto> ExportLiquidityReportCsv(
+        DateTime? fromUtc,
+        DateTime? toUtc);
 }

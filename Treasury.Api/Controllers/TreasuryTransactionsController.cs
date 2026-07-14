@@ -41,6 +41,31 @@ public class TreasuryTransactionsController
         return Ok(result);
     }
 
+    [HttpGet("activity-summary")]
+    public async Task<IActionResult> GetActivitySummary(
+        [FromQuery] TreasuryActivitySummaryQueryDto query)
+    {
+        var result =
+            await _transactionService
+                .GetActivitySummary(query);
+
+        return Ok(result);
+    }
+
+    [HttpGet("export/csv")]
+    public async Task<IActionResult> ExportTransactionsCsv(
+        [FromQuery] TransactionQueryDto query)
+    {
+        var export =
+            await _transactionService
+                .ExportTransactionsCsv(query);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
+
     [HttpGet("{reference}")]
     public async Task<IActionResult>
         GetByReference(string reference)
