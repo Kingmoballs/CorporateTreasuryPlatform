@@ -82,6 +82,35 @@ public class InvestmentPlacement
 
     public DateTime? ActivatedAtUtc { get; set; }
 
+    public string? RedemptionIdempotencyKey { get; set; }
+
+    public Guid? RedemptionAccountId { get; set; }
+
+    public Account? RedemptionAccount { get; set; }
+
+    public Guid? RedemptionTreasuryTransactionId
+        { get; set; }
+
+    public TreasuryTransaction?
+        RedemptionTreasuryTransaction { get; set; }
+
+    public decimal ActualInterestAmount { get; set; }
+
+    public decimal WithholdingTaxAmount { get; set; }
+
+    public decimal ActualMaturityAmount { get; set; }
+
+    public string? RedemptionExternalReference
+        { get; set; }
+
+    public string? RedemptionNotes { get; set; }
+
+    public Guid? RedeemedByUserId { get; set; }
+
+    public User? RedeemedByUser { get; set; }
+
+    public DateTime? RedeemedAtUtc { get; set; }
+
     public Guid? CancelledByUserId { get; set; }
 
     public User? CancelledByUser { get; set; }

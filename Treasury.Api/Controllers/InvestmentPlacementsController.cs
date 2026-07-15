@@ -56,6 +56,55 @@ public class InvestmentPlacementsController
         return Ok(result);
     }
 
+    [HttpPost("process-maturities")]
+    [Authorize(Roles = InvestmentFundingRoles)]
+    public async Task<IActionResult>
+        ProcessMaturities(
+            [FromQuery] int maxRows = 100)
+    {
+        var result =
+            await _placementService
+                .ProcessDueMaturities(maxRows);
+
+        return Ok(result);
+    }
+
+    [HttpGet("portfolio-report")]
+    public async Task<IActionResult> GetPortfolioReport(
+        [FromQuery] InvestmentPortfolioQueryDto query)
+    {
+        var result =
+            await _placementService
+                .GetPortfolioReport(query);
+
+        return Ok(result);
+    }
+
+    [HttpGet("maturity-schedule")]
+    public async Task<IActionResult> GetMaturitySchedule(
+        [FromQuery] InvestmentPortfolioQueryDto query)
+    {
+        var result =
+            await _placementService
+                .GetMaturitySchedule(query);
+
+        return Ok(result);
+    }
+
+    [HttpGet("portfolio-report/export/csv")]
+    public async Task<IActionResult> ExportPortfolioCsv(
+        [FromQuery] InvestmentPortfolioQueryDto query)
+    {
+        var export =
+            await _placementService
+                .ExportPortfolioCsv(query);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(
         Guid id)
@@ -102,6 +151,20 @@ public class InvestmentPlacementsController
                 .RejectActivation(
                     id,
                     dto.Reason);
+
+        return Ok(result);
+    }
+
+    [HttpPost("{id:guid}/redeem")]
+    [Authorize(Roles = InvestmentFundingRoles)]
+    public async Task<IActionResult> Redeem(
+        Guid id,
+        RedeemInvestmentPlacementDto dto)
+    {
+        var result =
+            await _placementService.Redeem(
+                id,
+                dto);
 
         return Ok(result);
     }

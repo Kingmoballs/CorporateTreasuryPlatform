@@ -16,5 +16,12 @@ public class TreasuryAlertScanResultDto
 
     public int ReconciliationExceptionAlertCount { get; set; }
 
-    public List<TreasuryAlertResponseDto> CreatedAlerts { get; set; } = new();
+    public int InvestmentMaturityAlertCount { get; set; }
+
+    public int InvestmentOverdueAlertCount { get; set; }
+
+    public int InvestmentConcentrationAlertCount { get; set; }
+
+    public List<TreasuryAlertResponseDto> CreatedAlerts
+        { get; set; } = new();
 }

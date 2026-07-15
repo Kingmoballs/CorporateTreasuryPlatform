@@ -21,6 +21,11 @@ public class TreasuryAlertMonitoringWorkerOptions
 
     public int ReconciliationLookbackDays { get; set; } = 30;
 
+    public int InvestmentMaturityWarningDays { get; set; } = 14;
+
+    public decimal InvestmentConcentrationThresholdPercentage
+        { get; set; } = 50m;
+
     public string? Currency { get; set; }
 
     public bool IncludeLowLiquidity { get; set; } = true;
@@ -30,4 +35,9 @@ public class TreasuryAlertMonitoringWorkerOptions
     public bool IncludePendingApprovals { get; set; } = true;
 
     public bool IncludeReconciliationExceptions { get; set; } = true;
+
+    public bool IncludeInvestmentMaturityAlerts { get; set; } = true;
+
+    public bool IncludeInvestmentConcentrationAlerts
+        { get; set; } = true;
 }

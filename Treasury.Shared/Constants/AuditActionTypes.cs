@@ -19,4 +19,6 @@ public static class AuditActionTypes
     public const string Resolved = "Resolved";
     public const string Dismissed = "Dismissed";
     public const string Activated = "Activated";
+    public const string Matured = "Matured";
+    public const string Redeemed = "Redeemed";
 }

@@ -1,4 +1,5 @@
 using Treasury.Application.DTOs.InvestmentPlacements;
+using Treasury.Application.DTOs.Exports;
 
 namespace Treasury.Application.Interfaces;
 
@@ -28,4 +29,23 @@ public interface IInvestmentPlacementService
     Task<InvestmentPlacementResponseDto> Cancel(
         Guid id,
         string reason);
+    
+    Task<InvestmentMaturityProcessingResultDto>
+        ProcessDueMaturities(
+            int maxRows = 100);
+
+    Task<InvestmentPlacementResponseDto> Redeem(
+        Guid id,
+        RedeemInvestmentPlacementDto dto);
+    
+    Task<InvestmentPortfolioReportDto>
+        GetPortfolioReport(
+            InvestmentPortfolioQueryDto query);
+
+    Task<InvestmentMaturityScheduleDto>
+        GetMaturitySchedule(
+            InvestmentPortfolioQueryDto query);
+
+    Task<CsvExportDto> ExportPortfolioCsv(
+        InvestmentPortfolioQueryDto query);
 }

@@ -964,7 +964,12 @@ public class TreasuryDbContext : DbContext
         {
             table.HasCheckConstraint(
                 "CK_AuditLogs_Action",
-                "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Activated','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged')");
+                "\"Action\" IN " +
+                "('Created','Updated','Deleted','Approved'," +
+                "'Rejected','Resolved','Dismissed','Cancelled'," +
+                "'Activated','Matured','Redeemed','Realized'," +
+                "'Matched','Reconciled','Ignored','Expired'," +
+                "'Imported','LoggedIn','RoleChanged')");
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
@@ -1105,7 +1110,10 @@ public class TreasuryDbContext : DbContext
                     "\"AlertType\" IN " +
                     "('LowLiquidity', 'ForecastLiquidityGap', " +
                     "'PendingApproval', 'ReconciliationException', " +
-                    "'FxExposure', 'AuditException', 'System')");
+                    "'FxExposure', 'AuditException', " +
+                    "'InvestmentMaturityUpcoming', " +
+                    "'InvestmentMaturityOverdue', " +
+                    "'InvestmentConcentration', 'System')");
 
                 table.HasCheckConstraint(
                     "CK_TreasuryAlerts_Currency_Length",
@@ -1304,6 +1312,70 @@ public class TreasuryDbContext : DbContext
             .Property(placement =>
                 placement.ActivationRejectionReason)
             .HasMaxLength(500);
+        
+        investmentPlacement
+            .HasOne(placement =>
+                placement.RedemptionAccount)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.RedemptionAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.RedemptionTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.RedemptionTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.RedeemedByUser)
+            .WithMany()
+            .HasForeignKey(placement =>
+                placement.RedeemedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.RedemptionIdempotencyKey)
+            .IsUnique();
+
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.RedemptionTreasuryTransactionId)
+            .IsUnique();
+
+        investmentPlacement
+            .Property(placement =>
+                placement.RedemptionIdempotencyKey)
+            .HasMaxLength(100);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.RedemptionExternalReference)
+            .HasMaxLength(100);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.RedemptionNotes)
+            .HasMaxLength(1000);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ActualInterestAmount)
+            .HasPrecision(18, 2);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.WithholdingTaxAmount)
+            .HasPrecision(18, 2);
+
+        investmentPlacement
+            .Property(placement =>
+                placement.ActualMaturityAmount)
+            .HasPrecision(18, 2);
 
         investmentPlacement
             .ToTable(table =>
@@ -1345,6 +1417,24 @@ public class TreasuryDbContext : DbContext
                     "AND \"ApprovalCount\" >= 0 " +
                     "AND \"ApprovalCount\" <= " +
                     "\"RequiredApprovalCount\"");
+                
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_ActualInterest_NonNegative",
+                    "\"ActualInterestAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_WithholdingTax_NonNegative",
+                    "\"WithholdingTaxAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_WithholdingTax_NotAboveInterest",
+                    "\"WithholdingTaxAmount\" <= " +
+                    "\"ActualInterestAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentPlacements_RedemptionAmount",
+                    "\"Status\" <> 'Redeemed' OR " +
+                    "\"ActualMaturityAmount\" > 0");
             });
         
         var approvalPolicy =

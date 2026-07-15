@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260714224958_AddInvestmentMaturityAndRedemptionCorrected")]
+    partial class AddInvestmentMaturityAndRedemptionCorrected
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1256,7 +1259,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.ToTable("TreasuryAlerts", t =>
                         {
-                            t.HasCheckConstraint("CK_TreasuryAlerts_AlertType", "\"AlertType\" IN ('LowLiquidity', 'ForecastLiquidityGap', 'PendingApproval', 'ReconciliationException', 'FxExposure', 'AuditException', 'InvestmentMaturityUpcoming', 'InvestmentMaturityOverdue', 'InvestmentConcentration', 'System')");
+                            t.HasCheckConstraint("CK_TreasuryAlerts_AlertType", "\"AlertType\" IN ('LowLiquidity', 'ForecastLiquidityGap', 'PendingApproval', 'ReconciliationException', 'FxExposure', 'AuditException', 'System')");
 
                             t.HasCheckConstraint("CK_TreasuryAlerts_Currency_Length", "\"Currency\" IS NULL OR char_length(\"Currency\") = 3");
 

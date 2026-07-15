@@ -1,5 +1,6 @@
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.TreasuryAlerts;
+using Treasury.Application.DTOs.InvestmentPlacements;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -17,6 +18,7 @@ public class TreasuryAlertMonitoringService
     private readonly ICashFlowForecastRepository _forecastRepository;
     private readonly ITreasuryAlertRepository _alertRepository;
     private readonly ITreasuryAlertService _alertService;
+    private readonly IInvestmentPlacementRepository _investmentPlacementRepository;
 
     public TreasuryAlertMonitoringService(
         IAccountRepository accountRepository,
@@ -26,7 +28,8 @@ public class TreasuryAlertMonitoringService
         IBankStatementRepository bankStatementRepository,
         ICashFlowForecastRepository forecastRepository,
         ITreasuryAlertRepository alertRepository,
-        ITreasuryAlertService alertService)
+        ITreasuryAlertService alertService,
+        IInvestmentPlacementRepository investmentPlacementRepository)
     {
         _accountRepository = accountRepository;
         _transferRequestRepository = transferRequestRepository;
@@ -36,6 +39,7 @@ public class TreasuryAlertMonitoringService
         _forecastRepository = forecastRepository;
         _alertRepository = alertRepository;
         _alertService = alertService;
+        _investmentPlacementRepository = investmentPlacementRepository;
     }
 
     public async Task<TreasuryAlertScanResultDto> RunScan(
@@ -84,6 +88,37 @@ public class TreasuryAlertMonitoringService
                 request,
                 currency,
                 result);
+        }
+
+        if (request.IncludeInvestmentMaturityAlerts ||
+            request.IncludeInvestmentConcentrationAlerts)
+        {
+            var investmentPlacements =
+                await _investmentPlacementRepository.GetForReporting(
+                    new InvestmentPortfolioQueryDto
+                    {
+                        Currency =
+                            currency,
+
+                        IncludeRedeemed =
+                            false
+                    });
+
+            if (request.IncludeInvestmentMaturityAlerts)
+            {
+                await ScanInvestmentMaturities(
+                    request,
+                    investmentPlacements,
+                    result);
+            }
+
+            if (request.IncludeInvestmentConcentrationAlerts)
+            {
+                await ScanInvestmentConcentration(
+                    request,
+                    investmentPlacements,
+                    result);
+            }
         }
 
         result.CreatedAlertCount =
@@ -573,6 +608,326 @@ public class TreasuryAlertMonitoringService
         }
     }
 
+    private async Task ScanInvestmentMaturities(
+        TreasuryAlertScanRequestDto request,
+        IReadOnlyList<InvestmentPlacement> placements,
+        TreasuryAlertScanResultDto result)
+    {
+        var todayUtc =
+            DateTime.UtcNow.Date;
+
+        var warningThroughUtc =
+            todayUtc.AddDays(
+                request.InvestmentMaturityWarningDays);
+
+        var outstandingPlacements =
+            placements
+                .Where(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Active ||
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Matured)
+                .ToList();
+
+        foreach (var placement in outstandingPlacements)
+        {
+            var maturityDateUtc =
+                placement.MaturityDateUtc.Date;
+
+            var isOverdue =
+                placement.Status ==
+                    InvestmentPlacementStatuses.Matured ||
+                maturityDateUtc < todayUtc;
+
+            if (isOverdue)
+            {
+                var overdueAlert =
+                    await CreateIfNoOpenDuplicate(
+                        new CreateTreasuryAlertDto
+                        {
+                            AlertType =
+                                TreasuryAlertTypes
+                                    .InvestmentMaturityOverdue,
+
+                            Severity =
+                                TreasuryAlertSeverities.Critical,
+
+                            Title =
+                                $"Investment maturity overdue: " +
+                                $"{placement.Reference}",
+
+                            Message =
+                                $"Investment {placement.Reference} at " +
+                                $"{placement.InstitutionName} reached " +
+                                $"maturity on " +
+                                $"{maturityDateUtc:yyyy-MM-dd} and " +
+                                $"remains unredeemed. Expected proceeds " +
+                                $"are {placement.ExpectedMaturityAmount:N2} " +
+                                $"{placement.Currency}.",
+
+                            AccountId =
+                                placement.SourceAccountId,
+
+                            Currency =
+                                placement.Currency,
+
+                            SourceModule =
+                                "Investment Placements",
+
+                            SourceEntityType =
+                                AuditEntityTypes.InvestmentPlacement,
+
+                            SourceEntityId =
+                                placement.Id,
+
+                            SourceReference =
+                                placement.Reference,
+
+                            Metadata =
+                                new
+                                {
+                                    placement.InstitutionName,
+                                    placement.PrincipalAmount,
+                                    placement.ExpectedInterestAmount,
+                                    placement.ExpectedMaturityAmount,
+                                    placement.MaturityDateUtc,
+                                    placement.Status
+                                }
+                        },
+                        result);
+
+                if (overdueAlert is not null)
+                {
+                    result.InvestmentOverdueAlertCount++;
+                }
+
+                continue;
+            }
+
+            if (maturityDateUtc > warningThroughUtc)
+            {
+                continue;
+            }
+
+            var daysToMaturity =
+                (maturityDateUtc - todayUtc).Days;
+
+            var upcomingAlert =
+                await CreateIfNoOpenDuplicate(
+                    new CreateTreasuryAlertDto
+                    {
+                        AlertType =
+                            TreasuryAlertTypes
+                                .InvestmentMaturityUpcoming,
+
+                        Severity =
+                            daysToMaturity <= 1
+                                ? TreasuryAlertSeverities.Critical
+                                : daysToMaturity <= 7
+                                    ? TreasuryAlertSeverities.Warning
+                                    : TreasuryAlertSeverities.Info,
+
+                        Title =
+                            $"Investment maturity approaching: " +
+                            $"{placement.Reference}",
+
+                        Message =
+                            $"Investment {placement.Reference} at " +
+                            $"{placement.InstitutionName} will mature " +
+                            $"in {daysToMaturity} day(s), on " +
+                            $"{maturityDateUtc:yyyy-MM-dd}. Expected " +
+                            $"proceeds are " +
+                            $"{placement.ExpectedMaturityAmount:N2} " +
+                            $"{placement.Currency}.",
+
+                        AccountId =
+                            placement.SourceAccountId,
+
+                        Currency =
+                            placement.Currency,
+
+                        SourceModule =
+                            "Investment Placements",
+
+                        SourceEntityType =
+                            AuditEntityTypes.InvestmentPlacement,
+
+                        SourceEntityId =
+                            placement.Id,
+
+                        SourceReference =
+                            placement.Reference,
+
+                        Metadata =
+                            new
+                            {
+                                placement.InstitutionName,
+                                placement.PrincipalAmount,
+                                placement.ExpectedInterestAmount,
+                                placement.ExpectedMaturityAmount,
+                                placement.MaturityDateUtc,
+                                DaysToMaturity =
+                                    daysToMaturity
+                            }
+                    },
+                    result);
+
+            if (upcomingAlert is not null)
+            {
+                result.InvestmentMaturityAlertCount++;
+            }
+        }
+    }
+
+    private async Task ScanInvestmentConcentration(
+        TreasuryAlertScanRequestDto request,
+        IReadOnlyList<InvestmentPlacement> placements,
+        TreasuryAlertScanResultDto result)
+    {
+        var outstandingPlacements =
+            placements
+                .Where(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Active ||
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Matured)
+                .Where(placement =>
+                    placement.PrincipalAmount > 0)
+                .ToList();
+
+        var currencyGroups =
+            outstandingPlacements
+                .GroupBy(placement =>
+                    placement.Currency
+                        .Trim()
+                        .ToUpperInvariant());
+
+        foreach (var currencyGroup in currencyGroups)
+        {
+            var totalOutstandingPrincipal =
+                currencyGroup.Sum(placement =>
+                    placement.PrincipalAmount);
+
+            if (totalOutstandingPrincipal <= 0)
+            {
+                continue;
+            }
+
+            var institutionGroups =
+                currencyGroup.GroupBy(
+                    placement =>
+                        placement.InstitutionName.Trim(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (var institutionGroup in institutionGroups)
+            {
+                var institutionName =
+                    institutionGroup.Key;
+
+                var institutionOutstandingPrincipal =
+                    institutionGroup.Sum(placement =>
+                        placement.PrincipalAmount);
+
+                var concentrationPercentage =
+                    Math.Round(
+                        institutionOutstandingPrincipal /
+                        totalOutstandingPrincipal *
+                        100m,
+                        2,
+                        MidpointRounding.AwayFromZero);
+
+                if (concentrationPercentage <
+                    request
+                        .InvestmentConcentrationThresholdPercentage)
+                {
+                    continue;
+                }
+
+                var sourceReference =
+                    $"InvestmentConcentration-" +
+                    $"{currencyGroup.Key}-" +
+                    $"{institutionName}";
+
+                /*
+                * TreasuryAlert.SourceReference has a maximum
+                * database length of 200 characters.
+                */
+                if (sourceReference.Length > 200)
+                {
+                    sourceReference =
+                        sourceReference[..200];
+                }
+
+                var alert =
+                    await CreateIfNoOpenDuplicate(
+                        new CreateTreasuryAlertDto
+                        {
+                            AlertType =
+                                TreasuryAlertTypes
+                                    .InvestmentConcentration,
+
+                            Severity =
+                                concentrationPercentage >= 75m
+                                    ? TreasuryAlertSeverities.Critical
+                                    : TreasuryAlertSeverities.Warning,
+
+                            Title =
+                                $"Investment concentration at " +
+                                $"{institutionName}",
+
+                            Message =
+                                $"{concentrationPercentage:N2}% of the " +
+                                $"{currencyGroup.Key} investment " +
+                                $"portfolio is placed with " +
+                                $"{institutionName}. The configured " +
+                                $"threshold is " +
+                                $"{request.InvestmentConcentrationThresholdPercentage:N2}%.",
+
+                            Currency =
+                                currencyGroup.Key,
+
+                            SourceModule =
+                                "Investment Portfolio",
+
+                            SourceEntityType =
+                                AuditEntityTypes.System,
+
+                            SourceReference =
+                                sourceReference,
+
+                            Metadata =
+                                new
+                                {
+                                    InstitutionName =
+                                        institutionName,
+
+                                    TotalOutstandingPrincipal =
+                                        totalOutstandingPrincipal,
+
+                                    InstitutionOutstandingPrincipal =
+                                        institutionOutstandingPrincipal,
+
+                                    ConcentrationPercentage =
+                                        concentrationPercentage,
+
+                                    ThresholdPercentage =
+                                        request
+                                            .InvestmentConcentrationThresholdPercentage,
+
+                                    PlacementCount =
+                                        institutionGroup.Count()
+                                }
+                        },
+                        result);
+
+                if (alert is not null)
+                {
+                    result.InvestmentConcentrationAlertCount++;
+                }
+            }
+        }
+    }
+
     private async Task<TreasuryAlertResponseDto?> CreateIfNoOpenDuplicate(
         CreateTreasuryAlertDto dto,
         TreasuryAlertScanResultDto result)
@@ -632,6 +987,20 @@ public class TreasuryAlertMonitoringService
         {
             throw new BusinessRuleException(
                 "Reconciliation lookback days must be between 1 and 365.");
+        }
+
+        if (request.InvestmentMaturityWarningDays < 1 ||
+            request.InvestmentMaturityWarningDays > 365)
+        {
+            throw new BusinessRuleException(
+                "Investment maturity warning days must be between 1 and 365.");
+        }
+
+        if (request.InvestmentConcentrationThresholdPercentage <= 0 ||
+            request.InvestmentConcentrationThresholdPercentage > 100)
+        {
+            throw new BusinessRuleException(
+                "Investment concentration threshold must be greater than 0 and not greater than 100.");
         }
     }
 

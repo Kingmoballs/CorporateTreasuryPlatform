@@ -102,6 +102,12 @@ public class TreasuryAlertMonitoringWorker
 
                         ReconciliationLookbackDays =
                             _options.ReconciliationLookbackDays,
+                        
+                        InvestmentMaturityWarningDays =
+                            _options.InvestmentMaturityWarningDays,
+
+                        InvestmentConcentrationThresholdPercentage =
+                            _options.InvestmentConcentrationThresholdPercentage,
 
                         Currency =
                             _options.Currency,
@@ -116,7 +122,13 @@ public class TreasuryAlertMonitoringWorker
                             _options.IncludePendingApprovals,
 
                         IncludeReconciliationExceptions =
-                            _options.IncludeReconciliationExceptions
+                            _options.IncludeReconciliationExceptions,
+
+                        IncludeInvestmentMaturityAlerts =
+                            _options.IncludeInvestmentMaturityAlerts,
+
+                        IncludeInvestmentConcentrationAlerts =
+                            _options.IncludeInvestmentConcentrationAlerts
                     });
 
             if (result.CreatedAlertCount > 0 ||

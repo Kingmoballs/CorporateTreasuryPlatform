@@ -271,6 +271,16 @@ builder.Services
             options.ReconciliationLookbackDays >= 1 &&
             options.ReconciliationLookbackDays <= 365,
         "Reconciliation lookback days must be between 1 and 365.")
+    .Validate(
+        options =>
+            options.InvestmentMaturityWarningDays >= 1 &&
+            options.InvestmentMaturityWarningDays <= 365,
+        "Investment maturity warning days must be between 1 and 365.")
+    .Validate(
+        options =>
+            options.InvestmentConcentrationThresholdPercentage > 0 &&
+            options.InvestmentConcentrationThresholdPercentage <= 100,
+        "Investment concentration threshold must be greater than 0 and not greater than 100.")
     .ValidateOnStart();
 
 builder.Services.AddHostedService<

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text;
 using Treasury.Shared.Common;
 using Treasury.Application.Common.Exceptions;
+using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.InvestmentPlacements;
 using Treasury.Application.Interfaces;
@@ -882,6 +884,967 @@ public class InvestmentPlacementService
         }
     }
 
+    public async Task<InvestmentPortfolioReportDto>
+        GetPortfolioReport(
+            InvestmentPortfolioQueryDto query)
+    {
+        var normalizedQuery =
+            NormalizePortfolioQuery(query);
+
+        var placements =
+            await _placementRepository
+                .GetForReporting(normalizedQuery);
+
+        var generatedAtUtc =
+            DateTime.UtcNow;
+
+        var outstanding =
+            placements
+                .Where(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Active ||
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Matured)
+                .ToList();
+
+        var redeemed =
+            placements
+                .Where(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Redeemed)
+                .ToList();
+
+        var outstandingPrincipal =
+            outstanding.Sum(placement =>
+                placement.PrincipalAmount);
+
+        var buckets =
+            placements
+                .GroupBy(placement => new
+                {
+                    placement.Currency,
+                    placement.InstitutionName
+                })
+                .Select(group =>
+                {
+                    var bucketOutstanding =
+                        group
+                            .Where(placement =>
+                                placement.Status ==
+                                    InvestmentPlacementStatuses.Active ||
+                                placement.Status ==
+                                    InvestmentPlacementStatuses.Matured)
+                            .ToList();
+
+                    var bucketRedeemed =
+                        group
+                            .Where(placement =>
+                                placement.Status ==
+                                    InvestmentPlacementStatuses.Redeemed)
+                            .ToList();
+
+                    var bucketPrincipal =
+                        bucketOutstanding.Sum(placement =>
+                            placement.PrincipalAmount);
+
+                    return new InvestmentPortfolioBucketDto
+                    {
+                        Currency =
+                            group.Key.Currency,
+
+                        InstitutionName =
+                            group.Key.InstitutionName,
+
+                        PlacementCount =
+                            group.Count(),
+
+                        ActiveCount =
+                            group.Count(placement =>
+                                placement.Status ==
+                                    InvestmentPlacementStatuses.Active),
+
+                        MaturedCount =
+                            group.Count(placement =>
+                                placement.Status ==
+                                    InvestmentPlacementStatuses.Matured),
+
+                        RedeemedCount =
+                            bucketRedeemed.Count,
+
+                        OverdueUnredeemedCount =
+                            bucketOutstanding.Count(placement =>
+                                placement.MaturityDateUtc.Date <
+                                    generatedAtUtc.Date),
+
+                        OutstandingPrincipal =
+                            bucketPrincipal,
+
+                        OutstandingExpectedInterest =
+                            bucketOutstanding.Sum(placement =>
+                                placement.ExpectedInterestAmount),
+
+                        OutstandingExpectedMaturityAmount =
+                            bucketOutstanding.Sum(placement =>
+                                placement.ExpectedMaturityAmount),
+
+                        ActualRedeemedProceeds =
+                            bucketRedeemed.Sum(placement =>
+                                placement.ActualMaturityAmount),
+
+                        WeightedAverageInterestRate =
+                            CalculateWeightedAverageRate(
+                                bucketOutstanding),
+
+                        NextMaturityDateUtc =
+                            GetNextMaturityDate(
+                                bucketOutstanding,
+                                generatedAtUtc)
+                    };
+                })
+                .OrderBy(bucket =>
+                    bucket.Currency)
+                .ThenBy(bucket =>
+                    bucket.InstitutionName)
+                .ToList();
+
+        return new InvestmentPortfolioReportDto
+        {
+            GeneratedAtUtc =
+                generatedAtUtc,
+
+            CurrencyFilter =
+                normalizedQuery.Currency,
+
+            InstitutionFilter =
+                normalizedQuery.InstitutionName,
+
+            MaturityFromUtc =
+                normalizedQuery.MaturityFromUtc,
+
+            MaturityToUtc =
+                normalizedQuery.MaturityToUtc,
+
+            IncludesRedeemed =
+                normalizedQuery.IncludeRedeemed,
+
+            PlacementCount =
+                placements.Count,
+
+            ActiveCount =
+                placements.Count(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Active),
+
+            MaturedCount =
+                placements.Count(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Matured),
+
+            RedeemedCount =
+                redeemed.Count,
+
+            OverdueUnredeemedCount =
+                outstanding.Count(placement =>
+                    placement.MaturityDateUtc.Date <
+                        generatedAtUtc.Date),
+
+            OutstandingPrincipal =
+                outstandingPrincipal,
+
+            OutstandingExpectedInterest =
+                outstanding.Sum(placement =>
+                    placement.ExpectedInterestAmount),
+
+            OutstandingExpectedMaturityAmount =
+                outstanding.Sum(placement =>
+                    placement.ExpectedMaturityAmount),
+
+            RedeemedPrincipal =
+                redeemed.Sum(placement =>
+                    placement.PrincipalAmount),
+
+            ActualInterestEarned =
+                redeemed.Sum(placement =>
+                    placement.ActualInterestAmount),
+
+            WithholdingTaxAmount =
+                redeemed.Sum(placement =>
+                    placement.WithholdingTaxAmount),
+
+            ActualRedeemedProceeds =
+                redeemed.Sum(placement =>
+                    placement.ActualMaturityAmount),
+
+            WeightedAverageInterestRate =
+                CalculateWeightedAverageRate(
+                    outstanding),
+
+            NextMaturityDateUtc =
+                GetNextMaturityDate(
+                    outstanding,
+                    generatedAtUtc),
+
+            Buckets =
+                buckets
+        };
+    }
+
+    public async Task<InvestmentMaturityScheduleDto>
+        GetMaturitySchedule(
+            InvestmentPortfolioQueryDto query)
+    {
+        var normalizedQuery =
+            NormalizePortfolioQuery(query);
+
+        var placements =
+            await _placementRepository
+                .GetForReporting(normalizedQuery);
+
+        var generatedAtUtc =
+            DateTime.UtcNow;
+
+        var items =
+            placements
+                .OrderBy(placement =>
+                    placement.MaturityDateUtc)
+                .Select(placement =>
+                    new InvestmentMaturityScheduleItemDto
+                    {
+                        PlacementId =
+                            placement.Id,
+
+                        Reference =
+                            placement.Reference,
+
+                        InstitutionName =
+                            placement.InstitutionName,
+
+                        Currency =
+                            placement.Currency,
+
+                        PrincipalAmount =
+                            placement.PrincipalAmount,
+
+                        AnnualInterestRate =
+                            placement.AnnualInterestRate,
+
+                        ExpectedInterestAmount =
+                            placement.ExpectedInterestAmount,
+
+                        ExpectedMaturityAmount =
+                            placement.ExpectedMaturityAmount,
+
+                        StartDateUtc =
+                            placement.StartDateUtc,
+
+                        MaturityDateUtc =
+                            placement.MaturityDateUtc,
+
+                        DaysToMaturity =
+                            (placement.MaturityDateUtc.Date -
+                            generatedAtUtc.Date).Days,
+
+                        Status =
+                            placement.Status,
+
+                        IsOverdue =
+                            placement.Status !=
+                                InvestmentPlacementStatuses.Redeemed &&
+                            placement.MaturityDateUtc.Date <
+                                generatedAtUtc.Date,
+
+                        ActualMaturityAmount =
+                            placement.ActualMaturityAmount,
+
+                        RedeemedAtUtc =
+                            placement.RedeemedAtUtc
+                    })
+                .ToList();
+
+        return new InvestmentMaturityScheduleDto
+        {
+            GeneratedAtUtc =
+                generatedAtUtc,
+
+            PlacementCount =
+                items.Count,
+
+            OverdueCount =
+                items.Count(item =>
+                    item.IsOverdue),
+
+            TotalPrincipalAmount =
+                items.Sum(item =>
+                    item.PrincipalAmount),
+
+            TotalExpectedMaturityAmount =
+                items.Sum(item =>
+                    item.ExpectedMaturityAmount),
+
+            Items =
+                items
+        };
+    }
+
+    public async Task<CsvExportDto>
+        ExportPortfolioCsv(
+            InvestmentPortfolioQueryDto query)
+    {
+        var report =
+            await GetPortfolioReport(query);
+
+        var schedule =
+            await GetMaturitySchedule(query);
+
+        var csv =
+            new StringBuilder();
+
+        // Section 1: overall portfolio summary.
+        csv.AppendLine(
+            "ReportType,GeneratedAtUtc,PlacementCount,ActiveCount,MaturedCount,RedeemedCount,OverdueUnredeemedCount,OutstandingPrincipal,OutstandingExpectedInterest,OutstandingExpectedMaturityAmount,RedeemedPrincipal,ActualInterestEarned,WithholdingTaxAmount,ActualRedeemedProceeds,WeightedAverageInterestRate,NextMaturityDateUtc");
+
+        csv.AppendLine(string.Join(
+            ",",
+            CsvExportHelper.Escape(
+                "InvestmentPortfolioSummary"),
+            CsvExportHelper.Escape(
+                report.GeneratedAtUtc),
+            CsvExportHelper.Escape(
+                report.PlacementCount),
+            CsvExportHelper.Escape(
+                report.ActiveCount),
+            CsvExportHelper.Escape(
+                report.MaturedCount),
+            CsvExportHelper.Escape(
+                report.RedeemedCount),
+            CsvExportHelper.Escape(
+                report.OverdueUnredeemedCount),
+            CsvExportHelper.Escape(
+                report.OutstandingPrincipal),
+            CsvExportHelper.Escape(
+                report.OutstandingExpectedInterest),
+            CsvExportHelper.Escape(
+                report.OutstandingExpectedMaturityAmount),
+            CsvExportHelper.Escape(
+                report.RedeemedPrincipal),
+            CsvExportHelper.Escape(
+                report.ActualInterestEarned),
+            CsvExportHelper.Escape(
+                report.WithholdingTaxAmount),
+            CsvExportHelper.Escape(
+                report.ActualRedeemedProceeds),
+            CsvExportHelper.Escape(
+                report.WeightedAverageInterestRate),
+            CsvExportHelper.Escape(
+                report.NextMaturityDateUtc)));
+
+        csv.AppendLine();
+
+        // Section 2: exposure by institution and currency.
+        csv.AppendLine(
+            "Currency,InstitutionName,PlacementCount,ActiveCount,MaturedCount,RedeemedCount,OverdueUnredeemedCount,OutstandingPrincipal,OutstandingExpectedInterest,OutstandingExpectedMaturityAmount,ActualRedeemedProceeds,WeightedAverageInterestRate,NextMaturityDateUtc");
+
+        foreach (var bucket in report.Buckets)
+        {
+            csv.AppendLine(string.Join(
+                ",",
+                CsvExportHelper.Escape(
+                    bucket.Currency),
+                CsvExportHelper.Escape(
+                    bucket.InstitutionName),
+                CsvExportHelper.Escape(
+                    bucket.PlacementCount),
+                CsvExportHelper.Escape(
+                    bucket.ActiveCount),
+                CsvExportHelper.Escape(
+                    bucket.MaturedCount),
+                CsvExportHelper.Escape(
+                    bucket.RedeemedCount),
+                CsvExportHelper.Escape(
+                    bucket.OverdueUnredeemedCount),
+                CsvExportHelper.Escape(
+                    bucket.OutstandingPrincipal),
+                CsvExportHelper.Escape(
+                    bucket.OutstandingExpectedInterest),
+                CsvExportHelper.Escape(
+                    bucket.OutstandingExpectedMaturityAmount),
+                CsvExportHelper.Escape(
+                    bucket.ActualRedeemedProceeds),
+                CsvExportHelper.Escape(
+                    bucket.WeightedAverageInterestRate),
+                CsvExportHelper.Escape(
+                    bucket.NextMaturityDateUtc)));
+        }
+
+        csv.AppendLine();
+
+        // Section 3: placement-level maturity schedule.
+        csv.AppendLine(
+            "PlacementId,Reference,InstitutionName,Currency,PrincipalAmount,AnnualInterestRate,ExpectedInterestAmount,ExpectedMaturityAmount,StartDateUtc,MaturityDateUtc,DaysToMaturity,Status,IsOverdue,ActualMaturityAmount,RedeemedAtUtc");
+
+        foreach (var item in schedule.Items)
+        {
+            csv.AppendLine(string.Join(
+                ",",
+                CsvExportHelper.Escape(
+                    item.PlacementId),
+                CsvExportHelper.Escape(
+                    item.Reference),
+                CsvExportHelper.Escape(
+                    item.InstitutionName),
+                CsvExportHelper.Escape(
+                    item.Currency),
+                CsvExportHelper.Escape(
+                    item.PrincipalAmount),
+                CsvExportHelper.Escape(
+                    item.AnnualInterestRate),
+                CsvExportHelper.Escape(
+                    item.ExpectedInterestAmount),
+                CsvExportHelper.Escape(
+                    item.ExpectedMaturityAmount),
+                CsvExportHelper.Escape(
+                    item.StartDateUtc),
+                CsvExportHelper.Escape(
+                    item.MaturityDateUtc),
+                CsvExportHelper.Escape(
+                    item.DaysToMaturity),
+                CsvExportHelper.Escape(
+                    item.Status),
+                CsvExportHelper.Escape(
+                    item.IsOverdue),
+                CsvExportHelper.Escape(
+                    item.ActualMaturityAmount),
+                CsvExportHelper.Escape(
+                    item.RedeemedAtUtc)));
+        }
+
+        var timestamp =
+            DateTime.UtcNow.ToString(
+                "yyyyMMddHHmmss");
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"investment-portfolio-{timestamp}.csv",
+
+            ContentType =
+                "text/csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    csv.ToString())
+        };
+    }
+
+    public async Task<InvestmentMaturityProcessingResultDto>
+        ProcessDueMaturities(
+            int maxRows = 100)
+    {
+        var normalizedMaxRows =
+            maxRows < 1
+                ? 100
+                : Math.Min(maxRows, 500);
+
+        var processedAtUtc =
+            DateTime.UtcNow;
+
+        await _accountRepository.BeginTransaction();
+
+        try
+        {
+            var placements =
+                await _placementRepository
+                    .GetDueForMaturity(
+                        processedAtUtc,
+                        normalizedMaxRows);
+
+            var beforeValues =
+                placements.ToDictionary(
+                    placement => placement.Id,
+                    placement => Snapshot(placement));
+
+            foreach (var placement in placements)
+            {
+                placement.Status =
+                    InvestmentPlacementStatuses.Matured;
+
+                placement.UpdatedAtUtc =
+                    processedAtUtc;
+
+                placement.ConcurrencyToken =
+                    Guid.NewGuid();
+
+                _placementRepository.Update(placement);
+            }
+
+            await _accountRepository.SaveChanges();
+
+            foreach (var placement in placements)
+            {
+                await _auditLogService.Record(
+                    new CreateAuditLogDto
+                    {
+                        Action =
+                            AuditActionTypes.Matured,
+
+                        EntityType =
+                            AuditEntityTypes
+                                .InvestmentPlacement,
+
+                        EntityId =
+                            placement.Id,
+
+                        EntityReference =
+                            placement.Reference,
+
+                        Summary =
+                            $"Investment placement " +
+                            $"{placement.Reference} matured.",
+
+                        BeforeValues =
+                            beforeValues[placement.Id],
+
+                        AfterValues =
+                            Snapshot(placement),
+
+                        Metadata =
+                            new
+                            {
+                                Module =
+                                    "Investment Placements",
+
+                                placement.MaturityDateUtc,
+
+                                placement
+                                    .ExpectedMaturityAmount
+                            }
+                    });
+            }
+
+            await _accountRepository.CommitTransaction();
+
+            return new InvestmentMaturityProcessingResultDto
+            {
+                ProcessedAtUtc =
+                    processedAtUtc,
+
+                MaturedCount =
+                    placements.Count,
+
+                PlacementIds =
+                    placements
+                        .Select(placement =>
+                            placement.Id)
+                        .ToList()
+            };
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository.RollbackTransaction();
+
+            throw new ConflictException(
+                "An investment placement changed while " +
+                "maturities were being processed.");
+        }
+        catch
+        {
+            await _accountRepository.RollbackTransaction();
+
+            throw;
+        }
+    }
+
+    public async Task<InvestmentPlacementResponseDto>
+        Redeem(
+            Guid id,
+            RedeemInvestmentPlacementDto dto)
+    {
+        ValidateRedemption(dto);
+
+        var idempotencyKey =
+            NormalizeIdempotencyKey(
+                dto.IdempotencyKey);
+
+        await _accountRepository.BeginTransaction();
+
+        try
+        {
+            var placement =
+                await GetPlacement(id);
+
+            /*
+            * A retry with the same key returns the original
+            * result without crediting the account again.
+            */
+            if (placement.Status ==
+                    InvestmentPlacementStatuses.Redeemed &&
+                string.Equals(
+                    placement.RedemptionIdempotencyKey,
+                    idempotencyKey,
+                    StringComparison.Ordinal))
+            {
+                await _accountRepository.CommitTransaction();
+
+                return Map(placement);
+            }
+
+            /*
+            * This permits redemption even if the maturity
+            * processing job has not run yet.
+            */
+            if (placement.Status ==
+                    InvestmentPlacementStatuses.Active &&
+                placement.MaturityDateUtc <=
+                    DateTime.UtcNow)
+            {
+                placement.Status =
+                    InvestmentPlacementStatuses.Matured;
+            }
+
+            if (placement.Status !=
+                InvestmentPlacementStatuses.Matured)
+            {
+                throw new ConflictException(
+                    "Only a matured investment placement " +
+                    "can be redeemed.");
+            }
+
+            var existingTransaction =
+                await _transactionRepository
+                    .GetByIdempotencyKey(
+                        idempotencyKey);
+
+            if (existingTransaction is not null)
+            {
+                throw new ConflictException(
+                    "The redemption idempotency key has " +
+                    "already been used.");
+            }
+
+            var destinationAccount =
+                await _accountRepository.GetById(
+                    dto.DestinationAccountId);
+
+            if (destinationAccount is null)
+            {
+                throw new ResourceNotFoundException(
+                    "Redemption destination account " +
+                    "was not found.");
+            }
+
+            if (!destinationAccount.IsActive)
+            {
+                throw new ForbiddenOperationException(
+                    "Redemption requires an active " +
+                    "destination account.");
+            }
+
+            if (!string.Equals(
+                    destinationAccount.Currency,
+                    placement.Currency,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BusinessRuleException(
+                    "The destination account currency must " +
+                    "match the investment currency.");
+            }
+
+            var maturityForecast =
+                placement.MaturityForecastItem;
+
+            if (maturityForecast is null)
+            {
+                throw new ConflictException(
+                    "The investment maturity forecast " +
+                    "was not loaded.");
+            }
+
+            if (maturityForecast.Status !=
+                CashFlowForecastStatus.Active)
+            {
+                throw new ConflictException(
+                    "The investment maturity forecast has " +
+                    "already been processed.");
+            }
+
+            var actualMaturityAmount =
+                placement.PrincipalAmount +
+                dto.ActualInterestAmount -
+                dto.WithholdingTaxAmount;
+
+            var beforeValues =
+                Snapshot(placement);
+
+            var redeemedAtUtc =
+                DateTime.UtcNow;
+
+            var externalReference =
+                NormalizeOptionalText(
+                    dto.ExternalReference,
+                    100);
+
+            var notes =
+                NormalizeOptionalText(
+                    dto.Notes,
+                    1000);
+
+            var description =
+                $"Redemption proceeds for investment " +
+                $"{placement.Reference} from " +
+                $"{placement.InstitutionName}.";
+
+            var transaction =
+                new TreasuryTransaction
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    Reference =
+                        TransactionReferenceGenerator
+                            .Generate(),
+
+                    TransactionType =
+                        TransactionTypes
+                            .InvestmentRedemption,
+
+                    Status =
+                        TransactionStatuses.Completed,
+
+                    Amount =
+                        actualMaturityAmount,
+
+                    Currency =
+                        placement.Currency,
+
+                    Description =
+                        description,
+
+                    SourceAccountId =
+                        null,
+
+                    DestinationAccountId =
+                        destinationAccount.Id,
+
+                    Category =
+                        "Investment Redemption",
+
+                    CounterpartyName =
+                        placement.InstitutionName,
+
+                    ExternalReference =
+                        externalReference ??
+                        placement.Reference,
+
+                    IdempotencyKey =
+                        idempotencyKey,
+
+                    InitiatedByUserId =
+                        _currentUserService.UserId,
+
+                    CompletedByUserId =
+                        _currentUserService.UserId,
+
+                    CreatedAtUtc =
+                        redeemedAtUtc,
+
+                    CompletedAtUtc =
+                        redeemedAtUtc
+                };
+
+            destinationAccount.Balance +=
+                actualMaturityAmount;
+
+            destinationAccount.ConcurrencyToken =
+                Guid.NewGuid();
+
+            /*
+            * Cash entering the bank account increases the
+            * bank-account asset and is recorded as a debit.
+            */
+            var ledgerEntry =
+                new LedgerEntry
+                {
+                    Id =
+                        Guid.NewGuid(),
+
+                    AccountId =
+                        destinationAccount.Id,
+
+                    TreasuryTransactionId =
+                        transaction.Id,
+
+                    Amount =
+                        actualMaturityAmount,
+
+                    EntryType =
+                        "Debit",
+
+                    Description =
+                        description,
+
+                    CreatedAt =
+                        redeemedAtUtc
+                };
+
+            maturityForecast.Status =
+                CashFlowForecastStatus.Realized;
+
+            maturityForecast.RealizedTreasuryTransactionId =
+                transaction.Id;
+
+            maturityForecast.RealizedTreasuryTransaction =
+                transaction;
+
+            maturityForecast.RealizedAtUtc =
+                redeemedAtUtc;
+
+            maturityForecast.UpdatedAtUtc =
+                redeemedAtUtc;
+
+            maturityForecast.ConcurrencyToken =
+                Guid.NewGuid();
+
+            placement.Status =
+                InvestmentPlacementStatuses.Redeemed;
+
+            placement.RedemptionIdempotencyKey =
+                idempotencyKey;
+
+            placement.RedemptionAccountId =
+                destinationAccount.Id;
+
+            placement.RedemptionAccount =
+                destinationAccount;
+
+            placement.RedemptionTreasuryTransactionId =
+                transaction.Id;
+
+            placement.RedemptionTreasuryTransaction =
+                transaction;
+
+            placement.ActualInterestAmount =
+                dto.ActualInterestAmount;
+
+            placement.WithholdingTaxAmount =
+                dto.WithholdingTaxAmount;
+
+            placement.ActualMaturityAmount =
+                actualMaturityAmount;
+
+            placement.RedemptionExternalReference =
+                externalReference;
+
+            placement.RedemptionNotes =
+                notes;
+
+            placement.RedeemedByUserId =
+                _currentUserService.UserId;
+
+            placement.RedeemedAtUtc =
+                redeemedAtUtc;
+
+            placement.UpdatedAtUtc =
+                redeemedAtUtc;
+
+            placement.ConcurrencyToken =
+                Guid.NewGuid();
+
+            _accountRepository.Update(
+                destinationAccount);
+
+            _forecastRepository.Update(
+                maturityForecast);
+
+            _placementRepository.Update(
+                placement);
+
+            await _transactionRepository.Add(
+                transaction);
+
+            await _ledgerRepository.Add(
+                ledgerEntry);
+
+            await _accountRepository.SaveChanges();
+
+            await _auditLogService.Record(
+                new CreateAuditLogDto
+                {
+                    Action =
+                        AuditActionTypes.Redeemed,
+
+                    EntityType =
+                        AuditEntityTypes
+                            .InvestmentPlacement,
+
+                    EntityId =
+                        placement.Id,
+
+                    EntityReference =
+                        placement.Reference,
+
+                    Summary =
+                        $"Investment placement " +
+                        $"{placement.Reference} was redeemed.",
+
+                    BeforeValues =
+                        beforeValues,
+
+                    AfterValues =
+                        Snapshot(placement),
+
+                    Metadata =
+                        new
+                        {
+                            Module =
+                                "Investment Placements",
+
+                            RedemptionTransactionId =
+                                transaction.Id,
+
+                            RedemptionTransactionReference =
+                                transaction.Reference,
+
+                            DestinationAccountId =
+                                destinationAccount.Id,
+
+                            placement.PrincipalAmount,
+
+                            placement.ActualInterestAmount,
+
+                            placement.WithholdingTaxAmount,
+
+                            placement.ActualMaturityAmount
+                        }
+                });
+
+            await _accountRepository.CommitTransaction();
+
+            return Map(placement);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await _accountRepository.RollbackTransaction();
+
+            throw new ConflictException(
+                "The placement, forecast or destination " +
+                "account changed during redemption.");
+        }
+        catch (DbUpdateException)
+        {
+            await _accountRepository.RollbackTransaction();
+
+            throw new ConflictException(
+                "The investment redemption could not be " +
+                "saved. It may already have been processed.");
+        }
+        catch
+        {
+            await _accountRepository.RollbackTransaction();
+
+            throw;
+        }
+    }
+
     public async Task<InvestmentPlacementResponseDto>
         Cancel(
         Guid id,
@@ -1439,6 +2402,133 @@ public class InvestmentPlacementService
             });
     }
 
+    private static void ValidateRedemption(
+        RedeemInvestmentPlacementDto dto)
+    {
+        if (dto.DestinationAccountId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Destination account is required.");
+        }
+
+        if (dto.ActualInterestAmount < 0)
+        {
+            throw new BusinessRuleException(
+                "Actual interest amount cannot be negative.");
+        }
+
+        if (dto.WithholdingTaxAmount < 0)
+        {
+            throw new BusinessRuleException(
+                "Withholding tax amount cannot be negative.");
+        }
+
+        if (dto.WithholdingTaxAmount >
+            dto.ActualInterestAmount)
+        {
+            throw new BusinessRuleException(
+                "Withholding tax cannot exceed the " +
+                "actual interest amount.");
+        }
+    }
+
+    private static InvestmentPortfolioQueryDto
+        NormalizePortfolioQuery(
+            InvestmentPortfolioQueryDto query)
+    {
+        DateTime? maturityFromUtc =
+            query.MaturityFromUtc.HasValue
+                ? NormalizeUtc(
+                    query.MaturityFromUtc.Value).Date
+                : null;
+
+        DateTime? maturityToUtc =
+            query.MaturityToUtc.HasValue
+                ? NormalizeUtc(
+                        query.MaturityToUtc.Value)
+                    .Date
+                    .AddDays(1)
+                    .AddTicks(-1)
+                : null;
+
+        if (maturityFromUtc.HasValue &&
+            maturityToUtc.HasValue &&
+            maturityFromUtc.Value >
+                maturityToUtc.Value)
+        {
+            throw new BusinessRuleException(
+                "MaturityFromUtc cannot be later " +
+                "than MaturityToUtc.");
+        }
+
+        return new InvestmentPortfolioQueryDto
+        {
+            Currency =
+                string.IsNullOrWhiteSpace(
+                    query.Currency)
+                    ? null
+                    : NormalizeCurrency(
+                        query.Currency),
+
+            InstitutionName =
+                NormalizeOptionalText(
+                    query.InstitutionName,
+                    200),
+
+            MaturityFromUtc =
+                maturityFromUtc,
+
+            MaturityToUtc =
+                maturityToUtc,
+
+            IncludeRedeemed =
+                query.IncludeRedeemed
+        };
+    }
+
+    private static decimal
+        CalculateWeightedAverageRate(
+            IEnumerable<InvestmentPlacement> placements)
+    {
+        var items =
+            placements.ToList();
+
+        var totalPrincipal =
+            items.Sum(placement =>
+                placement.PrincipalAmount);
+
+        if (totalPrincipal <= 0)
+        {
+            return 0;
+        }
+
+        var weightedRate =
+            items.Sum(placement =>
+                placement.PrincipalAmount *
+                placement.AnnualInterestRate) /
+            totalPrincipal;
+
+        return Math.Round(
+            weightedRate,
+            6,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private static DateTime? GetNextMaturityDate(
+        IEnumerable<InvestmentPlacement> placements,
+        DateTime asOfUtc)
+    {
+        return placements
+            .Where(placement =>
+                placement.MaturityDateUtc.Date >=
+                    asOfUtc.Date)
+            .OrderBy(placement =>
+                placement.MaturityDateUtc)
+            .Select(placement =>
+                (DateTime?)placement.MaturityDateUtc)
+            .FirstOrDefault();
+    }
+
     private static string NormalizeIdempotencyKey(
         string? value)
     {
@@ -1684,6 +2774,43 @@ public class InvestmentPlacementService
 
             ActivatedAtUtc =
                 placement.ActivatedAtUtc,
+            
+            RedemptionIdempotencyKey =
+                placement.RedemptionIdempotencyKey,
+
+            RedemptionAccountId =
+                placement.RedemptionAccountId,
+
+            RedemptionAccountName =
+                placement.RedemptionAccount?.Name,
+
+            RedemptionTreasuryTransactionId =
+                placement.RedemptionTreasuryTransactionId,
+
+            RedemptionTransactionReference =
+                placement.RedemptionTreasuryTransaction?
+                    .Reference,
+
+            ActualInterestAmount =
+                placement.ActualInterestAmount,
+
+            WithholdingTaxAmount =
+                placement.WithholdingTaxAmount,
+
+            ActualMaturityAmount =
+                placement.ActualMaturityAmount,
+
+            RedemptionExternalReference =
+                placement.RedemptionExternalReference,
+
+            RedemptionNotes =
+                placement.RedemptionNotes,
+
+            RedeemedByUserId =
+                placement.RedeemedByUserId,
+
+            RedeemedAtUtc =
+                placement.RedeemedAtUtc,
 
             CancelledByUserId =
                 placement.CancelledByUserId,
@@ -1733,6 +2860,16 @@ public class InvestmentPlacementService
             placement.MaturityForecastItemId,
             placement.ActivatedByUserId,
             placement.ActivatedAtUtc,
+            placement.RedemptionIdempotencyKey,
+            placement.RedemptionAccountId,
+            placement.RedemptionTreasuryTransactionId,
+            placement.ActualInterestAmount,
+            placement.WithholdingTaxAmount,
+            placement.ActualMaturityAmount,
+            placement.RedemptionExternalReference,
+            placement.RedemptionNotes,
+            placement.RedeemedByUserId,
+            placement.RedeemedAtUtc,
             placement.CancelledByUserId,
             placement.CancelledAtUtc,
             placement.CancellationReason

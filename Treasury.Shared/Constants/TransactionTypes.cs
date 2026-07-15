@@ -19,4 +19,7 @@ public static class TransactionTypes
     
     public const string InvestmentPlacement =
         "InvestmentPlacement";
+
+    public const string InvestmentRedemption =
+        "InvestmentRedemption";
 }

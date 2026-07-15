@@ -13,6 +13,14 @@ public interface IInvestmentPlacementRepository
 
     Task<(IReadOnlyList<InvestmentPlacement> Items, int TotalCount)>
         Search(InvestmentPlacementQueryDto query);
+    
+    Task<List<InvestmentPlacement>> GetDueForMaturity(
+        DateTime asOfUtc,
+        int maxRows);
+    
+    Task<IReadOnlyList<InvestmentPlacement>>
+        GetForReporting(
+            InvestmentPortfolioQueryDto query);
 
     void Update(InvestmentPlacement placement);
 

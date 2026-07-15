@@ -3,6 +3,7 @@ using Treasury.Application.DTOs.InvestmentPlacements;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Persistence;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Repositories;
 
@@ -34,6 +35,10 @@ public class InvestmentPlacementRepository
                 placement.FundingTreasuryTransaction)
             .Include(placement =>
                 placement.MaturityForecastItem)
+            .Include(placement =>
+                placement.RedemptionAccount)
+            .Include(placement =>
+                placement.RedemptionTreasuryTransaction)
             .FirstOrDefaultAsync(placement =>
                 placement.Id == id);
     }
@@ -69,6 +74,10 @@ public class InvestmentPlacementRepository
                     placement.FundingTreasuryTransaction)
                 .Include(placement =>
                     placement.MaturityForecastItem)
+                .Include(placement =>
+                    placement.RedemptionAccount)
+                .Include(placement =>
+                    placement.RedemptionTreasuryTransaction)
                 .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query.Status))
@@ -146,6 +155,81 @@ public class InvestmentPlacementRepository
                 .ToListAsync();
 
         return (items, totalCount);
+    }
+
+    public async Task<List<InvestmentPlacement>>
+        GetDueForMaturity(
+            DateTime asOfUtc,
+            int maxRows)
+    {
+        return await _context.InvestmentPlacements
+            .Where(placement =>
+                placement.Status ==
+                    InvestmentPlacementStatuses.Active &&
+                placement.MaturityDateUtc <= asOfUtc)
+            .OrderBy(placement =>
+                placement.MaturityDateUtc)
+            .Take(maxRows)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<InvestmentPlacement>>
+        GetForReporting(
+            InvestmentPortfolioQueryDto query)
+    {
+        var placements =
+            _context.InvestmentPlacements
+                .AsNoTracking()
+                .Where(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Active ||
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Matured ||
+                    (query.IncludeRedeemed &&
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Redeemed))
+                .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query.Currency))
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.Currency ==
+                        query.Currency);
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                query.InstitutionName))
+        {
+            placements =
+                placements.Where(placement =>
+                    EF.Functions.ILike(
+                        placement.InstitutionName,
+                        $"%{query.InstitutionName}%"));
+        }
+
+        if (query.MaturityFromUtc.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.MaturityDateUtc >=
+                        query.MaturityFromUtc.Value);
+        }
+
+        if (query.MaturityToUtc.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.MaturityDateUtc <=
+                        query.MaturityToUtc.Value);
+        }
+
+        return await placements
+            .OrderBy(placement =>
+                placement.MaturityDateUtc)
+            .ThenBy(placement =>
+                placement.InstitutionName)
+            .ToListAsync();
     }
 
     public void Update(

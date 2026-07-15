@@ -21,6 +21,9 @@ public class TreasuryAlertService : ITreasuryAlertService
         TreasuryAlertTypes.ReconciliationException,
         TreasuryAlertTypes.FxExposure,
         TreasuryAlertTypes.AuditException,
+        TreasuryAlertTypes.InvestmentMaturityUpcoming,
+        TreasuryAlertTypes.InvestmentMaturityOverdue,
+        TreasuryAlertTypes.InvestmentConcentration,
         TreasuryAlertTypes.System
     ];
 
