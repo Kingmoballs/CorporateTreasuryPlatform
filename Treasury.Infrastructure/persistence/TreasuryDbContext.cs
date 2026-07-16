@@ -48,6 +48,8 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<InvestmentPlacement> InvestmentPlacements => Set<InvestmentPlacement>();
 
+    public DbSet<InvestmentAccrualSnapshot> InvestmentAccrualSnapshots => Set<InvestmentAccrualSnapshot>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -116,6 +118,20 @@ public class TreasuryDbContext : DbContext
         {
             throw new InvalidOperationException(
                 "Approval decisions are immutable.");
+        }
+
+        var changedAccrualSnapshots =
+            ChangeTracker
+                .Entries<InvestmentAccrualSnapshot>()
+                .Any(entry =>
+                    entry.State == EntityState.Modified ||
+                    entry.State == EntityState.Deleted);
+
+        if (changedAccrualSnapshots)
+        {
+            throw new InvalidOperationException(
+                "Investment accrual snapshots are immutable " +
+                "and cannot be modified or deleted.");
         }
     }
 
@@ -1435,6 +1451,170 @@ public class TreasuryDbContext : DbContext
                     "CK_InvestmentPlacements_RedemptionAmount",
                     "\"Status\" <> 'Redeemed' OR " +
                     "\"ActualMaturityAmount\" > 0");
+            });
+        
+        var investmentAccrualSnapshot =
+            modelBuilder.Entity<InvestmentAccrualSnapshot>();
+
+        investmentAccrualSnapshot
+            .HasIndex(snapshot => new
+            {
+                snapshot.InvestmentPlacementId,
+                snapshot.SnapshotDateUtc
+            })
+            .IsUnique();
+
+        investmentAccrualSnapshot
+            .HasIndex(snapshot => new
+            {
+                snapshot.SnapshotDateUtc,
+                snapshot.Currency
+            });
+
+        investmentAccrualSnapshot
+            .HasIndex(snapshot =>
+                snapshot.InstitutionName);
+
+        investmentAccrualSnapshot
+            .HasOne(snapshot =>
+                snapshot.InvestmentPlacement)
+            .WithMany()
+            .HasForeignKey(snapshot =>
+                snapshot.InvestmentPlacementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentAccrualSnapshot
+            .HasOne(snapshot =>
+                snapshot.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(snapshot =>
+                snapshot.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.SnapshotDateUtc)
+            .HasColumnType("date");
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.InvestmentReference)
+            .HasMaxLength(50);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.InstitutionName)
+            .HasMaxLength(200);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.Currency)
+            .HasMaxLength(3);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.PlacementStatus)
+            .HasMaxLength(50);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.PrincipalAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.AnnualInterestRate)
+            .HasPrecision(9, 6);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.ExpectedInterestAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.AccruedInterestAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.CarryingAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.ActualInterestAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.WithholdingTaxAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.RealizedNetInterestAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.ActualRedemptionProceeds)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.InterestVarianceAmount)
+            .HasPrecision(18, 2);
+
+        investmentAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.RealizedAnnualizedYieldPercentage)
+            .HasPrecision(12, 6);
+
+        investmentAccrualSnapshot
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_Principal",
+                    "\"PrincipalAmount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_Currency",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_Rate",
+                    "\"AnnualInterestRate\" BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_DayCountBasis",
+                    "\"DayCountBasis\" IN (360, 365)");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_AccruedDays",
+                    "\"AccruedDays\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_Amounts",
+                    "\"ExpectedInterestAmount\" >= 0 " +
+                    "AND \"AccruedInterestAmount\" >= 0 " +
+                    "AND \"CarryingAmount\" >= 0 " +
+                    "AND \"ActualInterestAmount\" >= 0 " +
+                    "AND \"WithholdingTaxAmount\" >= 0 " +
+                    "AND \"RealizedNetInterestAmount\" >= 0 " +
+                    "AND \"ActualRedemptionProceeds\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_PositionState",
+                    "(\"IsOutstandingAsOf\" AND " +
+                    "NOT \"IsRedeemedAsOf\") OR " +
+                    "(NOT \"IsOutstandingAsOf\" AND " +
+                    "\"IsRedeemedAsOf\")");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentAccrualSnapshots_Status",
+                    "\"PlacementStatus\" IN " +
+                    "('Active', 'Matured', 'Redeemed')");
             });
         
         var approvalPolicy =

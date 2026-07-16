@@ -218,6 +218,48 @@ builder.Services.AddScoped<
     InvestmentPlacementService>();
 
 builder.Services.AddScoped<
+    IInvestmentAccrualService,
+    InvestmentAccrualService>();
+
+builder.Services.AddScoped<
+    IInvestmentAccrualSnapshotRepository,
+    InvestmentAccrualSnapshotRepository>();
+
+builder.Services.AddScoped<
+    IInvestmentAccrualSnapshotService,
+    InvestmentAccrualSnapshotService>();
+
+builder.Services
+    .AddOptions<
+        InvestmentAccrualSnapshotWorkerOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            InvestmentAccrualSnapshotWorkerOptions
+                .SectionName))
+    .Validate(
+        options =>
+            options.CheckIntervalMinutes >= 1 &&
+            options.CheckIntervalMinutes <= 1440,
+        "Investment accrual snapshot check interval " +
+        "must be between 1 and 1440 minutes.")
+    .Validate(
+        options =>
+            options.RunHourUtc >= 0 &&
+            options.RunHourUtc <= 23,
+        "Investment accrual snapshot UTC hour " +
+        "must be between 0 and 23.")
+    .Validate(
+        options =>
+            options.RunMinuteUtc >= 0 &&
+            options.RunMinuteUtc <= 59,
+        "Investment accrual snapshot UTC minute " +
+        "must be between 0 and 59.")
+    .ValidateOnStart();
+
+builder.Services.AddHostedService<
+    InvestmentAccrualSnapshotWorker>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 
