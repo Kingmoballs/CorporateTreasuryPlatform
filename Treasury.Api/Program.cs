@@ -222,6 +222,10 @@ builder.Services.AddScoped<
     InvestmentAccrualService>();
 
 builder.Services.AddScoped<
+    IInvestmentEarlyRedemptionService,
+    InvestmentEarlyRedemptionService>();
+
+builder.Services.AddScoped<
     IInvestmentAccrualSnapshotRepository,
     InvestmentAccrualSnapshotRepository>();
 

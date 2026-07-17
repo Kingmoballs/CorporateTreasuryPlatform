@@ -1770,7 +1770,8 @@ public class TreasuryDbContext : DbContext
                     "num_nonnulls(" +
                     "\"TransferRequestId\", " +
                     "\"PaymentRequestId\", " +
-                    "\"ReversalRequestId\") = 1");
+                    "\"ReversalRequestId\", " +
+                    "\"InvestmentPlacementId\") = 1");
             });
     }
 }
