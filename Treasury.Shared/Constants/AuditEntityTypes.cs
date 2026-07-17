@@ -18,5 +18,7 @@ public static class AuditEntityTypes
     public const string FxRate = "FxRate";
     public const string TreasuryAlert = "TreasuryAlert";
     public const string InvestmentPlacement = "InvestmentPlacement";
+    public const string InvestmentEarlyRedemptionRequest =
+        "InvestmentEarlyRedemptionRequest";
     public const string System = "System";
 }

@@ -233,6 +233,14 @@ builder.Services.AddScoped<
     IInvestmentAccrualSnapshotService,
     InvestmentAccrualSnapshotService>();
 
+builder.Services.AddScoped<
+    IInvestmentEarlyRedemptionRequestRepository,
+    InvestmentEarlyRedemptionRequestRepository>();
+
+builder.Services.AddScoped<
+    IInvestmentEarlyRedemptionRequestService,
+    InvestmentEarlyRedemptionRequestService>();
+
 builder.Services
     .AddOptions<
         InvestmentAccrualSnapshotWorkerOptions>()

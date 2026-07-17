@@ -29,6 +29,20 @@ public static class ApprovalPolicySeeder
                 .TransactionReversal,
             "NGN",
             0m);
+        
+        await AddIfMissing(
+            context,
+            ApprovalOperationTypes
+                .InvestmentPlacement,
+            "NGN",
+            0m);
+
+        await AddIfMissing(
+            context,
+            ApprovalOperationTypes
+                .InvestmentEarlyRedemption,
+            "NGN",
+            0m);
 
         await context.SaveChangesAsync();
     }

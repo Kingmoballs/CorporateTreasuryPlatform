@@ -50,6 +50,14 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<InvestmentAccrualSnapshot> InvestmentAccrualSnapshots => Set<InvestmentAccrualSnapshot>();
 
+    public DbSet<InvestmentEarlyRedemptionRequest>
+        InvestmentEarlyRedemptionRequests =>
+            Set<InvestmentEarlyRedemptionRequest>();
+
+    public DbSet<InvestmentEarlyRedemptionDecision>
+        InvestmentEarlyRedemptionDecisions =>
+            Set<InvestmentEarlyRedemptionDecision>();
+
     private void EnsureFinancialRecordsAreImmutable()
     {
         var changedLedgerEntries =
@@ -132,6 +140,21 @@ public class TreasuryDbContext : DbContext
             throw new InvalidOperationException(
                 "Investment accrual snapshots are immutable " +
                 "and cannot be modified or deleted.");
+        }
+
+        var changedEarlyRedemptionDecisions =
+            ChangeTracker
+                .Entries<
+                    InvestmentEarlyRedemptionDecision>()
+                .Any(entry =>
+                    entry.State == EntityState.Modified ||
+                    entry.State == EntityState.Deleted);
+
+        if (changedEarlyRedemptionDecisions)
+        {
+            throw new InvalidOperationException(
+                "Early-redemption approval decisions " +
+                "are immutable.");
         }
     }
 
@@ -989,7 +1012,16 @@ public class TreasuryDbContext : DbContext
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
-                "\"EntityType\" IN ('User','Role','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','System')");
+                "\"EntityType\" IN " +
+                "('User','Role','Account','AccountType'," +
+                "'TransferRequest','PaymentRequest'," +
+                "'ReversalRequest','ApprovalPolicy'," +
+                "'ApprovalDecision','TreasuryTransaction'," +
+                "'BankStatementImport','BankStatementLine'," +
+                "'CashFlowForecastItem','FxRate'," +
+                "'TreasuryAlert','InvestmentPlacement'," +
+                "'InvestmentEarlyRedemptionRequest'," +
+                "'System')");
         });
 
         var treasuryAlert =
@@ -1616,6 +1648,269 @@ public class TreasuryDbContext : DbContext
                     "\"PlacementStatus\" IN " +
                     "('Active', 'Matured', 'Redeemed')");
             });
+
+        var earlyRedemptionRequest =
+            modelBuilder.Entity<
+                InvestmentEarlyRedemptionRequest>();
+
+        earlyRedemptionRequest
+            .HasIndex(request =>
+                request.RequestIdempotencyKey)
+            .IsUnique();
+
+        earlyRedemptionRequest
+            .HasIndex(request =>
+                request.ExecutionIdempotencyKey)
+            .IsUnique();
+
+        earlyRedemptionRequest
+            .HasIndex(request => new
+            {
+                request.Status,
+                request.ExpiresAtUtc
+            });
+
+        earlyRedemptionRequest
+            .HasIndex(request =>
+                request.InvestmentPlacementId)
+            .IsUnique()
+            .HasFilter(
+                "\"Status\" IN ('Pending', 'Approved')");
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        earlyRedemptionRequest
+            .HasOne(request =>
+                request.InvestmentPlacement)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.InvestmentPlacementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionRequest
+            .HasOne(request =>
+                request.DestinationAccount)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.DestinationAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionRequest
+            .HasOne(request =>
+                request.RequestedByUser)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionRequest
+            .HasOne(request =>
+                request.RejectedByUser)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RejectedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionRequest
+            .HasOne(request =>
+                request.RedemptionTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RedemptionTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.InvestmentReference)
+            .HasMaxLength(50);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.InstitutionName)
+            .HasMaxLength(200);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.Currency)
+            .HasMaxLength(3);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.Status)
+            .HasMaxLength(30);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.RequestIdempotencyKey)
+            .HasMaxLength(100);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.ExecutionIdempotencyKey)
+            .HasMaxLength(100);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.ExternalReference)
+            .HasMaxLength(100);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.Notes)
+            .HasMaxLength(1000);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.RejectionReason)
+            .HasMaxLength(500);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.PrincipalAmount)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.GrossAccruedInterestAmount)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.PenaltyRatePercentage)
+            .HasPrecision(9, 6);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.PenaltyAmount)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.InterestAfterPenaltyAmount)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.WithholdingTaxRatePercentage)
+            .HasPrecision(9, 6);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.WithholdingTaxAmount)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.NetInterestAmount)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.EstimatedRedemptionProceeds)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .Property(request =>
+                request.ExpectedProceedsShortfall)
+            .HasPrecision(18, 2);
+
+        earlyRedemptionRequest
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Status",
+                    "\"Status\" IN " +
+                    "('Pending','Approved','Rejected'," +
+                    "'Executed','Expired')");
+
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Currency",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Principal",
+                    "\"PrincipalAmount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Rates",
+                    "\"PenaltyRatePercentage\" " +
+                    "BETWEEN 0 AND 100 AND " +
+                    "\"WithholdingTaxRatePercentage\" " +
+                    "BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Amounts",
+                    "\"GrossAccruedInterestAmount\" >= 0 " +
+                    "AND \"PenaltyAmount\" >= 0 " +
+                    "AND \"InterestAfterPenaltyAmount\" >= 0 " +
+                    "AND \"WithholdingTaxAmount\" >= 0 " +
+                    "AND \"NetInterestAmount\" >= 0 " +
+                    "AND \"EstimatedRedemptionProceeds\" > 0 " +
+                    "AND \"ExpectedProceedsShortfall\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Approvals",
+                    "\"RequiredApprovalCount\" BETWEEN 1 AND 5 " +
+                    "AND \"ApprovalCount\" >= 0 " +
+                    "AND \"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
+
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionRequests_Expiry",
+                    "\"ExpiresAtUtc\" > \"RequestedAtUtc\"");
+            });
+
+        var earlyRedemptionDecision =
+            modelBuilder.Entity<
+                InvestmentEarlyRedemptionDecision>();
+
+        earlyRedemptionDecision
+            .HasIndex(decision => new
+            {
+                decision.InvestmentEarlyRedemptionRequestId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
+
+        earlyRedemptionDecision
+            .HasOne(decision =>
+                decision.InvestmentEarlyRedemptionRequest)
+            .WithMany(request =>
+                request.Decisions)
+            .HasForeignKey(decision =>
+                decision.InvestmentEarlyRedemptionRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionDecision
+            .HasOne(decision =>
+                decision.ApproverUser)
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.ApproverUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        earlyRedemptionDecision
+            .Property(decision =>
+                decision.Decision)
+            .HasMaxLength(20);
+
+        earlyRedemptionDecision
+            .Property(decision =>
+                decision.Comment)
+            .HasMaxLength(500);
+
+        earlyRedemptionDecision
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_EarlyRedemptionDecisions_Decision",
+                    "\"Decision\" IN ('Approved','Rejected')");
+            });
         
         var approvalPolicy =
             modelBuilder.Entity<ApprovalPolicy>();
@@ -1669,7 +1964,8 @@ public class TreasuryDbContext : DbContext
                     "('InternalTransfer', " +
                     "'CashPayment', " +
                     "'TransactionReversal', " +
-                    "'InvestmentPlacement')");
+                    "'InvestmentPlacement', " +
+                    "'InvestmentEarlyRedemption')");
                 
                 table.HasCheckConstraint(
                     "CK_ApprovalPolicies_RequiredApprovalCount",
