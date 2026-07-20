@@ -241,6 +241,10 @@ builder.Services.AddScoped<
     IInvestmentEarlyRedemptionRequestService,
     InvestmentEarlyRedemptionRequestService>();
 
+builder.Services.AddScoped<
+    IInvestmentRolloverService,
+    InvestmentRolloverService>();
+
 builder.Services
     .AddOptions<
         InvestmentAccrualSnapshotWorkerOptions>()
