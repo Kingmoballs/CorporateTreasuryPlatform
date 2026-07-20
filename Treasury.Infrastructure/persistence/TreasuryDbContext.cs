@@ -57,6 +57,14 @@ public class TreasuryDbContext : DbContext
     public DbSet<InvestmentEarlyRedemptionDecision>
         InvestmentEarlyRedemptionDecisions =>
             Set<InvestmentEarlyRedemptionDecision>();
+    
+    public DbSet<InvestmentRolloverRequest>
+        InvestmentRolloverRequests =>
+            Set<InvestmentRolloverRequest>();
+
+    public DbSet<InvestmentRolloverDecision>
+        InvestmentRolloverDecisions =>
+            Set<InvestmentRolloverDecision>();
 
     private void EnsureFinancialRecordsAreImmutable()
     {
@@ -154,6 +162,20 @@ public class TreasuryDbContext : DbContext
         {
             throw new InvalidOperationException(
                 "Early-redemption approval decisions " +
+                "are immutable.");
+        }
+
+        var changedRolloverDecisions =
+            ChangeTracker
+                .Entries<InvestmentRolloverDecision>()
+                .Any(entry =>
+                    entry.State == EntityState.Modified ||
+                    entry.State == EntityState.Deleted);
+
+        if (changedRolloverDecisions)
+        {
+            throw new InvalidOperationException(
+                "Investment rollover approval decisions " +
                 "are immutable.");
         }
     }
@@ -1021,7 +1043,7 @@ public class TreasuryDbContext : DbContext
                 "'CashFlowForecastItem','FxRate'," +
                 "'TreasuryAlert','InvestmentPlacement'," +
                 "'InvestmentEarlyRedemptionRequest'," +
-                "'System')");
+                "'InvestmentRolloverRequest','System')");
         });
 
         var treasuryAlert =
@@ -1911,6 +1933,376 @@ public class TreasuryDbContext : DbContext
                     "CK_EarlyRedemptionDecisions_Decision",
                     "\"Decision\" IN ('Approved','Rejected')");
             });
+
+        var rolloverRequest =
+            modelBuilder.Entity<InvestmentRolloverRequest>();
+
+        rolloverRequest
+            .HasIndex(request =>
+                request.RequestIdempotencyKey)
+            .IsUnique();
+
+        rolloverRequest
+            .HasIndex(request =>
+                request.ExecutionIdempotencyKey)
+            .IsUnique();
+
+        rolloverRequest
+            .HasIndex(request => new
+            {
+                request.Status,
+                request.ExpiresAtUtc
+            });
+
+        /*
+        * Only one open rollover request is permitted for an
+        * original investment at a time.
+        */
+        rolloverRequest
+            .HasIndex(request =>
+                request.OriginalInvestmentPlacementId)
+            .IsUnique()
+            .HasFilter(
+                "\"Status\" IN ('Pending', 'Approved')");
+
+        rolloverRequest
+            .HasIndex(request =>
+                request.NewInvestmentPlacementId)
+            .IsUnique();
+
+        rolloverRequest
+            .HasIndex(request =>
+                request.CashPayoutTreasuryTransactionId)
+            .IsUnique();
+
+        rolloverRequest
+            .Property(request =>
+                request.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        rolloverRequest
+            .HasOne(request =>
+                request.OriginalInvestmentPlacement)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.OriginalInvestmentPlacementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .HasOne(request =>
+                request.NewInvestmentPlacement)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.NewInvestmentPlacementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .HasOne(request =>
+                request.CashPayoutAccount)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.CashPayoutAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .HasOne(request =>
+                request.CashPayoutTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.CashPayoutTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .HasOne(request =>
+                request.RequestedByUser)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .HasOne(request =>
+                request.RejectedByUser)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.RejectedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .HasOne(request =>
+                request.ExecutedByUser)
+            .WithMany()
+            .HasForeignKey(request =>
+                request.ExecutedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverRequest
+            .Property(request =>
+                request.OriginalInvestmentReference)
+            .HasMaxLength(50);
+
+        rolloverRequest
+            .Property(request =>
+                request.OriginalInstitutionName)
+            .HasMaxLength(200);
+
+        rolloverRequest
+            .Property(request =>
+                request.Currency)
+            .HasMaxLength(3);
+
+        rolloverRequest
+            .Property(request =>
+                request.RolloverOption)
+            .HasMaxLength(30);
+
+        rolloverRequest
+            .Property(request =>
+                request.NewInvestmentType)
+            .HasMaxLength(50);
+
+        rolloverRequest
+            .Property(request =>
+                request.NewInstitutionName)
+            .HasMaxLength(200);
+
+        rolloverRequest
+            .Property(request =>
+                request.Status)
+            .HasMaxLength(30);
+
+        rolloverRequest
+            .Property(request =>
+                request.RequestIdempotencyKey)
+            .HasMaxLength(100);
+
+        rolloverRequest
+            .Property(request =>
+                request.ExecutionIdempotencyKey)
+            .HasMaxLength(100);
+
+        rolloverRequest
+            .Property(request =>
+                request.ExternalReference)
+            .HasMaxLength(100);
+
+        rolloverRequest
+            .Property(request =>
+                request.Notes)
+            .HasMaxLength(1000);
+
+        rolloverRequest
+            .Property(request =>
+                request.RejectionReason)
+            .HasMaxLength(500);
+
+        rolloverRequest
+            .Property(request =>
+                request.OriginalPrincipalAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.GrossInterestAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.GrossMaturityAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.WithholdingTaxRatePercentage)
+            .HasPrecision(9, 6);
+
+        rolloverRequest
+            .Property(request =>
+                request.WithholdingTaxAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.NetInterestAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.NetMaturityProceeds)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.RolloverPrincipalAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.CashPayoutAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.NewAnnualInterestRate)
+            .HasPrecision(9, 6);
+
+        rolloverRequest
+            .Property(request =>
+                request.NewExpectedInterestAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .Property(request =>
+                request.NewExpectedMaturityAmount)
+            .HasPrecision(18, 2);
+
+        rolloverRequest
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Status",
+                    "\"Status\" IN " +
+                    "('Pending','Approved','Rejected'," +
+                    "'Executed','Expired')");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Currency",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Option",
+                    "\"RolloverOption\" IN " +
+                    "('PrincipalOnly'," +
+                    "'PrincipalAndNetInterest')");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Rates",
+                    "\"WithholdingTaxRatePercentage\" " +
+                    "BETWEEN 0 AND 100 AND " +
+                    "\"NewAnnualInterestRate\" " +
+                    "BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_DayCount",
+                    "\"NewDayCountBasis\" IN (360, 365)");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Dates",
+                    "\"NewStartDateUtc\" >= " +
+                    "\"OriginalMaturityDateUtc\" AND " +
+                    "\"NewMaturityDateUtc\" > " +
+                    "\"NewStartDateUtc\" AND " +
+                    "\"NewTenorDays\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Amounts",
+                    "\"OriginalPrincipalAmount\" > 0 AND " +
+                    "\"GrossInterestAmount\" >= 0 AND " +
+                    "\"WithholdingTaxAmount\" >= 0 AND " +
+                    "\"WithholdingTaxAmount\" <= " +
+                    "\"GrossInterestAmount\" AND " +
+                    "\"NetInterestAmount\" >= 0 AND " +
+                    "\"NetMaturityProceeds\" > 0 AND " +
+                    "\"RolloverPrincipalAmount\" > 0 AND " +
+                    "\"CashPayoutAmount\" >= 0 AND " +
+                    "\"NewExpectedInterestAmount\" >= 0 AND " +
+                    "\"NewExpectedMaturityAmount\" >= " +
+                    "\"RolloverPrincipalAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Arithmetic",
+                    "\"GrossMaturityAmount\" = " +
+                    "\"OriginalPrincipalAmount\" + " +
+                    "\"GrossInterestAmount\" AND " +
+                    "\"NetInterestAmount\" = " +
+                    "\"GrossInterestAmount\" - " +
+                    "\"WithholdingTaxAmount\" AND " +
+                    "\"NetMaturityProceeds\" = " +
+                    "\"OriginalPrincipalAmount\" + " +
+                    "\"NetInterestAmount\" AND " +
+                    "\"NewExpectedMaturityAmount\" = " +
+                    "\"RolloverPrincipalAmount\" + " +
+                    "\"NewExpectedInterestAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_OptionAmounts",
+                    "(\"RolloverOption\" = 'PrincipalOnly' " +
+                    "AND \"RolloverPrincipalAmount\" = " +
+                    "\"OriginalPrincipalAmount\" " +
+                    "AND \"CashPayoutAmount\" = " +
+                    "\"NetInterestAmount\") OR " +
+                    "(\"RolloverOption\" = " +
+                    "'PrincipalAndNetInterest' " +
+                    "AND \"RolloverPrincipalAmount\" = " +
+                    "\"NetMaturityProceeds\" " +
+                    "AND \"CashPayoutAmount\" = 0)");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_PayoutAccount",
+                    "(\"CashPayoutAmount\" = 0 AND " +
+                    "\"CashPayoutAccountId\" IS NULL) OR " +
+                    "(\"CashPayoutAmount\" > 0 AND " +
+                    "\"CashPayoutAccountId\" IS NOT NULL)");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Approvals",
+                    "\"RequiredApprovalCount\" BETWEEN 1 AND 5 " +
+                    "AND \"ApprovalCount\" >= 0 " +
+                    "AND \"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverRequests_Expiry",
+                    "\"ExpiresAtUtc\" > \"RequestedAtUtc\"");
+            });
+
+        var rolloverDecision =
+            modelBuilder.Entity<InvestmentRolloverDecision>();
+
+        rolloverDecision
+            .HasIndex(decision => new
+            {
+                decision.InvestmentRolloverRequestId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
+
+        rolloverDecision
+            .HasOne(decision =>
+                decision.InvestmentRolloverRequest)
+            .WithMany(request =>
+                request.Decisions)
+            .HasForeignKey(decision =>
+                decision.InvestmentRolloverRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverDecision
+            .HasOne(decision =>
+                decision.ApproverUser)
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.ApproverUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        rolloverDecision
+            .Property(decision =>
+                decision.Decision)
+            .HasMaxLength(20);
+
+        rolloverDecision
+            .Property(decision =>
+                decision.Comment)
+            .HasMaxLength(500);
+
+        rolloverDecision
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_InvestmentRolloverDecisions_Decision",
+                    "\"Decision\" IN ('Approved','Rejected')");
+            });
         
         var approvalPolicy =
             modelBuilder.Entity<ApprovalPolicy>();
@@ -1965,7 +2357,8 @@ public class TreasuryDbContext : DbContext
                     "'CashPayment', " +
                     "'TransactionReversal', " +
                     "'InvestmentPlacement', " +
-                    "'InvestmentEarlyRedemption')");
+                    "'InvestmentEarlyRedemption', " +
+                    "'InvestmentRollover')");
                 
                 table.HasCheckConstraint(
                     "CK_ApprovalPolicies_RequiredApprovalCount",

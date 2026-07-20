@@ -20,5 +20,8 @@ public static class AuditEntityTypes
     public const string InvestmentPlacement = "InvestmentPlacement";
     public const string InvestmentEarlyRedemptionRequest =
         "InvestmentEarlyRedemptionRequest";
+    
+    public const string InvestmentRolloverRequest =
+        "InvestmentRolloverRequest";
     public const string System = "System";
 }

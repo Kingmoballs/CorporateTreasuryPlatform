@@ -245,6 +245,14 @@ builder.Services.AddScoped<
     IInvestmentRolloverService,
     InvestmentRolloverService>();
 
+builder.Services.AddScoped<
+    IInvestmentRolloverRequestRepository,
+    InvestmentRolloverRequestRepository>();
+
+builder.Services.AddScoped<
+    IInvestmentRolloverRequestService,
+    InvestmentRolloverRequestService>();
+
 builder.Services
     .AddOptions<
         InvestmentAccrualSnapshotWorkerOptions>()

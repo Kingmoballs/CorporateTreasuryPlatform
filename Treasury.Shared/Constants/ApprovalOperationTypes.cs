@@ -16,4 +16,7 @@ public static class ApprovalOperationTypes
     
     public const string InvestmentEarlyRedemption =
         "InvestmentEarlyRedemption";
+    
+    public const string InvestmentRollover =
+        "InvestmentRollover";
 }

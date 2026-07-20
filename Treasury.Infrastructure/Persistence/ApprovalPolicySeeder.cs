@@ -43,6 +43,13 @@ public static class ApprovalPolicySeeder
                 .InvestmentEarlyRedemption,
             "NGN",
             0m);
+        
+        await AddIfMissing(
+            context,
+            ApprovalOperationTypes
+                .InvestmentRollover,
+            "NGN",
+            0m);
 
         await context.SaveChangesAsync();
     }
