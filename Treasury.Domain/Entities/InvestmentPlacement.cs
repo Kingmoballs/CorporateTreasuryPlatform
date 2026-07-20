@@ -10,6 +10,14 @@ public class InvestmentPlacement
 
     public string InstitutionName { get; set; } = string.Empty;
 
+    /*
+    * Nullable temporarily so existing investment records
+    * can migrate without losing data.
+    */
+    public Guid? CounterpartyId { get; set; }
+
+    public Counterparty? Counterparty { get; set; }
+
     public Guid SourceAccountId { get; set; }
 
     public Account SourceAccount { get; set; } = null!;

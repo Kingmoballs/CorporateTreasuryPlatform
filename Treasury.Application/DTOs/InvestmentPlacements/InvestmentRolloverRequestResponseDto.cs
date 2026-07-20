@@ -102,7 +102,13 @@ public class InvestmentRolloverRequestResponseDto
     public Guid? NewInvestmentPlacementId
         { get; set; }
 
+    public string? NewInvestmentReference
+        { get; set; }
+
     public Guid? CashPayoutTreasuryTransactionId
+        { get; set; }
+    
+    public string? CashPayoutTransactionReference
         { get; set; }
 
     public Guid? ExecutedByUserId { get; set; }

@@ -48,7 +48,15 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<InvestmentPlacement> InvestmentPlacements => Set<InvestmentPlacement>();
 
-    public DbSet<InvestmentAccrualSnapshot> InvestmentAccrualSnapshots => Set<InvestmentAccrualSnapshot>();
+    public DbSet<Counterparty> Counterparties =>
+        Set<Counterparty>();
+
+    public DbSet<InvestmentLimit> InvestmentLimits =>
+        Set<InvestmentLimit>();
+
+    public DbSet<InvestmentAccrualSnapshot> 
+        InvestmentAccrualSnapshots => 
+            Set<InvestmentAccrualSnapshot>();
 
     public DbSet<InvestmentEarlyRedemptionRequest>
         InvestmentEarlyRedemptionRequests =>
@@ -1043,7 +1051,8 @@ public class TreasuryDbContext : DbContext
                 "'CashFlowForecastItem','FxRate'," +
                 "'TreasuryAlert','InvestmentPlacement'," +
                 "'InvestmentEarlyRedemptionRequest'," +
-                "'InvestmentRolloverRequest','System')");
+                "'InvestmentRolloverRequest','Counterparty'," +
+                "'InvestmentLimit','System')");
         });
 
         var treasuryAlert =
@@ -1190,6 +1199,225 @@ public class TreasuryDbContext : DbContext
                     "\"Currency\" IS NULL OR char_length(\"Currency\") = 3");
             });
         
+        var counterparty =
+            modelBuilder.Entity<Counterparty>();
+
+        counterparty
+            .HasIndex(item =>
+                item.Code)
+            .IsUnique();
+
+        counterparty
+            .HasIndex(item => new
+            {
+                item.IsActive,
+                item.Name
+            });
+
+        counterparty
+            .Property(item =>
+                item.Code)
+            .HasMaxLength(30);
+
+        counterparty
+            .Property(item =>
+                item.Name)
+            .HasMaxLength(200);
+
+        counterparty
+            .Property(item =>
+                item.CounterpartyType)
+            .HasMaxLength(50);
+
+        counterparty
+            .Property(item =>
+                item.CountryCode)
+            .HasMaxLength(2);
+
+        counterparty
+            .Property(item =>
+                item.SwiftCode)
+            .HasMaxLength(11);
+
+        counterparty
+            .Property(item =>
+                item.CreditRating)
+            .HasMaxLength(20);
+
+        counterparty
+            .Property(item =>
+                item.Notes)
+            .HasMaxLength(1000);
+
+        counterparty
+            .Property(item =>
+                item.IsActive)
+            .HasDefaultValue(true);
+
+        counterparty
+            .Property(item =>
+                item.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        counterparty
+            .HasOne(item =>
+                item.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        counterparty
+            .HasOne(item =>
+                item.UpdatedByUser)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.UpdatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        counterparty
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Counterparties_Code",
+                    "\"Code\" ~ " +
+                    "'^[A-Z0-9][A-Z0-9-]{0,29}$'");
+
+                table.HasCheckConstraint(
+                    "CK_Counterparties_Name",
+                    "char_length(btrim(\"Name\")) > 0");
+
+                table.HasCheckConstraint(
+                    "CK_Counterparties_Type",
+                    "\"CounterpartyType\" IN " +
+                    "('Bank'," +
+                    "'NonBankFinancialInstitution'," +
+                    "'Corporate','Government')");
+
+                table.HasCheckConstraint(
+                    "CK_Counterparties_CountryCode",
+                    "\"CountryCode\" ~ '^[A-Z]{2}$'");
+
+                table.HasCheckConstraint(
+                    "CK_Counterparties_SwiftCode",
+                    "\"SwiftCode\" IS NULL OR " +
+                    "\"SwiftCode\" ~ " +
+                    "'^[A-Z0-9]{8}([A-Z0-9]{3})?$'");
+            });
+
+        var investmentLimit =
+            modelBuilder.Entity<InvestmentLimit>();
+
+        investmentLimit
+            .HasIndex(limit => new
+            {
+                limit.CounterpartyId,
+                limit.Currency,
+                limit.InvestmentType,
+                limit.EffectiveFromUtc
+            })
+            .IsUnique();
+
+        investmentLimit
+            .HasIndex(limit => new
+            {
+                limit.IsActive,
+                limit.EffectiveFromUtc,
+                limit.EffectiveToUtc
+            });
+
+        investmentLimit
+            .HasOne(limit =>
+                limit.Counterparty)
+            .WithMany(counterpartyItem =>
+                counterpartyItem.InvestmentLimits)
+            .HasForeignKey(limit =>
+                limit.CounterpartyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentLimit
+            .HasOne(limit =>
+                limit.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(limit =>
+                limit.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentLimit
+            .HasOne(limit =>
+                limit.UpdatedByUser)
+            .WithMany()
+            .HasForeignKey(limit =>
+                limit.UpdatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        investmentLimit
+            .Property(limit =>
+                limit.Currency)
+            .HasMaxLength(3);
+
+        investmentLimit
+            .Property(limit =>
+                limit.InvestmentType)
+            .HasMaxLength(50);
+
+        investmentLimit
+            .Property(limit =>
+                limit.MaximumExposureAmount)
+            .HasPrecision(18, 2);
+
+        investmentLimit
+            .Property(limit =>
+                limit.WarningThresholdPercentage)
+            .HasPrecision(5, 2)
+            .HasDefaultValue(80m);
+
+        investmentLimit
+            .Property(limit =>
+                limit.Notes)
+            .HasMaxLength(1000);
+
+        investmentLimit
+            .Property(limit =>
+                limit.IsActive)
+            .HasDefaultValue(true);
+
+        investmentLimit
+            .Property(limit =>
+                limit.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        investmentLimit
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_InvestmentLimits_Currency",
+                    "\"Currency\" ~ '^[A-Z]{3}$'");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentLimits_InvestmentType",
+                    "\"InvestmentType\" IN " +
+                    "('All','FixedDeposit')");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentLimits_MaximumExposure",
+                    "\"MaximumExposureAmount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentLimits_WarningThreshold",
+                    "\"WarningThresholdPercentage\" > 0 AND " +
+                    "\"WarningThresholdPercentage\" <= 100");
+
+                table.HasCheckConstraint(
+                    "CK_InvestmentLimits_EffectiveDates",
+                    "\"EffectiveToUtc\" IS NULL OR " +
+                    "\"EffectiveToUtc\" > \"EffectiveFromUtc\"");
+            });
+        
         var investmentPlacement =
             modelBuilder.Entity<InvestmentPlacement>();
 
@@ -1208,6 +1436,19 @@ public class TreasuryDbContext : DbContext
         investmentPlacement
             .HasIndex(placement =>
                 placement.SourceAccountId);
+        
+        investmentPlacement
+            .HasIndex(placement =>
+                placement.CounterpartyId);
+
+        investmentPlacement
+            .HasOne(placement =>
+                placement.Counterparty)
+            .WithMany(counterpartyItem =>
+                counterpartyItem.InvestmentPlacements)
+            .HasForeignKey(placement =>
+                placement.CounterpartyId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         investmentPlacement
             .Property(placement =>

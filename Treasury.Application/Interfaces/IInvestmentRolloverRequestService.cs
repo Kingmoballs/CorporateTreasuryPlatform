@@ -20,4 +20,7 @@ public interface IInvestmentRolloverRequestService
     Task<InvestmentRolloverRequestResponseDto> Reject(
         Guid id,
         string reason);
+
+    Task<InvestmentRolloverRequestResponseDto> Execute(
+        Guid id);
 }

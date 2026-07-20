@@ -112,4 +112,16 @@ public class InvestmentRolloversController
 
         return Ok(result);
     }
+
+    [HttpPost("requests/{requestId:guid}/execute")]
+    [Authorize(Roles = ApprovalRoles)]
+    public async Task<IActionResult> Execute(
+        Guid requestId)
+    {
+        var result =
+            await _requestService.Execute(
+                requestId);
+
+        return Ok(result);
+    }
 }

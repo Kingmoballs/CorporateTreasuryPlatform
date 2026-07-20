@@ -23,5 +23,12 @@ public static class AuditEntityTypes
     
     public const string InvestmentRolloverRequest =
         "InvestmentRolloverRequest";
+    
+    public const string Counterparty =
+        "Counterparty";
+
+    public const string InvestmentLimit =
+        "InvestmentLimit";
+
     public const string System = "System";
 }

@@ -205,6 +205,14 @@ public class InvestmentRolloverRequestServiceTests
                 quoteService.Object,
                 accountRepository.Object,
                 approvalPolicyService.Object,
+                new Mock<IInvestmentPlacementRepository>()
+                    .Object,
+                new Mock<ITreasuryTransactionRepository>()
+                    .Object,
+                new Mock<ILedgerRepository>()
+                    .Object,
+                new Mock<ICashFlowForecastRepository>()
+                    .Object,
                 currentUserService.Object,
                 auditLogService.Object);
 
@@ -293,6 +301,14 @@ public class InvestmentRolloverRequestServiceTests
                 new Mock<IAccountRepository>()
                     .Object,
                 new Mock<IApprovalPolicyService>()
+                    .Object,
+                new Mock<IInvestmentPlacementRepository>()
+                    .Object,
+                new Mock<ITreasuryTransactionRepository>()
+                    .Object,
+                new Mock<ILedgerRepository>()
+                    .Object,
+                new Mock<ICashFlowForecastRepository>()
                     .Object,
                 currentUserService.Object,
                 new Mock<IAuditLogService>()
