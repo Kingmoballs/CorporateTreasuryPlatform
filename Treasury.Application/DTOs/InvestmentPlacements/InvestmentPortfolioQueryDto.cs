@@ -6,6 +6,8 @@ public class InvestmentPortfolioQueryDto
 
     public string? InstitutionName { get; set; }
 
+    public Guid? CounterpartyId { get; set; }
+
     public DateTime? MaturityFromUtc { get; set; }
 
     public DateTime? MaturityToUtc { get; set; }

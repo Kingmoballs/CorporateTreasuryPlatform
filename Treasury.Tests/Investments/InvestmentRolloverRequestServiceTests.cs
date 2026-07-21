@@ -207,6 +207,8 @@ public class InvestmentRolloverRequestServiceTests
                 approvalPolicyService.Object,
                 new Mock<IInvestmentPlacementRepository>()
                     .Object,
+                new Mock<IInvestmentLimitEnforcementService>()
+                    .Object,
                 new Mock<ITreasuryTransactionRepository>()
                     .Object,
                 new Mock<ILedgerRepository>()
@@ -303,6 +305,8 @@ public class InvestmentRolloverRequestServiceTests
                 new Mock<IApprovalPolicyService>()
                     .Object,
                 new Mock<IInvestmentPlacementRepository>()
+                    .Object,
+                new Mock<IInvestmentLimitEnforcementService>()
                     .Object,
                 new Mock<ITreasuryTransactionRepository>()
                     .Object,

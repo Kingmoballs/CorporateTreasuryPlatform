@@ -6,7 +6,7 @@ public class CreateInvestmentPlacementDto
 
     public string InvestmentType { get; set; } = "FixedDeposit";
 
-    public string InstitutionName { get; set; } = string.Empty;
+    public Guid CounterpartyId { get; set; }
 
     public decimal PrincipalAmount { get; set; }
 

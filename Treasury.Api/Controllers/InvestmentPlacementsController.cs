@@ -155,6 +155,22 @@ public class InvestmentPlacementsController
         return Ok(result);
     }
 
+    [HttpPatch("{id:guid}/counterparty")]
+    [Authorize(Roles = InvestmentFundingRoles)]
+    public async Task<IActionResult>
+        AssignCounterparty(
+            Guid id,
+            AssignInvestmentCounterpartyDto dto)
+    {
+        var result =
+            await _placementService
+                .AssignCounterparty(
+                    id,
+                    dto.CounterpartyId);
+
+        return Ok(result);
+    }
+
     [HttpPost("{id:guid}/redeem")]
     [Authorize(Roles = InvestmentFundingRoles)]
     public async Task<IActionResult> Redeem(

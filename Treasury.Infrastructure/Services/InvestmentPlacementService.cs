@@ -28,6 +28,9 @@ public class InvestmentPlacementService
 
     private readonly IInvestmentPlacementRepository
         _placementRepository;
+    
+    private readonly ICounterpartyRepository
+        _counterpartyRepository;
 
     private readonly IAccountRepository
         _accountRepository;
@@ -52,9 +55,13 @@ public class InvestmentPlacementService
 
     private readonly IApprovalDecisionRepository
         _approvalDecisionRepository;
+    
+    private readonly IInvestmentLimitEnforcementService
+        _limitEnforcementService;
 
     public InvestmentPlacementService(
         IInvestmentPlacementRepository placementRepository,
+        ICounterpartyRepository counterpartyRepository,
         IAccountRepository accountRepository,
         ITreasuryTransactionRepository transactionRepository,
         ILedgerRepository ledgerRepository,
@@ -62,10 +69,14 @@ public class InvestmentPlacementService
         ICurrentUserService currentUserService,
         IAuditLogService auditLogService,
         IApprovalPolicyService approvalPolicyService,
-        IApprovalDecisionRepository approvalDecisionRepository)
+        IApprovalDecisionRepository approvalDecisionRepository,
+        IInvestmentLimitEnforcementService limitEnforcementService)
     {
         _placementRepository =
             placementRepository;
+
+        _counterpartyRepository =
+            counterpartyRepository;
 
         _accountRepository =
             accountRepository;
@@ -84,11 +95,15 @@ public class InvestmentPlacementService
 
         _auditLogService =
             auditLogService;
+
         _approvalPolicyService =
             approvalPolicyService;
 
         _approvalDecisionRepository =
             approvalDecisionRepository;
+        
+        _limitEnforcementService =
+            limitEnforcementService;
     }
 
     public async Task<InvestmentPlacementResponseDto>
@@ -116,11 +131,22 @@ public class InvestmentPlacementService
             NormalizeInvestmentType(
                 dto.InvestmentType);
 
-        var institutionName =
-            NormalizeRequiredText(
-                dto.InstitutionName,
-                "Institution name",
-                200);
+        var counterparty =
+            await _counterpartyRepository
+                .GetById(dto.CounterpartyId);
+
+        if (counterparty is null)
+        {
+            throw new ResourceNotFoundException(
+                "Investment counterparty was not found.");
+        }
+
+        if (!counterparty.IsActive)
+        {
+            throw new ConflictException(
+                "The selected investment counterparty " +
+                "is inactive.");
+        }
 
         var startDateUtc =
             NormalizeUtc(dto.StartDateUtc).Date;
@@ -179,8 +205,13 @@ public class InvestmentPlacementService
                     investmentType,
 
                 InstitutionName =
-                    institutionName,
+                    counterparty.Name,
 
+                CounterpartyId =
+                    counterparty.Id,
+
+                Counterparty =
+                    counterparty,
                 SourceAccountId =
                     account.Id,
 
@@ -297,6 +328,115 @@ public class InvestmentPlacementService
         return Map(placement);
     }
 
+    public async Task<InvestmentPlacementResponseDto>
+        AssignCounterparty(
+            Guid id,
+            Guid counterpartyId)
+    {
+        if (counterpartyId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Counterparty ID is required.");
+        }
+
+        var placement =
+            await _placementRepository.GetById(id);
+
+        if (placement is null)
+        {
+            throw new ResourceNotFoundException(
+                "Investment placement was not found.");
+        }
+
+        var counterparty =
+            await _counterpartyRepository
+                .GetById(counterpartyId);
+
+        if (counterparty is null)
+        {
+            throw new ResourceNotFoundException(
+                "Counterparty was not found.");
+        }
+
+        if (placement.CounterpartyId ==
+            counterparty.Id)
+        {
+            return Map(placement);
+        }
+
+        var beforeValues =
+            Snapshot(placement);
+
+        placement.CounterpartyId =
+            counterparty.Id;
+
+        placement.Counterparty =
+            counterparty;
+
+        placement.InstitutionName =
+            counterparty.Name;
+
+        placement.UpdatedAtUtc =
+            DateTime.UtcNow;
+
+        placement.ConcurrencyToken =
+            Guid.NewGuid();
+
+        _placementRepository.Update(placement);
+
+        try
+        {
+            await _placementRepository.SaveChanges();
+        }
+        catch (Microsoft.EntityFrameworkCore
+            .DbUpdateConcurrencyException)
+        {
+            throw new ConflictException(
+                "The investment placement changed while " +
+                "its counterparty was being assigned.");
+        }
+
+        await _auditLogService.Record(
+            new CreateAuditLogDto
+            {
+                Action =
+                    AuditActionTypes.Updated,
+
+                EntityType =
+                    AuditEntityTypes.InvestmentPlacement,
+
+                EntityId =
+                    placement.Id,
+
+                EntityReference =
+                    placement.Reference,
+
+                Summary =
+                    $"Counterparty {counterparty.Code} was " +
+                    $"assigned to investment placement " +
+                    $"{placement.Reference}.",
+
+                BeforeValues =
+                    beforeValues,
+
+                AfterValues =
+                    Snapshot(placement),
+
+                Metadata =
+                    new
+                    {
+                        Module =
+                            "Investment Counterparty Assignment",
+
+                        counterparty.Id,
+
+                        counterparty.Code
+                    }
+            });
+
+        return Map(placement);
+    }
+
     public async Task<PagedInvestmentPlacementResponseDto>
         Search(InvestmentPlacementQueryDto query)
     {
@@ -349,6 +489,13 @@ public class InvestmentPlacementService
         {
             throw new BusinessRuleException(
                 "MaturityFromUtc cannot be later than MaturityToUtc.");
+        }
+
+        if (query.CounterpartyId.HasValue &&
+            query.CounterpartyId.Value == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Counterparty ID is invalid.");
         }
 
         var result =
@@ -439,6 +586,17 @@ public class InvestmentPlacementService
                 throw new ConflictException(
                     "The idempotency key has already been used.");
             }
+
+            await _limitEnforcementService
+                .EnsureWithinLimits(
+                    placement.CounterpartyId
+                    ?? throw new BusinessRuleException(
+                        "Assign a counterparty to the investment " +
+                        "before requesting activation."),
+                    placement.Currency,
+                    placement.InvestmentType,
+                    placement.PrincipalAmount,
+                    placement.Id);
 
             var requirements =
                 await _approvalPolicyService
@@ -676,6 +834,21 @@ public class InvestmentPlacementService
 
                 return Map(placement);
             }
+
+            /*
+            * Revalidate at final approval because limits or other
+            * exposure may have changed while approval was pending.
+            */
+            await _limitEnforcementService
+                .EnsureWithinLimits(
+                    placement.CounterpartyId
+                    ?? throw new BusinessRuleException(
+                        "Assign a counterparty before final " +
+                        "investment approval."),
+                    placement.Currency,
+                    placement.InvestmentType,
+                    placement.PrincipalAmount,
+                    placement.Id);
 
             var account =
                 GetFundingAccount(placement);
@@ -2163,6 +2336,12 @@ public class InvestmentPlacementService
                 "Source account is required.");
         }
 
+        if (dto.CounterpartyId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Investment counterparty is required.");
+        }
+
         if (dto.PrincipalAmount <= 0)
         {
             throw new BusinessRuleException(
@@ -2461,6 +2640,13 @@ public class InvestmentPlacementService
                 "than MaturityToUtc.");
         }
 
+        if (query.CounterpartyId.HasValue &&
+            query.CounterpartyId.Value == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Counterparty ID is invalid.");
+        }
+
         return new InvestmentPortfolioQueryDto
         {
             Currency =
@@ -2474,6 +2660,9 @@ public class InvestmentPlacementService
                 NormalizeOptionalText(
                     query.InstitutionName,
                     200),
+            
+            CounterpartyId =
+                query.CounterpartyId,
 
             MaturityFromUtc =
                 maturityFromUtc,
@@ -2679,6 +2868,15 @@ public class InvestmentPlacementService
             InstitutionName =
                 placement.InstitutionName,
 
+            CounterpartyId =
+                placement.CounterpartyId,
+
+            CounterpartyCode =
+                placement.Counterparty?.Code,
+
+            CounterpartyName =
+                placement.Counterparty?.Name,
+
             SourceAccountId =
                 placement.SourceAccountId,
 
@@ -2832,6 +3030,9 @@ public class InvestmentPlacementService
             placement.Reference,
             placement.InvestmentType,
             placement.InstitutionName,
+            placement.CounterpartyId,
+            CounterpartyCode =
+                placement.Counterparty?.Code,
             placement.SourceAccountId,
             placement.PrincipalAmount,
             placement.Currency,

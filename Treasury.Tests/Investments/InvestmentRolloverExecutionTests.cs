@@ -10,133 +10,337 @@ namespace Treasury.Tests.Investments;
 public class InvestmentRolloverExecutionTests
 {
     [Fact]
-    public async Task Execute_PrincipalOnly_CreatesReplacementAndPaysInterest()
+    public async Task
+        Execute_PrincipalOnly_CreatesReplacementAndPaysInterest()
     {
-        var nowUtc = DateTime.UtcNow.Date;
+        var nowUtc = DateTime.UtcNow;
+        var todayUtc = nowUtc.Date;
+
         var requesterId = Guid.NewGuid();
         var executorId = Guid.NewGuid();
+
+        var counterparty =
+            new Counterparty
+            {
+                Id =
+                    Guid.NewGuid(),
+
+                Code =
+                    "TESTBANK",
+
+                Name =
+                    "Test Bank",
+
+                CounterpartyType =
+                    CounterpartyTypes.Bank,
+
+                CountryCode =
+                    "NG",
+
+                IsActive =
+                    true,
+
+                ConcurrencyToken =
+                    Guid.NewGuid()
+            };
 
         var sourceAccount =
             new Account
             {
-                Id = Guid.NewGuid(),
-                Name = "Source Account",
-                Currency = "NGN",
-                Balance = 20_000_000m,
-                IsActive = true,
-                ConcurrencyToken = Guid.NewGuid()
+                Id =
+                    Guid.NewGuid(),
+
+                Name =
+                    "Source Account",
+
+                Currency =
+                    "NGN",
+
+                Balance =
+                    20_000_000m,
+
+                IsActive =
+                    true,
+
+                ConcurrencyToken =
+                    Guid.NewGuid()
             };
 
         var payoutAccount =
             new Account
             {
-                Id = Guid.NewGuid(),
-                Name = "Payout Account",
-                Currency = "NGN",
-                Balance = 5_000_000m,
-                IsActive = true,
-                ConcurrencyToken = Guid.NewGuid()
+                Id =
+                    Guid.NewGuid(),
+
+                Name =
+                    "Payout Account",
+
+                Currency =
+                    "NGN",
+
+                Balance =
+                    5_000_000m,
+
+                IsActive =
+                    true,
+
+                ConcurrencyToken =
+                    Guid.NewGuid()
             };
 
         var originalForecast =
             new CashFlowForecastItem
             {
-                Id = Guid.NewGuid(),
-                AccountId = sourceAccount.Id,
-                Amount = 11_000_000m,
-                Currency = "NGN",
-                Direction = CashFlowDirections.Inflow,
-                ExpectedDateUtc = nowUtc,
-                Category = "Investment Maturity",
-                Description = "Original maturity",
+                Id =
+                    Guid.NewGuid(),
+
+                AccountId =
+                    sourceAccount.Id,
+
+                Account =
+                    sourceAccount,
+
+                Amount =
+                    11_000_000m,
+
+                Currency =
+                    "NGN",
+
+                Direction =
+                    CashFlowDirections.Inflow,
+
+                ExpectedDateUtc =
+                    todayUtc,
+
+                Category =
+                    "Investment Maturity",
+
+                CounterpartyName =
+                    counterparty.Name,
+
+                Description =
+                    "Original maturity",
+
                 SourceType =
-                    CashFlowForecastSourceTypes.Investment,
-                Status = CashFlowForecastStatus.Active,
-                ConcurrencyToken = Guid.NewGuid()
+                    CashFlowForecastSourceTypes
+                        .Investment,
+
+                Status =
+                    CashFlowForecastStatus.Active,
+
+                CreatedAtUtc =
+                    nowUtc.AddDays(-365),
+
+                UpdatedAtUtc =
+                    nowUtc,
+
+                ConcurrencyToken =
+                    Guid.NewGuid()
             };
 
         var originalPlacement =
             new InvestmentPlacement
             {
-                Id = Guid.NewGuid(),
-                Reference = "INV-ORIGINAL-001",
+                Id =
+                    Guid.NewGuid(),
+
+                Reference =
+                    "INV-ORIGINAL-001",
+
                 InvestmentType =
-                    InvestmentPlacementTypes.FixedDeposit,
-                InstitutionName = "Test Bank",
-                SourceAccountId = sourceAccount.Id,
-                SourceAccount = sourceAccount,
-                PrincipalAmount = 10_000_000m,
-                Currency = "NGN",
-                AnnualInterestRate = 10m,
-                DayCountBasis = 365,
-                StartDateUtc = nowUtc.AddDays(-365),
-                MaturityDateUtc = nowUtc,
-                ExpectedInterestAmount = 1_000_000m,
-                ExpectedMaturityAmount = 11_000_000m,
-                Status = InvestmentPlacementStatuses.Matured,
-                MaturityForecastItemId = originalForecast.Id,
-                MaturityForecastItem = originalForecast,
-                ConcurrencyToken = Guid.NewGuid()
+                    InvestmentPlacementTypes
+                        .FixedDeposit,
+
+                InstitutionName =
+                    counterparty.Name,
+
+                CounterpartyId =
+                    counterparty.Id,
+
+                Counterparty =
+                    counterparty,
+
+                SourceAccountId =
+                    sourceAccount.Id,
+
+                SourceAccount =
+                    sourceAccount,
+
+                PrincipalAmount =
+                    10_000_000m,
+
+                Currency =
+                    "NGN",
+
+                AnnualInterestRate =
+                    10m,
+
+                DayCountBasis =
+                    365,
+
+                StartDateUtc =
+                    todayUtc.AddDays(-365),
+
+                MaturityDateUtc =
+                    todayUtc,
+
+                ExpectedInterestAmount =
+                    1_000_000m,
+
+                ExpectedMaturityAmount =
+                    11_000_000m,
+
+                Status =
+                    InvestmentPlacementStatuses.Matured,
+
+                MaturityForecastItemId =
+                    originalForecast.Id,
+
+                MaturityForecastItem =
+                    originalForecast,
+
+                CreatedAtUtc =
+                    nowUtc.AddDays(-365),
+
+                UpdatedAtUtc =
+                    nowUtc,
+
+                ConcurrencyToken =
+                    Guid.NewGuid()
             };
 
         var request =
             new InvestmentRolloverRequest
             {
-                Id = Guid.NewGuid(),
+                Id =
+                    Guid.NewGuid(),
+
                 OriginalInvestmentPlacementId =
                     originalPlacement.Id,
+
                 OriginalInvestmentPlacement =
                     originalPlacement,
+
                 OriginalInvestmentReference =
                     originalPlacement.Reference,
+
                 OriginalInstitutionName =
                     originalPlacement.InstitutionName,
-                Currency = "NGN",
-                OriginalMaturityDateUtc = nowUtc,
-                OriginalPrincipalAmount = 10_000_000m,
-                GrossInterestAmount = 1_000_000m,
-                GrossMaturityAmount = 11_000_000m,
-                WithholdingTaxRatePercentage = 10m,
-                WithholdingTaxAmount = 100_000m,
-                NetInterestAmount = 900_000m,
-                NetMaturityProceeds = 10_900_000m,
+
+                Currency =
+                    "NGN",
+
+                OriginalMaturityDateUtc =
+                    todayUtc,
+
+                OriginalPrincipalAmount =
+                    10_000_000m,
+
+                GrossInterestAmount =
+                    1_000_000m,
+
+                GrossMaturityAmount =
+                    11_000_000m,
+
+                WithholdingTaxRatePercentage =
+                    10m,
+
+                WithholdingTaxAmount =
+                    100_000m,
+
+                NetInterestAmount =
+                    900_000m,
+
+                NetMaturityProceeds =
+                    10_900_000m,
+
                 RolloverOption =
-                    InvestmentRolloverOptions.PrincipalOnly,
-                RolloverPrincipalAmount = 10_000_000m,
-                CashPayoutAmount = 900_000m,
-                CashPayoutAccountId = payoutAccount.Id,
-                CashPayoutAccount = payoutAccount,
+                    InvestmentRolloverOptions
+                        .PrincipalOnly,
+
+                RolloverPrincipalAmount =
+                    10_000_000m,
+
+                CashPayoutAmount =
+                    900_000m,
+
+                CashPayoutAccountId =
+                    payoutAccount.Id,
+
+                CashPayoutAccount =
+                    payoutAccount,
+
                 NewInvestmentType =
-                    InvestmentPlacementTypes.FixedDeposit,
-                NewInstitutionName = "Test Bank",
-                NewAnnualInterestRate = 12m,
-                NewDayCountBasis = 365,
-                NewStartDateUtc = nowUtc,
+                    InvestmentPlacementTypes
+                        .FixedDeposit,
+
+                /*
+                 * Rollovers remain with the original
+                 * counterparty.
+                 */
+                NewInstitutionName =
+                    counterparty.Name,
+
+                NewAnnualInterestRate =
+                    12m,
+
+                NewDayCountBasis =
+                    365,
+
+                NewStartDateUtc =
+                    todayUtc,
+
                 NewMaturityDateUtc =
-                    nowUtc.AddDays(365),
-                NewTenorDays = 365,
-                NewExpectedInterestAmount = 1_200_000m,
-                NewExpectedMaturityAmount = 11_200_000m,
+                    todayUtc.AddDays(365),
+
+                NewTenorDays =
+                    365,
+
+                NewExpectedInterestAmount =
+                    1_200_000m,
+
+                NewExpectedMaturityAmount =
+                    11_200_000m,
+
                 RequestIdempotencyKey =
                     "rollover-request-001",
+
                 ExecutionIdempotencyKey =
                     "INVESTMENT-ROLLOVER-EXECUTION-001",
-                Status = InvestmentRolloverStatuses.Approved,
-                RequiredApprovalCount = 1,
-                ApprovalCount = 1,
-                RequestedByUserId = requesterId,
-                RequestedAtUtc = nowUtc.AddHours(-2),
-                ExpiresAtUtc = nowUtc.AddHours(22),
-                ConcurrencyToken = Guid.NewGuid()
+
+                Status =
+                    InvestmentRolloverStatuses.Approved,
+
+                RequiredApprovalCount =
+                    1,
+
+                ApprovalCount =
+                    1,
+
+                RequestedByUserId =
+                    requesterId,
+
+                RequestedAtUtc =
+                    nowUtc.AddHours(-2),
+
+                ExpiresAtUtc =
+                    nowUtc.AddHours(22),
+
+                ConcurrencyToken =
+                    Guid.NewGuid()
             };
 
         var requestRepository =
-            new Mock<IInvestmentRolloverRequestRepository>();
+            new Mock<
+                IInvestmentRolloverRequestRepository>();
 
         requestRepository
             .Setup(repository =>
                 repository.GetById(request.Id))
             .ReturnsAsync(request);
+
+        var quoteService =
+            new Mock<IInvestmentRolloverService>();
 
         var accountRepository =
             new Mock<IAccountRepository>();
@@ -156,6 +360,14 @@ public class InvestmentRolloverExecutionTests
                 repository.CommitTransaction())
             .Returns(Task.CompletedTask);
 
+        accountRepository
+            .Setup(repository =>
+                repository.RollbackTransaction())
+            .Returns(Task.CompletedTask);
+
+        var approvalPolicyService =
+            new Mock<IApprovalPolicyService>();
+
         var placementRepository =
             new Mock<IInvestmentPlacementRepository>();
 
@@ -165,18 +377,36 @@ public class InvestmentRolloverExecutionTests
                     It.IsAny<string>()))
             .ReturnsAsync(false);
 
-        InvestmentPlacement? newPlacement = null;
+        InvestmentPlacement? newPlacement =
+            null;
 
         placementRepository
             .Setup(repository =>
                 repository.Add(
                     It.IsAny<InvestmentPlacement>()))
             .Callback<InvestmentPlacement>(
-                placement => newPlacement = placement)
+                placement =>
+                    newPlacement = placement)
+            .Returns(Task.CompletedTask);
+
+        var limitEnforcementService =
+            new Mock<
+                IInvestmentLimitEnforcementService>();
+
+        limitEnforcementService
+            .Setup(service =>
+                service.EnsureWithinLimits(
+                    counterparty.Id,
+                    "NGN",
+                    InvestmentPlacementTypes
+                        .FixedDeposit,
+                    request.RolloverPrincipalAmount,
+                    originalPlacement.Id))
             .Returns(Task.CompletedTask);
 
         var transactionRepository =
-            new Mock<ITreasuryTransactionRepository>();
+            new Mock<
+                ITreasuryTransactionRepository>();
 
         transactionRepository
             .Setup(repository =>
@@ -185,7 +415,8 @@ public class InvestmentRolloverExecutionTests
             .ReturnsAsync(
                 (TreasuryTransaction?)null);
 
-        TreasuryTransaction? payoutTransaction = null;
+        TreasuryTransaction? payoutTransaction =
+            null;
 
         transactionRepository
             .Setup(repository =>
@@ -193,40 +424,46 @@ public class InvestmentRolloverExecutionTests
                     It.IsAny<TreasuryTransaction>()))
             .Callback<TreasuryTransaction>(
                 transaction =>
-                    payoutTransaction = transaction)
+                    payoutTransaction =
+                        transaction)
             .Returns(Task.CompletedTask);
 
         var ledgerRepository =
             new Mock<ILedgerRepository>();
 
-        LedgerEntry? payoutLedger = null;
+        LedgerEntry? payoutLedger =
+            null;
 
         ledgerRepository
             .Setup(repository =>
                 repository.Add(
                     It.IsAny<LedgerEntry>()))
             .Callback<LedgerEntry>(
-                entry => payoutLedger = entry)
+                entry =>
+                    payoutLedger = entry)
             .Returns(Task.CompletedTask);
 
         var forecastRepository =
             new Mock<ICashFlowForecastRepository>();
 
-        CashFlowForecastItem? newForecast = null;
+        CashFlowForecastItem? newForecast =
+            null;
 
         forecastRepository
             .Setup(repository =>
                 repository.Add(
                     It.IsAny<CashFlowForecastItem>()))
             .Callback<CashFlowForecastItem>(
-                forecast => newForecast = forecast)
+                forecast =>
+                    newForecast = forecast)
             .Returns(Task.CompletedTask);
 
         var currentUserService =
             new Mock<ICurrentUserService>();
 
         currentUserService
-            .Setup(service => service.UserId)
+            .Setup(service =>
+                service.UserId)
             .Returns(executorId);
 
         var auditLogService =
@@ -238,15 +475,29 @@ public class InvestmentRolloverExecutionTests
                     It.IsAny<CreateAuditLogDto>()))
             .Returns(Task.CompletedTask);
 
+        /*
+         * The constructor order must exactly match:
+         *
+         * request repository
+         * quote service
+         * account repository
+         * approval-policy service
+         * placement repository
+         * limit-enforcement service
+         * transaction repository
+         * ledger repository
+         * forecast repository
+         * current-user service
+         * audit service
+         */
         var service =
             new InvestmentRolloverRequestService(
                 requestRepository.Object,
-                new Mock<IInvestmentRolloverService>()
-                    .Object,
+                quoteService.Object,
                 accountRepository.Object,
-                new Mock<IApprovalPolicyService>()
-                    .Object,
+                approvalPolicyService.Object,
                 placementRepository.Object,
+                limitEnforcementService.Object,
                 transactionRepository.Object,
                 ledgerRepository.Object,
                 forecastRepository.Object,
@@ -275,6 +526,18 @@ public class InvestmentRolloverExecutionTests
             newPlacement.PrincipalAmount);
 
         Assert.Equal(
+            counterparty.Id,
+            newPlacement.CounterpartyId);
+
+        Assert.Same(
+            counterparty,
+            newPlacement.Counterparty);
+
+        Assert.Equal(
+            counterparty.Name,
+            newPlacement.InstitutionName);
+
+        Assert.Equal(
             5_900_000m,
             payoutAccount.Balance);
 
@@ -284,6 +547,10 @@ public class InvestmentRolloverExecutionTests
             900_000m,
             payoutTransaction!.Amount);
 
+        Assert.Equal(
+            request.ExecutionIdempotencyKey,
+            payoutTransaction.IdempotencyKey);
+
         Assert.NotNull(payoutLedger);
 
         Assert.Equal(
@@ -291,8 +558,17 @@ public class InvestmentRolloverExecutionTests
             payoutLedger!.Amount);
 
         Assert.Equal(
+            "Debit",
+            payoutLedger.EntryType);
+
+        Assert.Equal(
             CashFlowForecastStatus.Realized,
             originalForecast.Status);
+
+        Assert.Equal(
+            payoutTransaction.Id,
+            originalForecast
+                .RealizedTreasuryTransactionId);
 
         Assert.NotNull(newForecast);
 
@@ -303,5 +579,63 @@ public class InvestmentRolloverExecutionTests
         Assert.Equal(
             newPlacement.Id,
             request.NewInvestmentPlacementId);
+
+        Assert.Equal(
+            payoutTransaction.Id,
+            request.CashPayoutTreasuryTransactionId);
+
+        Assert.Equal(
+            executorId,
+            request.ExecutedByUserId);
+
+        limitEnforcementService.Verify(
+            serviceMock =>
+                serviceMock.EnsureWithinLimits(
+                    counterparty.Id,
+                    "NGN",
+                    InvestmentPlacementTypes
+                        .FixedDeposit,
+                    10_000_000m,
+                    originalPlacement.Id),
+            Times.Once);
+
+        placementRepository.Verify(
+            repository =>
+                repository.Add(
+                    It.IsAny<InvestmentPlacement>()),
+            Times.Once);
+
+        transactionRepository.Verify(
+            repository =>
+                repository.Add(
+                    It.IsAny<TreasuryTransaction>()),
+            Times.Once);
+
+        ledgerRepository.Verify(
+            repository =>
+                repository.Add(
+                    It.IsAny<LedgerEntry>()),
+            Times.Once);
+
+        forecastRepository.Verify(
+            repository =>
+                repository.Add(
+                    It.IsAny<CashFlowForecastItem>()),
+            Times.Once);
+
+        accountRepository.Verify(
+            repository =>
+                repository.SaveChanges(),
+            Times.Once);
+
+        accountRepository.Verify(
+            repository =>
+                repository.CommitTransaction(),
+            Times.Once);
+
+        accountRepository.Verify(
+            repository =>
+                repository.RollbackTransaction(),
+            Times.Never);
     }
 }

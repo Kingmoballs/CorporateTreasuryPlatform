@@ -284,6 +284,26 @@ builder.Services.AddHostedService<
     InvestmentAccrualSnapshotWorker>();
 
 builder.Services.AddScoped<
+    IInvestmentLimitRepository,
+    InvestmentLimitRepository>();
+
+builder.Services.AddScoped<
+    IInvestmentLimitService,
+    InvestmentLimitService>();
+
+builder.Services.AddScoped<
+    ICounterpartyRepository,
+    CounterpartyRepository>();
+
+builder.Services.AddScoped<
+    ICounterpartyService,
+    CounterpartyService>();
+
+builder.Services.AddScoped<
+    IInvestmentLimitUtilizationService,
+    InvestmentLimitUtilizationService>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 

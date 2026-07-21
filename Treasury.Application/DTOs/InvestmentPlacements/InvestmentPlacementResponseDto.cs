@@ -10,6 +10,12 @@ public class InvestmentPlacementResponseDto
 
     public string InstitutionName { get; set; } = string.Empty;
 
+    public Guid? CounterpartyId { get; set; }
+
+    public string? CounterpartyCode { get; set; }
+
+    public string? CounterpartyName { get; set; }
+
     public Guid SourceAccountId { get; set; }
 
     public string SourceAccountName { get; set; } = string.Empty;

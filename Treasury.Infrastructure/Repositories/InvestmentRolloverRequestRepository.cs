@@ -108,6 +108,10 @@ public class InvestmentRolloverRequestRepository
                 .ThenInclude(placement =>
                     placement.SourceAccount)
             .Include(request =>
+                request.OriginalInvestmentPlacement)
+                .ThenInclude(placement =>
+                    placement.Counterparty)
+            .Include(request =>
                 request.CashPayoutAccount)
             .Include(request =>
                 request.NewInvestmentPlacement)

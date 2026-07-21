@@ -65,9 +65,27 @@ public class InvestmentRolloverService
                 placement.InvestmentType);
 
         var newInstitutionName =
-            NormalizeInstitutionName(
-                request.NewInstitutionName ??
-                placement.InstitutionName);
+            placement.InstitutionName;
+
+        if (!string.IsNullOrWhiteSpace(
+                request.NewInstitutionName))
+        {
+            var requestedInstitutionName =
+                NormalizeInstitutionName(
+                    request.NewInstitutionName);
+
+            if (!string.Equals(
+                    requestedInstitutionName,
+                    placement.InstitutionName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BusinessRuleException(
+                    "A rollover must remain with the original " +
+                    "counterparty. Redeem the investment and " +
+                    "create a new placement to move funds to " +
+                    "another counterparty.");
+            }
+        }
 
         var todayUtc =
             DateTime.UtcNow.Date;

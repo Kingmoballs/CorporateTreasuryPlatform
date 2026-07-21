@@ -8,6 +8,8 @@ public class InvestmentPlacementQueryDto
 
     public string? InstitutionName { get; set; }
 
+    public Guid? CounterpartyId { get; set; }
+
     public Guid? SourceAccountId { get; set; }
 
     public string? Currency { get; set; }

@@ -21,6 +21,11 @@ public interface IInvestmentPlacementRepository
     Task<IReadOnlyList<InvestmentPlacement>>
         GetForReporting(
             InvestmentPortfolioQueryDto query);
+    
+    Task<IReadOnlyList<InvestmentPlacement>>
+        GetForLimitUtilization(
+            Guid? counterpartyId,
+            string? currency);
 
     void Update(InvestmentPlacement placement);
 

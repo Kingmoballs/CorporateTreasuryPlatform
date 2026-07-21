@@ -32,6 +32,8 @@ public class InvestmentPlacementRepository
             .Include(placement =>
                 placement.SourceAccount)
             .Include(placement =>
+                placement.Counterparty)
+            .Include(placement =>
                 placement.FundingTreasuryTransaction)
             .Include(placement =>
                 placement.MaturityForecastItem)
@@ -71,6 +73,8 @@ public class InvestmentPlacementRepository
                 .Include(placement =>
                     placement.SourceAccount)
                 .Include(placement =>
+                    placement.Counterparty)
+                .Include(placement =>
                     placement.FundingTreasuryTransaction)
                 .Include(placement =>
                     placement.MaturityForecastItem)
@@ -107,6 +111,14 @@ public class InvestmentPlacementRepository
                     EF.Functions.ILike(
                         placement.InstitutionName,
                         $"%{institutionName}%"));
+        }
+
+        if (query.CounterpartyId.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.CounterpartyId ==
+                        query.CounterpartyId.Value);
         }
 
         if (query.SourceAccountId.HasValue)
@@ -224,11 +236,63 @@ public class InvestmentPlacementRepository
                         query.MaturityToUtc.Value);
         }
 
+        if (query.CounterpartyId.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.CounterpartyId ==
+                        query.CounterpartyId.Value);
+        }
+
         return await placements
             .OrderBy(placement =>
                 placement.MaturityDateUtc)
             .ThenBy(placement =>
                 placement.InstitutionName)
+            .ToListAsync();
+    }
+
+    public async Task<
+        IReadOnlyList<InvestmentPlacement>>
+        GetForLimitUtilization(
+            Guid? counterpartyId,
+            string? currency)
+    {
+        var placements =
+            _context.InvestmentPlacements
+                .AsNoTracking()
+                .Include(placement =>
+                    placement.Counterparty)
+                .Where(placement =>
+                    placement.Status ==
+                        InvestmentPlacementStatuses
+                            .PendingActivation ||
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Active ||
+                    placement.Status ==
+                        InvestmentPlacementStatuses.Matured)
+                .AsQueryable();
+
+        if (counterpartyId.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.CounterpartyId ==
+                        counterpartyId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(currency))
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.Currency == currency);
+        }
+
+        return await placements
+            .OrderBy(placement =>
+                placement.CounterpartyId)
+            .ThenBy(placement =>
+                placement.MaturityDateUtc)
             .ToListAsync();
     }
 

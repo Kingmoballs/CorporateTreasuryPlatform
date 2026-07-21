@@ -26,6 +26,9 @@ public class InvestmentRolloverRequestService
 
     private readonly IInvestmentPlacementRepository
         _placementRepository;
+    
+    private readonly IInvestmentLimitEnforcementService
+        _limitEnforcementService;
 
     private readonly ITreasuryTransactionRepository
         _transactionRepository;
@@ -48,6 +51,7 @@ public class InvestmentRolloverRequestService
         IAccountRepository accountRepository,
         IApprovalPolicyService approvalPolicyService,
         IInvestmentPlacementRepository placementRepository,
+        IInvestmentLimitEnforcementService limitEnforcementService,
         ITreasuryTransactionRepository transactionRepository,
         ILedgerRepository ledgerRepository,
         ICashFlowForecastRepository forecastRepository,
@@ -59,6 +63,7 @@ public class InvestmentRolloverRequestService
         _accountRepository = accountRepository;
         _approvalPolicyService = approvalPolicyService;
         _placementRepository = placementRepository;
+        _limitEnforcementService = limitEnforcementService;
         _transactionRepository = transactionRepository;
         _ledgerRepository = ledgerRepository;
         _forecastRepository = forecastRepository;
@@ -571,6 +576,22 @@ public class InvestmentRolloverRequestService
                     "date must still be in the future.");
             }
 
+            /*
+            * The original matured placement is removed from the
+            * projected exposure and the replacement principal is
+            * added. This avoids counting both investments.
+            */
+            await _limitEnforcementService
+                .EnsureWithinLimits(
+                    originalPlacement.CounterpartyId
+                    ?? throw new BusinessRuleException(
+                        "Assign a counterparty to the original " +
+                        "investment before executing its rollover."),
+                    request.Currency,
+                    request.NewInvestmentType,
+                    request.RolloverPrincipalAmount,
+                    originalPlacement.Id);
+
             var originalForecast =
                 originalPlacement.MaturityForecastItem;
 
@@ -710,7 +731,13 @@ public class InvestmentRolloverRequestService
                         request.NewInvestmentType,
 
                     InstitutionName =
-                        request.NewInstitutionName,
+                        originalPlacement.InstitutionName,
+
+                    CounterpartyId =
+                        originalPlacement.CounterpartyId,
+
+                    Counterparty =
+                        originalPlacement.Counterparty,
 
                     SourceAccountId =
                         sourceAccount.Id,
@@ -1251,6 +1278,16 @@ public class InvestmentRolloverRequestService
             throw new ConflictException(
                 "The original investment maturity date " +
                 "changed after the rollover was requested.");
+        }
+
+        if (!string.Equals(
+                request.NewInstitutionName,
+                placement.InstitutionName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ConflictException(
+                "The rollover counterparty does not match " +
+                "the original investment counterparty.");
         }
     }
 

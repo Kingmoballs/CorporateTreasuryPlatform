@@ -10,6 +10,11 @@ public interface IInvestmentPlacementService
 
     Task<InvestmentPlacementResponseDto> GetById(
         Guid id);
+    
+    Task<InvestmentPlacementResponseDto>
+        AssignCounterparty(
+            Guid id,
+            Guid counterpartyId);
 
     Task<PagedInvestmentPlacementResponseDto> Search(
         InvestmentPlacementQueryDto query);
