@@ -298,7 +298,13 @@ public class TreasuryTransactionRepository
                     transaction.TransactionType ==
                         TransactionTypes.CashPayment ||
                     transaction.TransactionType ==
-                        TransactionTypes.Reversal);
+                        TransactionTypes.Reversal ||
+                    transaction.TransactionType ==
+                        TransactionTypes
+                            .CreditFacilityDrawdown ||
+                    transaction.TransactionType ==
+                        TransactionTypes
+                            .CreditFacilityRepayment);
         }
 
         return await transactions

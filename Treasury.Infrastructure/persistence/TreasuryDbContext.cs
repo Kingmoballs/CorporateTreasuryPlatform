@@ -61,6 +61,10 @@ public class TreasuryDbContext : DbContext
         CreditFacilityDrawdowns =>
             Set<CreditFacilityDrawdown>();
 
+    public DbSet<CreditFacilityRepayment>
+        CreditFacilityRepayments =>
+            Set<CreditFacilityRepayment>();
+
     public DbSet<InvestmentAccrualSnapshot> 
         InvestmentAccrualSnapshots => 
             Set<InvestmentAccrualSnapshot>();
@@ -1046,7 +1050,7 @@ public class TreasuryDbContext : DbContext
                 "'Activated','Matured','Redeemed','Realized'," +
                 "'Matched','Reconciled','Ignored','Expired'," +
                 "'Imported','LoggedIn','RoleChanged'," +
-                "'Suspended','Closed','DrawnDown')");
+                "'Suspended','Closed','DrawnDown','Repaid')");
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
@@ -1060,7 +1064,8 @@ public class TreasuryDbContext : DbContext
                 "'TreasuryAlert','InvestmentPlacement'," +
                 "'InvestmentRolloverRequest','Counterparty'," +
                 "'InvestmentLimit','CreditFacility'," +
-                "'CreditFacilityDrawdown','System')");
+                "'CreditFacilityDrawdown'," +
+                "'CreditFacilityRepayment','System')");
         });
 
         var treasuryAlert =
@@ -1888,6 +1893,204 @@ public class TreasuryDbContext : DbContext
 
                 table.HasCheckConstraint(
                     "CK_CreditFacilityDrawdowns_Status",
+                    "\"Status\" IN ('Completed')");
+            });
+        
+        var creditFacilityRepayment =
+            modelBuilder.Entity<CreditFacilityRepayment>();
+
+        creditFacilityRepayment
+            .HasIndex(repayment =>
+                repayment.Reference)
+            .IsUnique();
+
+        creditFacilityRepayment
+            .HasIndex(repayment =>
+                repayment.IdempotencyKey)
+            .IsUnique();
+
+        creditFacilityRepayment
+            .HasIndex(repayment =>
+                repayment.TreasuryTransactionId)
+            .IsUnique();
+
+        creditFacilityRepayment
+            .HasIndex(repayment => new
+            {
+                repayment.CreditFacilityId,
+                repayment.RepaymentDateUtc
+            });
+
+        creditFacilityRepayment
+            .HasIndex(repayment => new
+            {
+                repayment.SettlementAccountId,
+                repayment.RepaymentDateUtc
+            });
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.Reference)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.Amount)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.PrincipalAmount)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.InterestAmount)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.Currency)
+            .HasMaxLength(3)
+            .IsRequired();
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.OutstandingPrincipalBefore)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.OutstandingPrincipalAfter)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.AccruedInterestBefore)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.AccruedInterestAfter)
+            .HasPrecision(18, 2);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.Status)
+            .HasMaxLength(30)
+            .HasDefaultValue("Completed")
+            .IsRequired();
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.ExternalReference)
+            .HasMaxLength(100);
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.IdempotencyKey)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        creditFacilityRepayment
+            .Property(repayment =>
+                repayment.Description)
+            .HasMaxLength(500)
+            .IsRequired();
+
+        creditFacilityRepayment
+            .HasOne(repayment =>
+                repayment.CreditFacility)
+            .WithMany(facility =>
+                facility.Repayments)
+            .HasForeignKey(repayment =>
+                repayment.CreditFacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityRepayment
+            .HasOne(repayment =>
+                repayment.SettlementAccount)
+            .WithMany()
+            .HasForeignKey(repayment =>
+                repayment.SettlementAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityRepayment
+            .HasOne(repayment =>
+                repayment.TreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(repayment =>
+                repayment.TreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityRepayment
+            .HasOne(repayment =>
+                repayment.InitiatedByUser)
+            .WithMany()
+            .HasForeignKey(repayment =>
+                repayment.InitiatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityRepayment
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_Principal_NonNegative",
+                    "\"PrincipalAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_Interest_NonNegative",
+                    "\"InterestAmount\" >= 0");
+
+                /*
+                * Every repayment must be fully allocated between
+                * principal and interest.
+                */
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_Allocation",
+                    "\"Amount\" = " +
+                    "\"PrincipalAmount\" + \"InterestAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_PrincipalBefore_NonNegative",
+                    "\"OutstandingPrincipalBefore\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_PrincipalAfter_NonNegative",
+                    "\"OutstandingPrincipalAfter\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_PrincipalMovement",
+                    "\"OutstandingPrincipalAfter\" = " +
+                    "\"OutstandingPrincipalBefore\" - " +
+                    "\"PrincipalAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_AccruedInterestBefore_NonNegative",
+                    "\"AccruedInterestBefore\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_AccruedInterestAfter_NonNegative",
+                    "\"AccruedInterestAfter\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_InterestMovement",
+                    "\"AccruedInterestAfter\" = " +
+                    "\"AccruedInterestBefore\" - " +
+                    "\"InterestAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_Currency",
+                    "char_length(\"Currency\") = 3 AND " +
+                    "\"Currency\" = upper(\"Currency\")");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityRepayments_Status",
                     "\"Status\" IN ('Completed')");
             });
         

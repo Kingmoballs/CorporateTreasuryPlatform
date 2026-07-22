@@ -316,6 +316,22 @@ builder.Services.AddScoped<
     CreditFacilityService>();
 
 builder.Services.AddScoped<
+    ICreditFacilityDrawdownRepository,
+    CreditFacilityDrawdownRepository>();
+
+builder.Services.AddScoped<
+    ICreditFacilityDrawdownService,
+    CreditFacilityDrawdownService>();
+
+builder.Services.AddScoped<
+    ICreditFacilityRepaymentRepository,
+    CreditFacilityRepaymentRepository>();
+
+builder.Services.AddScoped<
+    ICreditFacilityRepaymentService,
+    CreditFacilityRepaymentService>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 

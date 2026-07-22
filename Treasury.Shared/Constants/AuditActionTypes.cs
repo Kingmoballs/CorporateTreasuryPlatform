@@ -24,4 +24,5 @@ public static class AuditActionTypes
     public const string Suspended = "Suspended";
     public const string Closed = "Closed";
     public const string DrawnDown = "DrawnDown";
+    public const string Repaid = "Repaid";
 }

@@ -25,4 +25,7 @@ public static class TransactionTypes
     
     public const string CreditFacilityDrawdown =
         "CreditFacilityDrawdown";
+    
+    public const string CreditFacilityRepayment =
+        "CreditFacilityRepayment";
 }
