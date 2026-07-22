@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
+using System.Text;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.InvestmentLimits;
+using Treasury.Application.DTOs.Exports;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -106,6 +108,117 @@ public class InvestmentLimitUtilizationService
 
             Items =
                 items
+        };
+    }
+
+    public async Task<CsvExportDto> ExportCsv(
+        InvestmentLimitUtilizationQueryDto query)
+    {
+        var report =
+            await GetUtilization(query);
+
+        var csv =
+            new StringBuilder();
+
+        csv.AppendLine(
+            "GeneratedAtUtc," +
+            "EffectiveAtUtc," +
+            "InvestmentLimitId," +
+            "CounterpartyId," +
+            "CounterpartyCode," +
+            "CounterpartyName," +
+            "Currency," +
+            "InvestmentType," +
+            "MaximumExposureAmount," +
+            "WarningThresholdPercentage," +
+            "WarningThresholdAmount," +
+            "PlacementCount," +
+            "CurrentExposureAmount," +
+            "AvailableLimitAmount," +
+            "BreachAmount," +
+            "UtilizationPercentage," +
+            "Status," +
+            "EffectiveFromUtc," +
+            "EffectiveToUtc");
+
+        foreach (var item in report.Items)
+        {
+            csv.AppendLine(
+                string.Join(
+                    ",",
+                    new[]
+                    {
+                        CsvExportHelper.Escape(
+                            report.GeneratedAtUtc),
+
+                        CsvExportHelper.Escape(
+                            report.EffectiveAtUtc),
+
+                        CsvExportHelper.Escape(
+                            item.InvestmentLimitId),
+
+                        CsvExportHelper.Escape(
+                            item.CounterpartyId),
+
+                        CsvExportHelper.Escape(
+                            item.CounterpartyCode),
+
+                        CsvExportHelper.Escape(
+                            item.CounterpartyName),
+
+                        CsvExportHelper.Escape(
+                            item.Currency),
+
+                        CsvExportHelper.Escape(
+                            item.InvestmentType),
+
+                        CsvExportHelper.Escape(
+                            item.MaximumExposureAmount),
+
+                        CsvExportHelper.Escape(
+                            item.WarningThresholdPercentage),
+
+                        CsvExportHelper.Escape(
+                            item.WarningThresholdAmount),
+
+                        CsvExportHelper.Escape(
+                            item.PlacementCount),
+
+                        CsvExportHelper.Escape(
+                            item.CurrentExposureAmount),
+
+                        CsvExportHelper.Escape(
+                            item.AvailableLimitAmount),
+
+                        CsvExportHelper.Escape(
+                            item.BreachAmount),
+
+                        CsvExportHelper.Escape(
+                            item.UtilizationPercentage),
+
+                        CsvExportHelper.Escape(
+                            item.Status),
+
+                        CsvExportHelper.Escape(
+                            item.EffectiveFromUtc),
+
+                        CsvExportHelper.Escape(
+                            item.EffectiveToUtc)
+                    }));
+        }
+
+        return new CsvExportDto
+        {
+            FileName =
+                $"investment-limit-utilization-" +
+                $"{DateTime.UtcNow:yyyyMMddHHmmss}.csv",
+
+            ContentType =
+                "text/csv",
+
+            Content =
+                CsvExportHelper.ToUtf8Bytes(
+                    csv.ToString())
         };
     }
 

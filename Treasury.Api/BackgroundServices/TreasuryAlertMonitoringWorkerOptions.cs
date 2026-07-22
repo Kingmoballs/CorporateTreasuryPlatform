@@ -40,4 +40,7 @@ public class TreasuryAlertMonitoringWorkerOptions
 
     public bool IncludeInvestmentConcentrationAlerts
         { get; set; } = true;
+    
+    public bool IncludeInvestmentLimitAlerts
+        { get; set; } = true;
 }

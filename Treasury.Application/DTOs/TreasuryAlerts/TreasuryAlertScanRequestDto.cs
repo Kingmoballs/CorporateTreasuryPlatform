@@ -36,4 +36,7 @@ public class TreasuryAlertScanRequestDto
 
     public bool IncludeInvestmentConcentrationAlerts
         { get; set; } = true;
+
+    public bool IncludeInvestmentLimitAlerts
+        { get; set; } = true;
 }

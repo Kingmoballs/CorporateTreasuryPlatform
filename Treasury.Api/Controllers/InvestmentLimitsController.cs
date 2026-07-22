@@ -120,4 +120,20 @@ public class InvestmentLimitsController
 
         return Ok(result);
     }
+
+    [HttpGet("utilization/export/csv")]
+    public async Task<IActionResult>
+        ExportUtilizationCsv(
+            [FromQuery]
+            InvestmentLimitUtilizationQueryDto query)
+    {
+        var export =
+            await _utilizationService
+                .ExportCsv(query);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
 }

@@ -304,6 +304,10 @@ builder.Services.AddScoped<
     InvestmentLimitUtilizationService>();
 
 builder.Services.AddScoped<
+    IInvestmentLimitEnforcementService,
+    InvestmentLimitEnforcementService>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 

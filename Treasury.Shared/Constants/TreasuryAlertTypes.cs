@@ -25,5 +25,11 @@ public static class TreasuryAlertTypes
     public const string InvestmentConcentration =
         "InvestmentConcentration";
 
+    public const string InvestmentLimitWarning =
+        "InvestmentLimitWarning";
+
+    public const string InvestmentLimitBreach =
+        "InvestmentLimitBreach";
+
     public const string System = "System";
 }

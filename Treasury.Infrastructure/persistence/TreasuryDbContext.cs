@@ -1192,7 +1192,9 @@ public class TreasuryDbContext : DbContext
                     "'FxExposure', 'AuditException', " +
                     "'InvestmentMaturityUpcoming', " +
                     "'InvestmentMaturityOverdue', " +
-                    "'InvestmentConcentration', 'System')");
+                    "'InvestmentConcentration', " +
+                    "'InvestmentLimitWarning', " +
+                    "'InvestmentLimitBreach', 'System')");
 
                 table.HasCheckConstraint(
                     "CK_TreasuryAlerts_Currency_Length",

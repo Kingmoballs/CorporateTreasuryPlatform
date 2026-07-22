@@ -22,6 +22,12 @@ public class TreasuryAlertScanResultDto
 
     public int InvestmentConcentrationAlertCount { get; set; }
 
+    public int InvestmentLimitWarningAlertCount
+        { get; set; }
+
+    public int InvestmentLimitBreachAlertCount
+        { get; set; }
+
     public List<TreasuryAlertResponseDto> CreatedAlerts
         { get; set; } = new();
 }

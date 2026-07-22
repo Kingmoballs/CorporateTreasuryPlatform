@@ -24,6 +24,8 @@ public class TreasuryAlertService : ITreasuryAlertService
         TreasuryAlertTypes.InvestmentMaturityUpcoming,
         TreasuryAlertTypes.InvestmentMaturityOverdue,
         TreasuryAlertTypes.InvestmentConcentration,
+        TreasuryAlertTypes.InvestmentLimitWarning,
+        TreasuryAlertTypes.InvestmentLimitBreach,
         TreasuryAlertTypes.System
     ];
 

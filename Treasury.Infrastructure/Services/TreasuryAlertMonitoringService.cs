@@ -1,6 +1,7 @@
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.TreasuryAlerts;
 using Treasury.Application.DTOs.InvestmentPlacements;
+using Treasury.Application.DTOs.InvestmentLimits;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
@@ -19,6 +20,7 @@ public class TreasuryAlertMonitoringService
     private readonly ITreasuryAlertRepository _alertRepository;
     private readonly ITreasuryAlertService _alertService;
     private readonly IInvestmentPlacementRepository _investmentPlacementRepository;
+    private readonly IInvestmentLimitUtilizationService _investmentLimitUtilizationService;
 
     public TreasuryAlertMonitoringService(
         IAccountRepository accountRepository,
@@ -29,7 +31,8 @@ public class TreasuryAlertMonitoringService
         ICashFlowForecastRepository forecastRepository,
         ITreasuryAlertRepository alertRepository,
         ITreasuryAlertService alertService,
-        IInvestmentPlacementRepository investmentPlacementRepository)
+        IInvestmentPlacementRepository investmentPlacementRepository,
+        IInvestmentLimitUtilizationService investmentLimitUtilizationService)
     {
         _accountRepository = accountRepository;
         _transferRequestRepository = transferRequestRepository;
@@ -40,6 +43,7 @@ public class TreasuryAlertMonitoringService
         _alertRepository = alertRepository;
         _alertService = alertService;
         _investmentPlacementRepository = investmentPlacementRepository;
+        _investmentLimitUtilizationService = investmentLimitUtilizationService;
     }
 
     public async Task<TreasuryAlertScanResultDto> RunScan(
@@ -119,6 +123,13 @@ public class TreasuryAlertMonitoringService
                     investmentPlacements,
                     result);
             }
+        }
+
+        if (request.IncludeInvestmentLimitAlerts)
+        {
+            await ScanInvestmentLimits(
+                currency,
+                result);
         }
 
         result.CreatedAlertCount =
@@ -924,6 +935,147 @@ public class TreasuryAlertMonitoringService
                 {
                     result.InvestmentConcentrationAlertCount++;
                 }
+            }
+        }
+    }
+
+    private async Task ScanInvestmentLimits(
+        string? currency,
+        TreasuryAlertScanResultDto result)
+    {
+        var report =
+            await _investmentLimitUtilizationService
+                .GetUtilization(
+                    new InvestmentLimitUtilizationQueryDto
+                    {
+                        Currency =
+                            currency,
+
+                        AsOfUtc =
+                            DateTime.UtcNow
+                    });
+
+        var reportableItems =
+            report.Items
+                .Where(item =>
+                    item.Status ==
+                        InvestmentLimitUtilizationStatuses
+                            .Warning ||
+                    item.Status ==
+                        InvestmentLimitUtilizationStatuses
+                            .Breached)
+                .ToList();
+
+        foreach (var item in reportableItems)
+        {
+            var isBreached =
+                item.Status ==
+                    InvestmentLimitUtilizationStatuses
+                        .Breached;
+
+            var sourceReference =
+                $"{item.CounterpartyCode}/" +
+                $"{item.Currency}/" +
+                $"{item.InvestmentType}";
+
+            var alert =
+                await CreateIfNoOpenDuplicate(
+                    new CreateTreasuryAlertDto
+                    {
+                        AlertType =
+                            isBreached
+                                ? TreasuryAlertTypes
+                                    .InvestmentLimitBreach
+                                : TreasuryAlertTypes
+                                    .InvestmentLimitWarning,
+
+                        Severity =
+                            isBreached
+                                ? TreasuryAlertSeverities
+                                    .Critical
+                                : TreasuryAlertSeverities
+                                    .Warning,
+
+                        Title =
+                            isBreached
+                                ? $"Investment limit breached: " +
+                                $"{sourceReference}"
+                                : $"Investment limit warning: " +
+                                $"{sourceReference}",
+
+                        Message =
+                            isBreached
+                                ? $"Investment exposure for " +
+                                $"{item.CounterpartyName} is " +
+                                $"{item.CurrentExposureAmount:N2} " +
+                                $"{item.Currency}, exceeding the " +
+                                $"{item.InvestmentType} limit of " +
+                                $"{item.MaximumExposureAmount:N2} " +
+                                $"by {item.BreachAmount:N2}. " +
+                                $"Utilization is " +
+                                $"{item.UtilizationPercentage:N2}%."
+                                : $"Investment exposure for " +
+                                $"{item.CounterpartyName} has " +
+                                $"reached " +
+                                $"{item.UtilizationPercentage:N2}% " +
+                                $"of its {item.InvestmentType} " +
+                                $"limit. Current exposure is " +
+                                $"{item.CurrentExposureAmount:N2} " +
+                                $"{item.Currency}, with " +
+                                $"{item.AvailableLimitAmount:N2} " +
+                                $"remaining.",
+
+                        Currency =
+                            item.Currency,
+
+                        SourceModule =
+                            "Investment Limit Monitoring",
+
+                        SourceEntityType =
+                            AuditEntityTypes.InvestmentLimit,
+
+                        SourceEntityId =
+                            item.InvestmentLimitId,
+
+                        SourceReference =
+                            sourceReference,
+
+                        Metadata =
+                            new
+                            {
+                                item.CounterpartyId,
+                                item.CounterpartyCode,
+                                item.CounterpartyName,
+                                item.InvestmentType,
+                                item.MaximumExposureAmount,
+                                item.WarningThresholdPercentage,
+                                item.WarningThresholdAmount,
+                                item.PlacementCount,
+                                item.CurrentExposureAmount,
+                                item.AvailableLimitAmount,
+                                item.BreachAmount,
+                                item.UtilizationPercentage,
+                                item.Status,
+                                item.EffectiveFromUtc,
+                                item.EffectiveToUtc
+                            }
+                    },
+                    result);
+
+            if (alert is null)
+            {
+                continue;
+            }
+
+            if (isBreached)
+            {
+                result
+                    .InvestmentLimitBreachAlertCount++;
+            }
+            else
+            {
+                result
+                    .InvestmentLimitWarningAlertCount++;
             }
         }
     }

@@ -128,7 +128,10 @@ public class TreasuryAlertMonitoringWorker
                             _options.IncludeInvestmentMaturityAlerts,
 
                         IncludeInvestmentConcentrationAlerts =
-                            _options.IncludeInvestmentConcentrationAlerts
+                            _options.IncludeInvestmentConcentrationAlerts,
+                        
+                        IncludeInvestmentLimitAlerts =
+                            _options.IncludeInvestmentLimitAlerts
                     });
 
             if (result.CreatedAlertCount > 0 ||
