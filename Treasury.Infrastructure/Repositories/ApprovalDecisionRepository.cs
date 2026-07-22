@@ -135,4 +135,33 @@ public class ApprovalDecisionRepository
                 decision.CreatedAtUtc)
             .ToListAsync();
     }
+
+    public async Task<bool>
+        HasCreditFacilityDecision(
+            Guid creditFacilityId,
+            Guid approverUserId)
+    {
+        return await _context.ApprovalDecisions
+            .AnyAsync(decision =>
+                decision.CreditFacilityId ==
+                    creditFacilityId &&
+                decision.ApproverUserId ==
+                    approverUserId);
+    }
+
+    public Task<List<ApprovalDecision>>
+        GetForCreditFacility(
+            Guid creditFacilityId)
+    {
+        return _context.ApprovalDecisions
+            .AsNoTracking()
+            .Include(decision =>
+                decision.Approver)
+            .Where(decision =>
+                decision.CreditFacilityId ==
+                    creditFacilityId)
+            .OrderBy(decision =>
+                decision.CreatedAtUtc)
+            .ToListAsync();
+    }
 }

@@ -308,6 +308,14 @@ builder.Services.AddScoped<
     InvestmentLimitEnforcementService>();
 
 builder.Services.AddScoped<
+    ICreditFacilityRepository,
+    CreditFacilityRepository>();
+
+builder.Services.AddScoped<
+    ICreditFacilityService,
+    CreditFacilityService>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 

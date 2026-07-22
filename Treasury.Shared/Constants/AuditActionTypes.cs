@@ -21,4 +21,7 @@ public static class AuditActionTypes
     public const string Activated = "Activated";
     public const string Matured = "Matured";
     public const string Redeemed = "Redeemed";
+    public const string Suspended = "Suspended";
+    public const string Closed = "Closed";
+    public const string DrawnDown = "DrawnDown";
 }

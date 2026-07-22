@@ -34,4 +34,12 @@ public interface IApprovalDecisionRepository
     Task<List<ApprovalDecision>>
         GetForInvestmentPlacement(
             Guid investmentPlacementId);
+
+    Task<bool> HasCreditFacilityDecision(
+        Guid creditFacilityId,
+        Guid approverUserId);
+
+    Task<List<ApprovalDecision>>
+        GetForCreditFacility(
+            Guid creditFacilityId);
 }

@@ -50,6 +50,13 @@ public static class ApprovalPolicySeeder
                 .InvestmentRollover,
             "NGN",
             0m);
+        
+        await AddIfMissing(
+            context,
+            ApprovalOperationTypes
+                .CreditFacilityActivation,
+            "NGN",
+            0m);
 
         await context.SaveChangesAsync();
     }

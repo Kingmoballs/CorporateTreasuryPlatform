@@ -12,6 +12,8 @@ public class ApprovalDecision
 
     public Guid? InvestmentPlacementId { get; set; }
 
+    public Guid? CreditFacilityId { get; set; }
+
     public Guid ApproverUserId { get; set; }
 
     public User Approver { get; set; }

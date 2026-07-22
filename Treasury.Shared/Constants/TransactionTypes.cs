@@ -22,4 +22,7 @@ public static class TransactionTypes
 
     public const string InvestmentRedemption =
         "InvestmentRedemption";
+    
+    public const string CreditFacilityDrawdown =
+        "CreditFacilityDrawdown";
 }

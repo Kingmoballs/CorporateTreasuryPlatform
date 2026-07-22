@@ -53,6 +53,13 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<InvestmentLimit> InvestmentLimits =>
         Set<InvestmentLimit>();
+    
+    public DbSet<CreditFacility> CreditFacilities =>
+        Set<CreditFacility>();
+    
+    public DbSet<CreditFacilityDrawdown>
+        CreditFacilityDrawdowns =>
+            Set<CreditFacilityDrawdown>();
 
     public DbSet<InvestmentAccrualSnapshot> 
         InvestmentAccrualSnapshots => 
@@ -1038,7 +1045,8 @@ public class TreasuryDbContext : DbContext
                 "'Rejected','Resolved','Dismissed','Cancelled'," +
                 "'Activated','Matured','Redeemed','Realized'," +
                 "'Matched','Reconciled','Ignored','Expired'," +
-                "'Imported','LoggedIn','RoleChanged')");
+                "'Imported','LoggedIn','RoleChanged'," +
+                "'Suspended','Closed','DrawnDown')");
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
@@ -1050,9 +1058,9 @@ public class TreasuryDbContext : DbContext
                 "'BankStatementImport','BankStatementLine'," +
                 "'CashFlowForecastItem','FxRate'," +
                 "'TreasuryAlert','InvestmentPlacement'," +
-                "'InvestmentEarlyRedemptionRequest'," +
                 "'InvestmentRolloverRequest','Counterparty'," +
-                "'InvestmentLimit','System')");
+                "'InvestmentLimit','CreditFacility'," +
+                "'CreditFacilityDrawdown','System')");
         });
 
         var treasuryAlert =
@@ -1418,6 +1426,469 @@ public class TreasuryDbContext : DbContext
                     "CK_InvestmentLimits_EffectiveDates",
                     "\"EffectiveToUtc\" IS NULL OR " +
                     "\"EffectiveToUtc\" > \"EffectiveFromUtc\"");
+            });
+        
+        var creditFacility =
+            modelBuilder.Entity<CreditFacility>();
+
+        creditFacility
+            .HasIndex(facility =>
+                facility.Reference)
+            .IsUnique();
+
+        creditFacility
+            .HasIndex(facility => new
+            {
+                facility.LenderCounterpartyId,
+                facility.Status
+            });
+
+        creditFacility
+            .HasIndex(facility => new
+            {
+                facility.Status,
+                facility.MaturityDateUtc
+            });
+
+        creditFacility
+            .HasIndex(facility =>
+                facility.SettlementAccountId);
+
+        creditFacility
+            .HasIndex(facility =>
+                facility.ActivationIdempotencyKey)
+            .IsUnique();
+
+        creditFacility
+            .Property(facility =>
+                facility.Reference)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.FacilityName)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.FacilityType)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.LenderName)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.Currency)
+            .HasMaxLength(3)
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.ApprovedLimitAmount)
+            .HasPrecision(18, 2);
+
+        creditFacility
+            .Property(facility =>
+                facility.OutstandingPrincipalAmount)
+            .HasPrecision(18, 2)
+            .HasDefaultValue(0m);
+
+        creditFacility
+            .Property(facility =>
+                facility.AccruedInterestAmount)
+            .HasPrecision(18, 2)
+            .HasDefaultValue(0m);
+
+        creditFacility
+            .Property(facility =>
+                facility.AnnualInterestRate)
+            .HasPrecision(9, 6);
+
+        creditFacility
+            .Property(facility =>
+                facility.CommitmentFeeRatePercentage)
+            .HasPrecision(9, 6)
+            .HasDefaultValue(0m);
+
+        creditFacility
+            .Property(facility =>
+                facility.ArrangementFeeAmount)
+            .HasPrecision(18, 2)
+            .HasDefaultValue(0m);
+
+        creditFacility
+            .Property(facility =>
+                facility.DayCountBasis)
+            .HasDefaultValue(365);
+
+        creditFacility
+            .Property(facility =>
+                facility.InterestPaymentFrequency)
+            .HasMaxLength(30)
+            .HasDefaultValue("Monthly")
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.Status)
+            .HasMaxLength(50)
+            .HasDefaultValue("Draft")
+            .IsRequired();
+
+        creditFacility
+            .Property(facility =>
+                facility.ExternalReference)
+            .HasMaxLength(100);
+
+        creditFacility
+            .Property(facility =>
+                facility.Notes)
+            .HasMaxLength(1000);
+
+        creditFacility
+            .Property(facility =>
+                facility.ActivationIdempotencyKey)
+            .HasMaxLength(100);
+
+        creditFacility
+            .Property(facility =>
+                facility.ActivationRejectionReason)
+            .HasMaxLength(500);
+
+        creditFacility
+            .Property(facility =>
+                facility.SuspensionReason)
+            .HasMaxLength(500);
+
+        creditFacility
+            .Property(facility =>
+                facility.ClosureReason)
+            .HasMaxLength(500);
+
+        creditFacility
+            .Property(facility =>
+                facility.CancellationReason)
+            .HasMaxLength(500);
+
+        creditFacility
+            .Property(facility =>
+                facility.RequiredApprovalCount)
+            .HasDefaultValue(0);
+
+        creditFacility
+            .Property(facility =>
+                facility.ApprovalCount)
+            .HasDefaultValue(0);
+
+        creditFacility
+            .Property(facility =>
+                facility.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        creditFacility
+            .HasOne(facility =>
+                facility.LenderCounterparty)
+            .WithMany(counterparty =>
+                counterparty.CreditFacilities)
+            .HasForeignKey(facility =>
+                facility.LenderCounterpartyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.SettlementAccount)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.SettlementAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.UpdatedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.UpdatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.ActivationRequestedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.ActivationRequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.ActivationRejectedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.ActivationRejectedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.ActivatedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.ActivatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.SuspendedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.SuspendedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.ClosedByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.ClosedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .HasOne(facility =>
+                facility.CancelledByUser)
+            .WithMany()
+            .HasForeignKey(facility =>
+                facility.CancelledByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacility
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_ApprovedLimit_Positive",
+                    "\"ApprovedLimitAmount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_OutstandingPrincipal_Range",
+                    "\"OutstandingPrincipalAmount\" >= 0 AND " +
+                    "\"OutstandingPrincipalAmount\" <= " +
+                    "\"ApprovedLimitAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_AccruedInterest_NonNegative",
+                    "\"AccruedInterestAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_InterestRate_Range",
+                    "\"AnnualInterestRate\" " +
+                    "BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_CommitmentFeeRate_Range",
+                    "\"CommitmentFeeRatePercentage\" " +
+                    "BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_ArrangementFee_NonNegative",
+                    "\"ArrangementFeeAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_DayCountBasis",
+                    "\"DayCountBasis\" IN (360, 365)");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_Dates",
+                    "\"MaturityDateUtc\" > \"StartDateUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_Currency",
+                    "char_length(\"Currency\") = 3 AND " +
+                    "\"Currency\" = upper(\"Currency\")");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_FacilityType",
+                    "\"FacilityType\" IN " +
+                    "('Overdraft','RevolvingCredit','TermLoan')");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_InterestPaymentFrequency",
+                    "\"InterestPaymentFrequency\" IN " +
+                    "('Monthly','Quarterly','SemiAnnual'," +
+                    "'Annual','AtMaturity')");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_Status",
+                    "\"Status\" IN " +
+                    "('Draft','PendingActivation','Active'," +
+                    "'Suspended','Matured','Closed'," +
+                    "'ActivationRejected','ActivationExpired'," +
+                    "'Cancelled')");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilities_ApprovalCounts",
+                    "\"RequiredApprovalCount\" BETWEEN 0 AND 5 AND " +
+                    "\"ApprovalCount\" BETWEEN 0 AND " +
+                    "\"RequiredApprovalCount\"");
+            });
+        
+        var creditFacilityDrawdown =
+            modelBuilder.Entity<CreditFacilityDrawdown>();
+
+        creditFacilityDrawdown
+            .HasIndex(drawdown =>
+                drawdown.Reference)
+            .IsUnique();
+
+        creditFacilityDrawdown
+            .HasIndex(drawdown =>
+                drawdown.IdempotencyKey)
+            .IsUnique();
+
+        creditFacilityDrawdown
+            .HasIndex(drawdown =>
+                drawdown.TreasuryTransactionId)
+            .IsUnique();
+
+        creditFacilityDrawdown
+            .HasIndex(drawdown => new
+            {
+                drawdown.CreditFacilityId,
+                drawdown.DrawdownDateUtc
+            });
+
+        creditFacilityDrawdown
+            .HasIndex(drawdown => new
+            {
+                drawdown.SettlementAccountId,
+                drawdown.DrawdownDateUtc
+            });
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.Reference)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.Amount)
+            .HasPrecision(18, 2);
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.Currency)
+            .HasMaxLength(3)
+            .IsRequired();
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.OutstandingPrincipalBefore)
+            .HasPrecision(18, 2);
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.OutstandingPrincipalAfter)
+            .HasPrecision(18, 2);
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.Status)
+            .HasMaxLength(30)
+            .HasDefaultValue("Completed")
+            .IsRequired();
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.ExternalReference)
+            .HasMaxLength(100);
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.IdempotencyKey)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        creditFacilityDrawdown
+            .Property(drawdown =>
+                drawdown.Description)
+            .HasMaxLength(500)
+            .IsRequired();
+
+        creditFacilityDrawdown
+            .HasOne(drawdown =>
+                drawdown.CreditFacility)
+            .WithMany(facility =>
+                facility.Drawdowns)
+            .HasForeignKey(drawdown =>
+                drawdown.CreditFacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityDrawdown
+            .HasOne(drawdown =>
+                drawdown.SettlementAccount)
+            .WithMany()
+            .HasForeignKey(drawdown =>
+                drawdown.SettlementAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityDrawdown
+            .HasOne(drawdown =>
+                drawdown.TreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(drawdown =>
+                drawdown.TreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityDrawdown
+            .HasOne(drawdown =>
+                drawdown.InitiatedByUser)
+            .WithMany()
+            .HasForeignKey(drawdown =>
+                drawdown.InitiatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityDrawdown
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityDrawdowns_Amount_Positive",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityDrawdowns_PrincipalBefore_NonNegative",
+                    "\"OutstandingPrincipalBefore\" >= 0");
+
+                /*
+                * The post-drawdown principal must equal the
+                * previous principal plus this drawdown amount.
+                */
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityDrawdowns_PrincipalMovement",
+                    "\"OutstandingPrincipalAfter\" = " +
+                    "\"OutstandingPrincipalBefore\" + \"Amount\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityDrawdowns_Currency",
+                    "char_length(\"Currency\") = 3 AND " +
+                    "\"Currency\" = upper(\"Currency\")");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityDrawdowns_Status",
+                    "\"Status\" IN ('Completed')");
             });
         
         var investmentPlacement =
@@ -2684,6 +3155,21 @@ public class TreasuryDbContext : DbContext
             .HasForeignKey(decision =>
                 decision.InvestmentPlacementId)
             .OnDelete(DeleteBehavior.Restrict);
+        
+        approvalDecision
+            .HasIndex(decision => new
+            {
+                decision.CreditFacilityId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
+
+        approvalDecision
+            .HasOne<CreditFacility>()
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.CreditFacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         approvalDecision
             .ToTable(table =>
@@ -2703,7 +3189,8 @@ public class TreasuryDbContext : DbContext
                     "\"TransferRequestId\", " +
                     "\"PaymentRequestId\", " +
                     "\"ReversalRequestId\", " +
-                    "\"InvestmentPlacementId\") = 1");
+                    "\"InvestmentPlacementId\", " +
+                    "\"CreditFacilityId\") = 1");
             });
     }
 }

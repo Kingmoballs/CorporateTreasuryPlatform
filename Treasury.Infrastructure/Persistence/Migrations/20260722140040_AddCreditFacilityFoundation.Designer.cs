@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260722140040_AddCreditFacilityFoundation")]
+    partial class AddCreditFacilityFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -298,9 +301,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.ToTable("AuditLogs", t =>
                         {
-                            t.HasCheckConstraint("CK_AuditLogs_Action", "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Activated','Matured','Redeemed','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged','Suspended','Closed','DrawnDown')");
+                            t.HasCheckConstraint("CK_AuditLogs_Action", "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Activated','Matured','Redeemed','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged','Suspended','Closed')");
 
-                            t.HasCheckConstraint("CK_AuditLogs_EntityType", "\"EntityType\" IN ('User','Role','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','InvestmentRolloverRequest','Counterparty','InvestmentLimit','CreditFacility','CreditFacilityDrawdown','System')");
+                            t.HasCheckConstraint("CK_AuditLogs_EntityType", "\"EntityType\" IN ('User','Role','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','InvestmentRolloverRequest','Counterparty','InvestmentLimit','CreditFacility','System')");
                         });
                 });
 
@@ -892,104 +895,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_CreditFacilities_OutstandingPrincipal_Range", "\"OutstandingPrincipalAmount\" >= 0 AND \"OutstandingPrincipalAmount\" <= \"ApprovedLimitAmount\"");
 
                             t.HasCheckConstraint("CK_CreditFacilities_Status", "\"Status\" IN ('Draft','PendingActivation','Active','Suspended','Matured','Closed','ActivationRejected','ActivationExpired','Cancelled')");
-                        });
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.CreditFacilityDrawdown", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreditFacilityId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime>("DrawdownDateUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ExternalReference")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("InitiatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("OutstandingPrincipalAfter")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<decimal>("OutstandingPrincipalBefore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("Reference")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("SettlementAccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasDefaultValue("Completed");
-
-                    b.Property<Guid>("TreasuryTransactionId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("InitiatedByUserId");
-
-                    b.HasIndex("Reference")
-                        .IsUnique();
-
-                    b.HasIndex("TreasuryTransactionId")
-                        .IsUnique();
-
-                    b.HasIndex("CreditFacilityId", "DrawdownDateUtc");
-
-                    b.HasIndex("SettlementAccountId", "DrawdownDateUtc");
-
-                    b.ToTable("CreditFacilityDrawdowns", t =>
-                        {
-                            t.HasCheckConstraint("CK_CreditFacilityDrawdowns_Amount_Positive", "\"Amount\" > 0");
-
-                            t.HasCheckConstraint("CK_CreditFacilityDrawdowns_Currency", "char_length(\"Currency\") = 3 AND \"Currency\" = upper(\"Currency\")");
-
-                            t.HasCheckConstraint("CK_CreditFacilityDrawdowns_PrincipalBefore_NonNegative", "\"OutstandingPrincipalBefore\" >= 0");
-
-                            t.HasCheckConstraint("CK_CreditFacilityDrawdowns_PrincipalMovement", "\"OutstandingPrincipalAfter\" = \"OutstandingPrincipalBefore\" + \"Amount\"");
-
-                            t.HasCheckConstraint("CK_CreditFacilityDrawdowns_Status", "\"Status\" IN ('Completed')");
                         });
                 });
 
@@ -2787,41 +2692,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("UpdatedByUser");
                 });
 
-            modelBuilder.Entity("Treasury.Domain.Entities.CreditFacilityDrawdown", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.CreditFacility", "CreditFacility")
-                        .WithMany("Drawdowns")
-                        .HasForeignKey("CreditFacilityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.User", "InitiatedByUser")
-                        .WithMany()
-                        .HasForeignKey("InitiatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Account", "SettlementAccount")
-                        .WithMany()
-                        .HasForeignKey("SettlementAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.TreasuryTransaction", "TreasuryTransaction")
-                        .WithMany()
-                        .HasForeignKey("TreasuryTransactionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("CreditFacility");
-
-                    b.Navigation("InitiatedByUser");
-
-                    b.Navigation("SettlementAccount");
-
-                    b.Navigation("TreasuryTransaction");
-                });
-
             modelBuilder.Entity("Treasury.Domain.Entities.FxRate", b =>
                 {
                     b.HasOne("Treasury.Domain.Entities.User", "CreatedByUser")
@@ -3253,11 +3123,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("InvestmentLimits");
 
                     b.Navigation("InvestmentPlacements");
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.CreditFacility", b =>
-                {
-                    b.Navigation("Drawdowns");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.InvestmentEarlyRedemptionRequest", b =>

@@ -19,4 +19,7 @@ public static class ApprovalOperationTypes
     
     public const string InvestmentRollover =
         "InvestmentRollover";
+    
+    public const string CreditFacilityActivation =
+        "CreditFacilityActivation";
 }

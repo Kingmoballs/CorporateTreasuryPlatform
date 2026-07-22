@@ -48,4 +48,8 @@ public class Counterparty
     public ICollection<InvestmentLimit>
         InvestmentLimits { get; set; } =
             new List<InvestmentLimit>();
+    
+    public ICollection<CreditFacility>
+        CreditFacilities { get; set; } =
+            new List<CreditFacility>();
 }
