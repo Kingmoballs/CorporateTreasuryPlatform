@@ -70,6 +70,7 @@ public class OrganizationAuthenticationTests
 
         var service = new AuthService(
             userRepository.Object,
+            Mock.Of<ILoginAttemptService>(),
             sessionService.Object,
             currentUserService.Object);
 
@@ -85,7 +86,7 @@ public class OrganizationAuthenticationTests
                     }));
 
         Assert.Contains(
-            "verified",
+            "Invalid credentials",
             exception.Message,
             StringComparison.OrdinalIgnoreCase);
 
@@ -158,6 +159,16 @@ public class OrganizationAuthenticationTests
             new Mock<
                 IAuthenticationSessionService>();
 
+        var loginAttemptService =
+            new Mock<ILoginAttemptService>();
+
+        loginAttemptService
+            .Setup(service =>
+                service
+                    .CompleteSuccessfulAttempt(
+                        user.Id))
+            .ReturnsAsync(true);
+
         sessionService
             .Setup(service =>
                 service.Create(user, membership))
@@ -175,6 +186,7 @@ public class OrganizationAuthenticationTests
 
         var service = new AuthService(
             userRepository.Object,
+            loginAttemptService.Object,
             sessionService.Object,
             Mock.Of<ICurrentUserService>());
 
@@ -216,6 +228,7 @@ public class OrganizationAuthenticationTests
 
         var service = new AuthService(
             Mock.Of<IUserRepository>(),
+            Mock.Of<ILoginAttemptService>(),
             sessionService.Object,
             currentUserService.Object);
 

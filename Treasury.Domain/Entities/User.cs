@@ -21,6 +21,17 @@ public class User
     public Guid SecurityStamp { get; set; } =
         Guid.NewGuid();
 
+    public int FailedLoginAttempts { get; set; }
+
+    public DateTime? LoginFailureWindowStartedAtUtc
+        { get; set; }
+
+    public DateTime? LastFailedLoginAtUtc
+        { get; set; }
+
+    public DateTime? LoginLockoutEndUtc
+        { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public Guid RoleId { get; set; }

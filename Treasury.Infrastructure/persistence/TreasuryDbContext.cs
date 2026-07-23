@@ -523,6 +523,21 @@ public class TreasuryDbContext : DbContext
             .HasDefaultValueSql(
                 "gen_random_uuid()");
 
+        modelBuilder.Entity<User>()
+            .Property(user =>
+                user.FailedLoginAttempts)
+            .HasDefaultValue(0);
+
+        modelBuilder.Entity<User>()
+            .HasIndex(user =>
+                user.LoginLockoutEndUtc);
+
+        modelBuilder.Entity<User>()
+            .ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_Users_FailedLoginAttempts",
+                    "\"FailedLoginAttempts\" >= 0"));
+
         var organization =
             modelBuilder.Entity<Organization>();
 

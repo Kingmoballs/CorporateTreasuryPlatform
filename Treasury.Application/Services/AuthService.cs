@@ -6,8 +6,15 @@ namespace Treasury.Application.Services;
 
 public class AuthService : IAuthService
 {
+    private static readonly string DummyPasswordHash =
+        BCrypt.Net.BCrypt.HashPassword(
+            "non-account-password-verification-value");
+
     private readonly IUserRepository
         _userRepository;
+
+    private readonly ILoginAttemptService
+        _loginAttemptService;
 
     private readonly IAuthenticationSessionService
         _sessionService;
@@ -17,11 +24,15 @@ public class AuthService : IAuthService
 
     public AuthService(
         IUserRepository userRepository,
+        ILoginAttemptService loginAttemptService,
         IAuthenticationSessionService
             sessionService,
         ICurrentUserService currentUserService)
     {
         _userRepository = userRepository;
+
+        _loginAttemptService =
+            loginAttemptService;
 
         _sessionService = sessionService;
 
@@ -37,8 +48,16 @@ public class AuthService : IAuthService
 
         if(user == null)
         {
-            throw new UnauthorizedAccessException(
-                "Invalid credentials");
+            /*
+             * Perform a real BCrypt verification even when
+             * the account is unknown to reduce observable
+             * timing differences used for enumeration.
+             */
+            _ = BCrypt.Net.BCrypt.Verify(
+                dto.Password,
+                DummyPasswordHash);
+
+            throw InvalidCredentials();
         }
 
         var validPassword =
@@ -48,21 +67,20 @@ public class AuthService : IAuthService
 
         if(!validPassword)
         {
-            throw new UnauthorizedAccessException(
-                "Invalid credentials");
+            await _loginAttemptService
+                .RecordFailure(user.Id);
+
+            throw InvalidCredentials();
         }
 
         if (!user.IsActive)
         {
-            throw new UnauthorizedAccessException(
-                "This user account is inactive.");
+            throw InvalidCredentials();
         }
 
         if (!user.EmailVerifiedAtUtc.HasValue)
         {
-            throw new UnauthorizedAccessException(
-                "This email address has not been " +
-                "verified.");
+            throw InvalidCredentials();
         }
 
         var currentMembership =
@@ -70,9 +88,17 @@ public class AuthService : IAuthService
 
         if (currentMembership is null)
         {
-            throw new UnauthorizedAccessException(
-                "No active organization membership " +
-                "is available.");
+            throw InvalidCredentials();
+        }
+
+        var loginAllowed =
+            await _loginAttemptService
+                .CompleteSuccessfulAttempt(
+                    user.Id);
+
+        if (!loginAllowed)
+        {
+            throw InvalidCredentials();
         }
 
         var tokens =
@@ -158,5 +184,12 @@ public class AuthService : IAuthService
             .ThenBy(membership =>
                 membership.JoinedAtUtc)
             .FirstOrDefault();
+    }
+
+    private static UnauthorizedAccessException
+        InvalidCredentials()
+    {
+        return new UnauthorizedAccessException(
+            "Invalid credentials.");
     }
 }

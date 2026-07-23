@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Treasury.Api.Security;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 
@@ -20,6 +22,8 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies.Login)]
     public async Task<IActionResult>
         Login(LoginDto dto)
     {
@@ -31,6 +35,8 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("refresh")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies.Refresh)]
     public async Task<IActionResult>
         Refresh(RefreshTokenDto dto)
     {
@@ -73,6 +79,9 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("password/forgot")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .PasswordRecovery)]
     public async Task<IActionResult>
         ForgotPassword(
             ForgotPasswordDto dto,
@@ -88,6 +97,9 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("password/reset")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .PasswordRecovery)]
     public async Task<IActionResult>
         ResetPassword(
             ResetPasswordDto dto,

@@ -12,5 +12,16 @@ public interface IUserRepository
 
     Task<List<User>> GetAll();
 
+    Task RecordFailedLogin(
+        Guid userId,
+        DateTime failedAtUtc,
+        DateTime failureWindowThresholdUtc,
+        int maximumFailedAttempts,
+        DateTime lockoutEndUtc);
+
+    Task<bool> ClearFailedLoginsIfNotLocked(
+        Guid userId,
+        DateTime nowUtc);
+
     Task SaveChanges();
 }

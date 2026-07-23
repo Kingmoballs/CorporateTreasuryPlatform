@@ -14,6 +14,11 @@ using FluentValidation.AspNetCore;
 using Treasury.Application.Validators;
 using Treasury.Infrastructure.Services;
 using Treasury.Api.BackgroundServices;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Globalization;
+using System.Threading.RateLimiting;
+using Treasury.Api.Models;
+using Treasury.Api.Security;
 
 
 // Create a builder for the web application
@@ -28,6 +33,83 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddHttpContextAccessor();
+
+var authenticationSecuritySettings =
+    builder.Configuration
+        .GetSection(
+            AuthenticationSecurityOptions.SectionName)
+        .Get<AuthenticationSecurityOptions>() ??
+    new AuthenticationSecurityOptions();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode =
+        StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(
+        AuthenticationRateLimitPolicies.Login,
+        context =>
+            AuthenticationRateLimitPolicies
+                .CreateFixedWindowPartition(
+                    context,
+                    authenticationSecuritySettings
+                        .LoginRequestsPerMinute));
+
+    options.AddPolicy(
+        AuthenticationRateLimitPolicies.Refresh,
+        context =>
+            AuthenticationRateLimitPolicies
+                .CreateFixedWindowPartition(
+                    context,
+                    authenticationSecuritySettings
+                        .RefreshRequestsPerMinute));
+
+    options.AddPolicy(
+        AuthenticationRateLimitPolicies
+            .PasswordRecovery,
+        context =>
+            AuthenticationRateLimitPolicies
+                .CreateFixedWindowPartition(
+                    context,
+                    authenticationSecuritySettings
+                        .PasswordRecoveryRequestsPerMinute));
+
+    options.OnRejected =
+        async (rejectionContext, cancellationToken) =>
+        {
+            if (rejectionContext.Lease
+                .TryGetMetadata(
+                    MetadataName.RetryAfter,
+                    out var retryAfter))
+            {
+                rejectionContext.HttpContext
+                    .Response.Headers.RetryAfter =
+                        Math.Ceiling(
+                                retryAfter.TotalSeconds)
+                            .ToString(
+                                CultureInfo
+                                    .InvariantCulture);
+            }
+
+            rejectionContext.HttpContext
+                .Response.ContentType =
+                    "application/json";
+
+            await rejectionContext.HttpContext
+                .Response.WriteAsJsonAsync(
+                    new ApiErrorResponse
+                    {
+                        Code = "rate_limit_exceeded",
+                        Message =
+                            "Too many authentication " +
+                            "requests. Try again later.",
+                        TraceId =
+                            rejectionContext.HttpContext
+                                .TraceIdentifier
+                    },
+                    cancellationToken);
+        };
+});
 
 builder.Services.AddScoped<
     IOrganizationContext,
@@ -110,6 +192,10 @@ builder.Services.AddScoped<
     UserRepository>();
 
 builder.Services.AddScoped<
+    ILoginAttemptService,
+    LoginAttemptService>();
+
+builder.Services.AddScoped<
     IAuthenticationSessionRepository,
     AuthenticationSessionRepository>();
 
@@ -139,6 +225,38 @@ builder.Services.AddScoped<
 
 builder.Services.AddSingleton(
     TimeProvider.System);
+
+builder.Services
+    .AddOptions<AuthenticationSecurityOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            AuthenticationSecurityOptions
+                .SectionName))
+    .Validate(
+        options =>
+            options.MaximumFailedLoginAttempts
+                is >= 3 and <= 20,
+        "Maximum failed-login attempts must be " +
+        "between 3 and 20.")
+    .Validate(
+        options =>
+            options.LoginFailureWindowMinutes
+                is >= 1 and <= 1440 &&
+            options.LoginLockoutMinutes
+                is >= 1 and <= 1440,
+        "Login failure-window and lockout durations " +
+        "must be between 1 and 1440 minutes.")
+    .Validate(
+        options =>
+            options.LoginRequestsPerMinute
+                is >= 1 and <= 1000 &&
+            options.RefreshRequestsPerMinute
+                is >= 1 and <= 1000 &&
+            options.PasswordRecoveryRequestsPerMinute
+                is >= 1 and <= 1000,
+        "Authentication rate limits must be between " +
+        "1 and 1000 requests per minute.")
+    .ValidateOnStart();
 
 builder.Services
     .AddOptions<UserInvitationOptions>()
@@ -602,6 +720,10 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseMiddleware<ExceptionMiddleware>();
+
+app.UseRouting();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 
