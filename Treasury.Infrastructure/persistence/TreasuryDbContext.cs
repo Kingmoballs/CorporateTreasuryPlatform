@@ -64,6 +64,10 @@ public class TreasuryDbContext : DbContext
     public DbSet<CreditFacilityRepayment>
         CreditFacilityRepayments =>
             Set<CreditFacilityRepayment>();
+    
+    public DbSet<CreditFacilityInterestAccrualSnapshot>
+        CreditFacilityInterestAccrualSnapshots =>
+            Set<CreditFacilityInterestAccrualSnapshot>();
 
     public DbSet<InvestmentAccrualSnapshot> 
         InvestmentAccrualSnapshots => 
@@ -1050,7 +1054,8 @@ public class TreasuryDbContext : DbContext
                 "'Activated','Matured','Redeemed','Realized'," +
                 "'Matched','Reconciled','Ignored','Expired'," +
                 "'Imported','LoggedIn','RoleChanged'," +
-                "'Suspended','Closed','DrawnDown','Repaid')");
+                "'Suspended','Closed','DrawnDown','Repaid'," +
+                "'Accrued')");
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
@@ -1065,7 +1070,9 @@ public class TreasuryDbContext : DbContext
                 "'InvestmentRolloverRequest','Counterparty'," +
                 "'InvestmentLimit','CreditFacility'," +
                 "'CreditFacilityDrawdown'," +
-                "'CreditFacilityRepayment','System')");
+                "'CreditFacilityRepayment'," +
+                "'CreditFacilityInterestAccrualSnapshot'," +
+                "'System')");
         });
 
         var treasuryAlert =
@@ -2092,6 +2099,158 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_CreditFacilityRepayments_Status",
                     "\"Status\" IN ('Completed')");
+            });
+        
+        var creditFacilityInterestAccrualSnapshot =
+            modelBuilder.Entity<
+                CreditFacilityInterestAccrualSnapshot>();
+
+        /*
+        * Database-level duplicate protection ensures that
+        * concurrent processors cannot accrue the same
+        * facility twice for the same date.
+        */
+        creditFacilityInterestAccrualSnapshot
+            .HasIndex(snapshot => new
+            {
+                snapshot.CreditFacilityId,
+                snapshot.SnapshotDateUtc
+            })
+            .IsUnique();
+
+        creditFacilityInterestAccrualSnapshot
+            .HasIndex(snapshot => new
+            {
+                snapshot.Currency,
+                snapshot.SnapshotDateUtc
+            });
+
+        creditFacilityInterestAccrualSnapshot
+            .HasIndex(snapshot =>
+                snapshot.SnapshotDateUtc);
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.FacilityReference)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.FacilityName)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.LenderName)
+            .HasMaxLength(200)
+            .IsRequired();
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.Currency)
+            .HasMaxLength(3)
+            .IsRequired();
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.FacilityStatus)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.OutstandingPrincipalAmount)
+            .HasPrecision(18, 2);
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.AnnualInterestRate)
+            .HasPrecision(9, 6);
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.AccruedInterestBefore)
+            .HasPrecision(18, 2);
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.AccruedInterestAmount)
+            .HasPrecision(18, 2);
+
+        creditFacilityInterestAccrualSnapshot
+            .Property(snapshot =>
+                snapshot.AccruedInterestAfter)
+            .HasPrecision(18, 2);
+
+        creditFacilityInterestAccrualSnapshot
+            .HasOne(snapshot =>
+                snapshot.CreditFacility)
+            .WithMany(facility =>
+                facility.InterestAccrualSnapshots)
+            .HasForeignKey(snapshot =>
+                snapshot.CreditFacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityInterestAccrualSnapshot
+            .HasOne(snapshot =>
+                snapshot.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(snapshot =>
+                snapshot.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        creditFacilityInterestAccrualSnapshot
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_Principal_NonNegative",
+                    "\"OutstandingPrincipalAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_Rate_Range",
+                    "\"AnnualInterestRate\" " +
+                    "BETWEEN 0 AND 100");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_DayCountBasis",
+                    "\"DayCountBasis\" IN (360, 365)");
+
+                /*
+                * The upper limit allows yearly catch-up while
+                * preventing obviously invalid values.
+                */
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_AccruedDays",
+                    "\"AccruedDays\" BETWEEN 1 AND 366");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_InterestBefore_NonNegative",
+                    "\"AccruedInterestBefore\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_Amount_NonNegative",
+                    "\"AccruedInterestAmount\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_InterestAfter_NonNegative",
+                    "\"AccruedInterestAfter\" >= 0");
+
+                /*
+                * Ensures the persisted facility movement agrees
+                * with the snapshot’s calculated accrual.
+                */
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_InterestMovement",
+                    "\"AccruedInterestAfter\" = " +
+                    "\"AccruedInterestBefore\" + " +
+                    "\"AccruedInterestAmount\"");
+
+                table.HasCheckConstraint(
+                    "CK_CreditFacilityInterestAccrualSnapshots_Currency",
+                    "char_length(\"Currency\") = 3 AND " +
+                    "\"Currency\" = upper(\"Currency\")");
             });
         
         var investmentPlacement =

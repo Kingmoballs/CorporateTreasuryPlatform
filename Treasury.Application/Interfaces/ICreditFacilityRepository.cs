@@ -23,4 +23,10 @@ public interface ICreditFacilityRepository
     void Update(CreditFacility facility);
 
     Task SaveChanges();
+
+    Task<IReadOnlyList<CreditFacility>>
+        GetForInterestAccrual(
+            Guid? creditFacilityId,
+            DateTime asOfDateUtc,
+            int maxRows);
 }

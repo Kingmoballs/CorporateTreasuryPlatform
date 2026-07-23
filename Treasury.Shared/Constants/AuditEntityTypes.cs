@@ -38,6 +38,9 @@ public static class AuditEntityTypes
 
     public const string CreditFacilityRepayment =
         "CreditFacilityRepayment";
+    
+    public const string CreditFacilityInterestAccrualSnapshot =
+        "CreditFacilityInterestAccrualSnapshot";
 
     public const string System = "System";
 }

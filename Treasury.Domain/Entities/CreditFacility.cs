@@ -169,6 +169,10 @@ public class CreditFacility
     public ICollection<CreditFacilityRepayment>
         Repayments { get; set; } =
             new List<CreditFacilityRepayment>();
+    
+    public ICollection<CreditFacilityInterestAccrualSnapshot>
+        InterestAccrualSnapshots { get; set; } =
+            new List<CreditFacilityInterestAccrualSnapshot>();
 
     [NotMapped]
     public decimal AvailableAmount =>

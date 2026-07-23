@@ -3,6 +3,7 @@ using Treasury.Application.DTOs.CreditFacilities;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Persistence;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Repositories;
 
@@ -172,5 +173,56 @@ public class CreditFacilityRepository
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<CreditFacility>>
+        GetForInterestAccrual(
+            Guid? creditFacilityId,
+            DateTime asOfDateUtc,
+            int maxRows)
+    {
+        var toExclusiveUtc =
+            asOfDateUtc.Date.AddDays(1);
+
+        var facilities =
+            _context.CreditFacilities
+                .Include(facility =>
+                    facility.LenderCounterparty)
+                .Include(facility =>
+                    facility.SettlementAccount)
+                .Where(facility =>
+                    facility.Status ==
+                        CreditFacilityStatuses.Active ||
+                    facility.Status ==
+                        CreditFacilityStatuses.Suspended ||
+                    facility.Status ==
+                        CreditFacilityStatuses.Matured)
+                .Where(facility =>
+                    facility.StartDateUtc.Date <=
+                        asOfDateUtc.Date)
+                .Where(facility =>
+                    facility.OutstandingPrincipalAmount > 0)
+                .Where(facility =>
+                    _context.CreditFacilityDrawdowns
+                        .Any(drawdown =>
+                            drawdown.CreditFacilityId ==
+                                facility.Id &&
+                            drawdown.DrawdownDateUtc <
+                                toExclusiveUtc))
+                .AsQueryable();
+
+        if (creditFacilityId.HasValue)
+        {
+            facilities =
+                facilities.Where(facility =>
+                    facility.Id ==
+                        creditFacilityId.Value);
+        }
+
+        return await facilities
+            .OrderBy(facility =>
+                facility.MaturityDateUtc)
+            .Take(maxRows)
+            .ToListAsync();
     }
 }
