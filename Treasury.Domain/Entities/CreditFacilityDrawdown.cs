@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class CreditFacilityDrawdown
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     /*
      * Internally generated reference such as:

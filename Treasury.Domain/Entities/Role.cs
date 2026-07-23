@@ -8,4 +8,8 @@ public class Role
 
     public ICollection<User> Users { get; set; }
         = new List<User>();
+
+    public ICollection<OrganizationMembership>
+        OrganizationMemberships { get; set; } =
+            new List<OrganizationMembership>();
 }

@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class InvestmentLimit
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid CounterpartyId { get; set; }
 

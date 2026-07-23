@@ -3,8 +3,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Treasury.Domain.Entities;
 
 public class CreditFacility
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     /*
      * Internally generated reference such as:

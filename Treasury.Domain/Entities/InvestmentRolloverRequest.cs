@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class InvestmentRolloverRequest
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     /*
      * Original placement being rolled over.

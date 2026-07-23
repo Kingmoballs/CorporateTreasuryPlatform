@@ -5,4 +5,10 @@ public interface ICurrentUserService
     string Email { get; }
 
     string Role { get; }
+
+    Guid? OrganizationId { get; }
+
+    Guid? OrganizationMembershipId { get; }
+
+    string OrganizationCode { get; }
 }

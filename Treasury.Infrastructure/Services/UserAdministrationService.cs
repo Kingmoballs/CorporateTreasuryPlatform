@@ -38,7 +38,8 @@ public class UserAdministrationService
             .Select(user =>
                 MapUser(
                     user,
-                    user.Role))
+                    GetRequiredMembership(
+                        user)))
             .ToList();
     }
 
@@ -75,9 +76,14 @@ public class UserAdministrationService
                 "Role not found.");
         }
 
-        if (user.RoleId == role.Id)
+        var membership =
+            GetRequiredMembership(user);
+
+        if (membership.RoleId == role.Id)
         {
-            return MapUser(user, user.Role);
+            return MapUser(
+                user,
+                membership);
         }
 
         /*
@@ -91,20 +97,36 @@ public class UserAdministrationService
                 "You cannot change your own role.");
         }
 
-        if (IsAdmin(user) &&
+        if (IsAdmin(membership.Role) &&
             !IsAdmin(role) &&
-            user.IsActive)
+            membership.IsActive)
         {
             await EnsureAnotherActiveAdminExists(
                 user.Id);
         }
 
-        user.RoleId = role.Id;
+        membership.RoleId = role.Id;
+
+        membership.Role = role;
+
+        /*
+         * Retain the original User.RoleId only as a
+         * compatibility projection of the default tenant
+         * membership.
+         */
+        if (membership.IsDefault)
+        {
+            user.RoleId = role.Id;
+
+            user.Role = role;
+        }
 
         await _userRepository
             .SaveChanges();
 
-        return MapUser(user, role);
+        return MapUser(
+            user,
+            membership);
     }
 
     public async Task<AdminUserDto>
@@ -115,9 +137,14 @@ public class UserAdministrationService
         var user =
             await GetRequiredUser(userId);
 
-        if (user.IsActive == isActive)
+        var membership =
+            GetRequiredMembership(user);
+
+        if (membership.IsActive == isActive)
         {
-            return MapUser(user, user.Role);
+            return MapUser(
+                user,
+                membership);
         }
 
         if (user.Id ==
@@ -129,20 +156,30 @@ public class UserAdministrationService
                 "your own account.");
         }
 
-        if (IsAdmin(user) &&
-            user.IsActive &&
+        if (IsAdmin(membership.Role) &&
+            membership.IsActive &&
             !isActive)
         {
             await EnsureAnotherActiveAdminExists(
                 user.Id);
         }
 
-        user.IsActive = isActive;
+        membership.IsActive = isActive;
+
+        /*
+         * The global flag remains true while the user has
+         * at least one active organization membership.
+         */
+        user.IsActive =
+            user.OrganizationMemberships.Any(item =>
+                item.IsActive);
 
         await _userRepository
             .SaveChanges();
 
-        return MapUser(user, user.Role);
+        return MapUser(
+            user,
+            membership);
     }
 
     private async Task<User>
@@ -171,8 +208,11 @@ public class UserAdministrationService
         var anotherAdminExists =
             users.Any(user =>
                 user.Id != excludedUserId &&
-                user.IsActive &&
-                IsAdmin(user));
+                GetRequiredMembership(user)
+                    .IsActive &&
+                IsAdmin(
+                    GetRequiredMembership(user)
+                        .Role));
 
         if (!anotherAdminExists)
         {
@@ -180,14 +220,6 @@ public class UserAdministrationService
                 "The last active administrator " +
                 "cannot be demoted or deactivated.");
         }
-    }
-
-    private static bool IsAdmin(User user)
-    {
-        return string.Equals(
-            user.Role.Name,
-            Roles.Admin,
-            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsAdmin(Role role)
@@ -198,9 +230,39 @@ public class UserAdministrationService
             StringComparison.OrdinalIgnoreCase);
     }
 
+    private OrganizationMembership
+        GetRequiredMembership(User user)
+    {
+        var organizationId =
+            _currentUserService.OrganizationId;
+
+        if (!organizationId.HasValue ||
+            organizationId.Value == Guid.Empty)
+        {
+            throw new UnauthorizedAccessException(
+                "A valid organization context is " +
+                "required.");
+        }
+
+        var membership =
+            user.OrganizationMemberships
+                .FirstOrDefault(item =>
+                    item.OrganizationId ==
+                        organizationId.Value);
+
+        if (membership is null)
+        {
+            throw new ResourceNotFoundException(
+                "User was not found in this " +
+                "organization.");
+        }
+
+        return membership;
+    }
+
     private static AdminUserDto MapUser(
         User user,
-        Role role)
+        OrganizationMembership membership)
     {
         return new AdminUserDto
         {
@@ -212,11 +274,11 @@ public class UserAdministrationService
 
             Email = user.Email,
 
-            RoleId = role.Id,
+            RoleId = membership.RoleId,
 
-            Role = role.Name,
+            Role = membership.Role.Name,
 
-            IsActive = user.IsActive,
+            IsActive = membership.IsActive,
 
             CreatedAt = user.CreatedAt
         };

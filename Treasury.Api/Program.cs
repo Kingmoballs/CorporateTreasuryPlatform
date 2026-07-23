@@ -29,6 +29,10 @@ builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddHttpContextAccessor();
 
+builder.Services.AddScoped<
+    IOrganizationContext,
+    OrganizationContext>();
+
 builder.Services
     .AddValidatorsFromAssemblyContaining<
         RegisterDtoValidator>();
@@ -104,6 +108,10 @@ builder.Services.AddDbContext<TreasuryDbContext>(options =>
 builder.Services.AddScoped<
     IUserRepository,
     UserRepository>();
+
+builder.Services.AddScoped<
+    IOrganizationRepository,
+    OrganizationRepository>();
 
 builder.Services.AddScoped<
     IJwtService,
@@ -476,6 +484,8 @@ using (var scope = app.Services.CreateScope())
                 TreasuryDbContext>();
 
     await RoleSeeder.SeedRoles(context);
+
+    await OrganizationSeeder.Seed(context);
 
     await AccountTypeSeeder.SeedAccountTypes(context);
 

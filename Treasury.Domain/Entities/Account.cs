@@ -3,9 +3,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Treasury.Domain.Entities;
 
 
-public class Account
+public class Account : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public string Name { get; set; } = string.Empty;
 

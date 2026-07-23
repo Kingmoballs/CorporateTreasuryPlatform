@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260723130256_AddOrganizationFoundation")]
+    partial class AddOrganizationFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -58,9 +61,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("ReservedBalance")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("numeric")
@@ -68,10 +68,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AccountTypeId");
-
-                    b.HasIndex("OrganizationId", "AccountNumber")
+                    b.HasIndex("AccountNumber")
                         .IsUnique();
+
+                    b.HasIndex("AccountTypeId");
 
                     b.ToTable("Accounts", t =>
                         {
@@ -128,9 +128,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InvestmentPlacementId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("PaymentRequestId")
                         .HasColumnType("uuid");
 
@@ -143,8 +140,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ApproverUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("CreditFacilityId", "ApproverUserId")
                         .IsUnique();
@@ -195,9 +190,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<int>("PendingRequestExpiryHours")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -221,7 +213,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UpdatedByUserId");
 
-                    b.HasIndex("OrganizationId", "OperationType", "Currency")
+                    b.HasIndex("OperationType", "Currency")
                         .IsUnique();
 
                     b.ToTable("ApprovalPolicies", t =>
@@ -288,9 +280,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("OccurredAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -305,8 +294,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("Action");
 
                     b.HasIndex("OccurredAtUtc");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("ActorUserId", "OccurredAtUtc");
 
@@ -347,9 +334,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("OpeningBalance")
                         .HasColumnType("numeric");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("StatementFromUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -367,8 +351,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("UploadedAtUtc");
 
@@ -437,9 +419,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("MatchedTreasuryTransactionId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("ReconciledAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -459,8 +438,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MatchedTreasuryTransactionId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("ReconciledByUserId");
 
@@ -584,9 +561,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpectedDateUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("RealizedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -611,8 +585,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("CancelledByUserId");
 
                     b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("RealizedTreasuryTransactionId")
                         .IsUnique();
@@ -686,9 +658,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("SwiftCode")
                         .HasMaxLength(11)
                         .HasColumnType("character varying(11)");
@@ -701,14 +670,14 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Code")
+                        .IsUnique();
+
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("UpdatedByUserId");
 
                     b.HasIndex("IsActive", "Name");
-
-                    b.HasIndex("OrganizationId", "Code")
-                        .IsUnique();
 
                     b.ToTable("Counterparties", t =>
                         {
@@ -871,9 +840,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("OutstandingPrincipalAmount")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(18, 2)
@@ -923,6 +889,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ActivatedByUserId");
 
+                    b.HasIndex("ActivationIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("ActivationRejectedByUserId");
 
                     b.HasIndex("ActivationRequestedByUserId");
@@ -933,6 +902,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
                     b.HasIndex("SettlementAccountId");
 
                     b.HasIndex("SuspendedByUserId");
@@ -940,12 +912,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("UpdatedByUserId");
 
                     b.HasIndex("LenderCounterpartyId", "Status");
-
-                    b.HasIndex("OrganizationId", "ActivationIdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "Reference")
-                        .IsUnique();
 
                     b.HasIndex("Status", "MaturityDateUtc");
 
@@ -1020,9 +986,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("InitiatedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("OutstandingPrincipalAfter")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1051,18 +1014,18 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("InitiatedByUserId");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
 
                     b.HasIndex("TreasuryTransactionId")
                         .IsUnique();
 
                     b.HasIndex("CreditFacilityId", "DrawdownDateUtc");
-
-                    b.HasIndex("OrganizationId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "Reference")
-                        .IsUnique();
 
                     b.HasIndex("SettlementAccountId", "DrawdownDateUtc");
 
@@ -1142,9 +1105,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("OutstandingPrincipalAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1155,8 +1115,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("SnapshotDateUtc");
 
@@ -1237,9 +1195,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("OutstandingPrincipalAfter")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1275,18 +1230,18 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("InitiatedByUserId");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
 
                     b.HasIndex("TreasuryTransactionId")
                         .IsUnique();
 
                     b.HasIndex("CreditFacilityId", "RepaymentDateUtc");
-
-                    b.HasIndex("OrganizationId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "Reference")
-                        .IsUnique();
 
                     b.HasIndex("SettlementAccountId", "RepaymentDateUtc");
 
@@ -1344,9 +1299,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("Rate")
                         .HasColumnType("numeric");
 
@@ -1376,7 +1328,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ToCurrency", "RateDateUtc");
 
-                    b.HasIndex("OrganizationId", "FromCurrency", "ToCurrency", "RateDateUtc")
+                    b.HasIndex("FromCurrency", "ToCurrency", "RateDateUtc")
                         .IsUnique();
 
                     b.ToTable("FxRates", t =>
@@ -1463,9 +1415,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsRedeemedAsOf")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("PlacementStatus")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1495,8 +1444,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("InstitutionName");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("InvestmentPlacementId", "SnapshotDateUtc")
                         .IsUnique();
@@ -1547,14 +1494,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("InvestmentEarlyRedemptionRequestId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
 
                     b.HasIndex("ApproverUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("InvestmentEarlyRedemptionRequestId", "ApproverUserId")
                         .IsUnique();
@@ -1640,9 +1582,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("PenaltyAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1702,6 +1641,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DestinationAccountId");
 
+                    b.HasIndex("ExecutionIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("InvestmentPlacementId")
                         .IsUnique()
                         .HasFilter("\"Status\" IN ('Pending', 'Approved')");
@@ -1710,13 +1652,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RejectedByUserId");
 
+                    b.HasIndex("RequestIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("RequestedByUserId");
-
-                    b.HasIndex("OrganizationId", "ExecutionIdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "RequestIdempotencyKey")
-                        .IsUnique();
 
                     b.HasIndex("Status", "ExpiresAtUtc");
 
@@ -1788,9 +1727,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -1806,8 +1742,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("UpdatedByUserId");
 
@@ -1950,9 +1884,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("PrincipalAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -2015,6 +1946,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ActivatedByUserId");
 
+                    b.HasIndex("ActivationIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("ActivationRejectedByUserId");
 
                     b.HasIndex("ActivationRequestedByUserId");
@@ -2035,19 +1969,16 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RedemptionAccountId");
 
+                    b.HasIndex("RedemptionIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("RedemptionTreasuryTransactionId")
                         .IsUnique();
 
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
                     b.HasIndex("SourceAccountId");
-
-                    b.HasIndex("OrganizationId", "ActivationIdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "RedemptionIdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "Reference")
-                        .IsUnique();
 
                     b.HasIndex("Status", "ActivationExpiresAtUtc");
 
@@ -2105,14 +2036,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("InvestmentRolloverRequestId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
 
                     b.HasIndex("ApproverUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("InvestmentRolloverRequestId", "ApproverUserId")
                         .IsUnique();
@@ -2228,9 +2154,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("OriginalInstitutionName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2306,6 +2229,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ExecutedByUserId");
 
+                    b.HasIndex("ExecutionIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("NewInvestmentPlacementId")
                         .IsUnique();
 
@@ -2315,13 +2241,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RejectedByUserId");
 
+                    b.HasIndex("RequestIdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("RequestedByUserId");
-
-                    b.HasIndex("OrganizationId", "ExecutionIdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "RequestIdempotencyKey")
-                        .IsUnique();
 
                     b.HasIndex("Status", "ExpiresAtUtc");
 
@@ -2376,17 +2299,12 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("TreasuryTransactionId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("TreasuryTransactionId");
 
@@ -2619,9 +2537,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
 
@@ -2647,14 +2562,14 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AccountId");
 
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("RequestedByUserId");
 
                     b.HasIndex("ReviewedByUserId");
 
                     b.HasIndex("Status");
-
-                    b.HasIndex("OrganizationId", "IdempotencyKey")
-                        .IsUnique();
 
                     b.HasIndex("Status", "ExpiresAtUtc");
 
@@ -2689,9 +2604,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid>("OriginalTransactionId")
                         .HasColumnType("uuid");
 
@@ -2721,8 +2633,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("OriginalTransactionId")
                         .IsUnique();
@@ -2789,9 +2699,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FromAccountId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
 
@@ -2819,8 +2726,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("Status");
 
@@ -2884,9 +2789,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<string>("MetadataJson")
                         .HasColumnType("jsonb");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Severity")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -2926,8 +2828,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedAtUtc");
 
                     b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("AlertType", "Status");
 
@@ -2995,9 +2895,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InitiatedByUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("PaymentRequestId")
                         .HasColumnType("uuid");
 
@@ -3035,9 +2932,15 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ExternalReference");
 
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
                     b.HasIndex("InitiatedByUserId");
 
                     b.HasIndex("PaymentRequestId");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
 
                     b.HasIndex("ReversalRequestId");
 
@@ -3047,12 +2950,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("SourceAccountId");
 
                     b.HasIndex("TransferRequestId");
-
-                    b.HasIndex("OrganizationId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "Reference")
-                        .IsUnique();
 
                     b.ToTable("TreasuryTransactions", t =>
                         {
@@ -3110,12 +3007,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("AccountType");
                 });
 
@@ -3137,12 +3028,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasForeignKey("InvestmentPlacementId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Treasury.Domain.Entities.PaymentRequest", null)
                         .WithMany()
                         .HasForeignKey("PaymentRequestId")
@@ -3163,12 +3048,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Treasury.Domain.Entities.ApprovalPolicy", b =>
                 {
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Treasury.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
@@ -3182,12 +3061,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ActorUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("ActorUser");
                 });
 
@@ -3196,12 +3069,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasOne("Treasury.Domain.Entities.Account", "Account")
                         .WithMany()
                         .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -3233,12 +3100,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("MatchedTreasuryTransactionId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.User", "ReconciledByUser")
                         .WithMany()
@@ -3291,12 +3152,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Treasury.Domain.Entities.TreasuryTransaction", "RealizedTreasuryTransaction")
                         .WithMany()
                         .HasForeignKey("RealizedTreasuryTransactionId")
@@ -3317,12 +3172,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.User", "UpdatedByUser")
                         .WithMany()
@@ -3369,12 +3218,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasOne("Treasury.Domain.Entities.Counterparty", "LenderCounterparty")
                         .WithMany("CreditFacilities")
                         .HasForeignKey("LenderCounterpartyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -3429,12 +3272,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Treasury.Domain.Entities.Account", "SettlementAccount")
                         .WithMany()
                         .HasForeignKey("SettlementAccountId")
@@ -3469,12 +3306,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("CreditFacility");
@@ -3491,12 +3322,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasOne("Treasury.Domain.Entities.User", "InitiatedByUser")
                         .WithMany()
                         .HasForeignKey("InitiatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -3528,12 +3353,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("CreatedByUser");
                 });
 
@@ -3547,12 +3366,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasOne("Treasury.Domain.Entities.InvestmentPlacement", "InvestmentPlacement")
                         .WithMany()
                         .HasForeignKey("InvestmentPlacementId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -3575,12 +3388,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("ApproverUser");
 
                     b.Navigation("InvestmentEarlyRedemptionRequest");
@@ -3597,12 +3404,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasOne("Treasury.Domain.Entities.InvestmentPlacement", "InvestmentPlacement")
                         .WithMany()
                         .HasForeignKey("InvestmentPlacementId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -3645,12 +3446,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.User", "UpdatedByUser")
                         .WithMany()
@@ -3705,12 +3500,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("MaturityForecastItemId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.User", "RedeemedByUser")
                         .WithMany()
@@ -3772,12 +3561,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("ApproverUser");
 
                     b.Navigation("InvestmentRolloverRequest");
@@ -3804,12 +3587,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("NewInvestmentPlacementId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.InvestmentPlacement", "OriginalInvestmentPlacement")
                         .WithMany()
@@ -3849,12 +3626,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.TreasuryTransaction", "TreasuryTransaction")
@@ -3913,12 +3684,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Treasury.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("RequestedByUserId")
@@ -3933,12 +3698,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Treasury.Domain.Entities.ReversalRequest", b =>
                 {
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Treasury.Domain.Entities.TreasuryTransaction", "OriginalTransaction")
                         .WithMany()
                         .HasForeignKey("OriginalTransactionId")
@@ -3959,15 +3718,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("OriginalTransaction");
                 });
 
-            modelBuilder.Entity("Treasury.Domain.Entities.TransferRequest", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Treasury.Domain.Entities.TreasuryAlert", b =>
                 {
                     b.HasOne("Treasury.Domain.Entities.Account", "Account")
@@ -3984,12 +3734,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.Navigation("Account");
 
@@ -4014,12 +3758,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("InitiatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("Treasury.Domain.Entities.PaymentRequest", null)
                         .WithMany()

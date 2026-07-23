@@ -1,8 +1,10 @@
 namespace Treasury.Domain.Entities;
 
-public class Counterparty
+public class Counterparty : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     /*
      * Short internal identifier such as:

@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class CreditFacilityInterestAccrualSnapshot
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid CreditFacilityId { get; set; }
 

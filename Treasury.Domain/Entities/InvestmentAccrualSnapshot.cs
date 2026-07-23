@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class InvestmentAccrualSnapshot
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid InvestmentPlacementId { get; set; }
 

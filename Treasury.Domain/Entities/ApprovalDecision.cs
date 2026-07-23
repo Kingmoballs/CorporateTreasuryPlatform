@@ -1,8 +1,10 @@
 namespace Treasury.Domain.Entities;
 
-public class ApprovalDecision
+public class ApprovalDecision : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid? TransferRequestId { get; set; }
 

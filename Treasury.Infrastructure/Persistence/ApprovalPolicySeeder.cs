@@ -9,8 +9,19 @@ public static class ApprovalPolicySeeder
     public static async Task Seed(
         TreasuryDbContext context)
     {
+        var organizationId =
+            await context.Organizations
+                .Where(organization =>
+                    organization.Code ==
+                        OrganizationDefaults
+                            .OrganizationCode)
+                .Select(organization =>
+                    organization.Id)
+                .SingleAsync();
+
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .InternalTransfer,
             "NGN",
@@ -18,6 +29,7 @@ public static class ApprovalPolicySeeder
 
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .CashPayment,
             "NGN",
@@ -25,6 +37,7 @@ public static class ApprovalPolicySeeder
         
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .TransactionReversal,
             "NGN",
@@ -32,6 +45,7 @@ public static class ApprovalPolicySeeder
         
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .InvestmentPlacement,
             "NGN",
@@ -39,6 +53,7 @@ public static class ApprovalPolicySeeder
 
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .InvestmentEarlyRedemption,
             "NGN",
@@ -46,6 +61,7 @@ public static class ApprovalPolicySeeder
         
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .InvestmentRollover,
             "NGN",
@@ -53,6 +69,7 @@ public static class ApprovalPolicySeeder
         
         await AddIfMissing(
             context,
+            organizationId,
             ApprovalOperationTypes
                 .CreditFacilityActivation,
             "NGN",
@@ -63,6 +80,7 @@ public static class ApprovalPolicySeeder
 
     private static async Task AddIfMissing(
         TreasuryDbContext context,
+        Guid organizationId,
         string operationType,
         string currency,
         decimal threshold)
@@ -70,6 +88,8 @@ public static class ApprovalPolicySeeder
         var exists =
             await context.ApprovalPolicies
                 .AnyAsync(policy =>
+                    policy.OrganizationId ==
+                        organizationId &&
                     policy.OperationType ==
                         operationType &&
                     policy.Currency ==
@@ -84,6 +104,9 @@ public static class ApprovalPolicySeeder
             new ApprovalPolicy
             {
                 Id = Guid.NewGuid(),
+
+                OrganizationId =
+                    organizationId,
 
                 OperationType =
                     operationType,

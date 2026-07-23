@@ -1,20 +1,48 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
+using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 
 namespace Treasury.Infrastructure.Persistence;
 
 public class TreasuryDbContext : DbContext
 {
+    private readonly IOrganizationContext?
+        _organizationContext;
+
     public TreasuryDbContext(
-        DbContextOptions<TreasuryDbContext> options)
+        DbContextOptions<TreasuryDbContext> options,
+        IOrganizationContext? organizationContext =
+            null)
         : base(options)
     {
+        _organizationContext =
+            organizationContext;
     }
+
+    public Guid? CurrentOrganizationId =>
+        _organizationContext?.OrganizationId;
+
+    public bool IsSystemScope =>
+        _organizationContext is null ||
+        _organizationContext.IsSystemScope;
 
     public DbSet<User> Users { get; set; }
 
     public DbSet<Role> Roles { get; set; }
+
+    public DbSet<Organization> Organizations =>
+        Set<Organization>();
+
+    public DbSet<LegalEntity> LegalEntities =>
+        Set<LegalEntity>();
+
+    public DbSet<BusinessUnit> BusinessUnits =>
+        Set<BusinessUnit>();
+
+    public DbSet<OrganizationMembership>
+        OrganizationMemberships =>
+            Set<OrganizationMembership>();
 
     public DbSet<Account> Accounts  => Set<Account>();
 
@@ -88,6 +116,85 @@ public class TreasuryDbContext : DbContext
     public DbSet<InvestmentRolloverDecision>
         InvestmentRolloverDecisions =>
             Set<InvestmentRolloverDecision>();
+
+    private void EnforceOrganizationBoundary()
+    {
+        var entries = ChangeTracker
+            .Entries<IOrganizationOwnedEntity>()
+            .Where(entry =>
+                entry.State != EntityState.Detached)
+            .ToList();
+
+        foreach (var entry in entries)
+        {
+            var organizationProperty =
+                entry.Property(item =>
+                    item.OrganizationId);
+
+            if (entry.State ==
+                    EntityState.Modified &&
+                organizationProperty.IsModified &&
+                !Equals(
+                    organizationProperty
+                        .OriginalValue,
+                    organizationProperty
+                        .CurrentValue))
+            {
+                throw new InvalidOperationException(
+                    "A record cannot be reassigned to " +
+                    "another organization.");
+            }
+        }
+
+        if (IsSystemScope)
+        {
+            var unownedNewRecord =
+                entries.FirstOrDefault(entry =>
+                    entry.State ==
+                        EntityState.Added &&
+                    entry.Entity.OrganizationId ==
+                        Guid.Empty);
+
+            if (unownedNewRecord is not null)
+            {
+                throw new InvalidOperationException(
+                    $"{unownedNewRecord.Metadata.Name} " +
+                    "must have an organization.");
+            }
+
+            return;
+        }
+
+        var organizationId =
+            CurrentOrganizationId;
+
+        if (!organizationId.HasValue ||
+            organizationId.Value == Guid.Empty)
+        {
+            throw new UnauthorizedAccessException(
+                "A valid organization context is " +
+                "required.");
+        }
+
+        foreach (var entry in entries)
+        {
+            if (entry.State == EntityState.Added &&
+                entry.Entity.OrganizationId ==
+                    Guid.Empty)
+            {
+                entry.Entity.OrganizationId =
+                    organizationId.Value;
+            }
+
+            if (entry.Entity.OrganizationId !=
+                organizationId.Value)
+            {
+                throw new UnauthorizedAccessException(
+                    "The requested record belongs to " +
+                    "another organization.");
+            }
+        }
+    }
 
     private void EnsureFinancialRecordsAreImmutable()
     {
@@ -205,19 +312,180 @@ public class TreasuryDbContext : DbContext
 
     public override int SaveChanges()
     {
+        EnforceOrganizationBoundary();
+
         EnsureFinancialRecordsAreImmutable();
 
-        return base.SaveChanges();
+        return base.SaveChanges(
+            acceptAllChangesOnSuccess: true);
+    }
+
+    public override int SaveChanges(
+        bool acceptAllChangesOnSuccess)
+    {
+        EnforceOrganizationBoundary();
+
+        EnsureFinancialRecordsAreImmutable();
+
+        return base.SaveChanges(
+            acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(
         CancellationToken cancellationToken =
             default)
     {
+        EnforceOrganizationBoundary();
+
         EnsureFinancialRecordsAreImmutable();
 
         return base.SaveChangesAsync(
+            acceptAllChangesOnSuccess: true,
             cancellationToken);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken =
+            default)
+    {
+        EnforceOrganizationBoundary();
+
+        EnsureFinancialRecordsAreImmutable();
+
+        return base.SaveChangesAsync(
+            acceptAllChangesOnSuccess,
+            cancellationToken);
+    }
+
+    private void ConfigureOrganizationIsolation(
+        ModelBuilder modelBuilder)
+    {
+        ApplyOrganizationFilter<LegalEntity>(
+            modelBuilder);
+
+        ApplyOrganizationFilter<BusinessUnit>(
+            modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<Account>(
+            modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            ApprovalDecision>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            ApprovalPolicy>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<AuditLog>(
+            modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            BankStatementImport>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            BankStatementLine>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            CashFlowForecastItem>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            Counterparty>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            CreditFacility>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            CreditFacilityDrawdown>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            CreditFacilityInterestAccrualSnapshot>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            CreditFacilityRepayment>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<FxRate>(
+            modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentAccrualSnapshot>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentEarlyRedemptionDecision>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentEarlyRedemptionRequest>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentLimit>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentPlacement>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentRolloverDecision>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            InvestmentRolloverRequest>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            LedgerEntry>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            PaymentRequest>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            ReversalRequest>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            TransferRequest>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            TreasuryAlert>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            TreasuryTransaction>(modelBuilder);
+    }
+
+    private void ConfigureOrganizationOwnedEntity<
+        TEntity>(
+        ModelBuilder modelBuilder)
+        where TEntity
+            : class, IOrganizationOwnedEntity
+    {
+        var entity =
+            modelBuilder.Entity<TEntity>();
+
+        entity
+            .HasOne<Organization>()
+            .WithMany()
+            .HasForeignKey(item =>
+                item.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        entity.HasQueryFilter(item =>
+            IsSystemScope ||
+            (CurrentOrganizationId.HasValue &&
+             item.OrganizationId ==
+                 CurrentOrganizationId.Value));
+    }
+
+    private void ApplyOrganizationFilter<TEntity>(
+        ModelBuilder modelBuilder)
+        where TEntity
+            : class, IOrganizationOwnedEntity
+    {
+        modelBuilder
+            .Entity<TEntity>()
+            .HasQueryFilter(item =>
+                IsSystemScope ||
+                (CurrentOrganizationId.HasValue &&
+                 item.OrganizationId ==
+                     CurrentOrganizationId.Value));
     }
 
     protected override void OnModelCreating(
@@ -225,10 +493,261 @@ public class TreasuryDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        ConfigureOrganizationIsolation(
+            modelBuilder);
+
         modelBuilder.Entity<User>()
             .HasOne(u => u.Role)
             .WithMany(r => r.Users)
             .HasForeignKey(u => u.RoleId);
+
+        var organization =
+            modelBuilder.Entity<Organization>();
+
+        organization
+            .HasIndex(item => item.Code)
+            .IsUnique();
+
+        organization
+            .HasIndex(item => item.Slug)
+            .IsUnique();
+
+        organization
+            .Property(item =>
+                item.Code)
+            .HasMaxLength(50);
+
+        organization
+            .Property(item =>
+                item.Name)
+            .HasMaxLength(200);
+
+        organization
+            .Property(item =>
+                item.Slug)
+            .HasMaxLength(100);
+
+        organization
+            .Property(item =>
+                item.CountryCode)
+            .HasMaxLength(2);
+
+        organization
+            .Property(item =>
+                item.BaseCurrency)
+            .HasMaxLength(3);
+
+        organization
+            .Property(item =>
+                item.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        organization
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Organizations_CountryCode",
+                    "char_length(\"CountryCode\") = 2");
+
+                table.HasCheckConstraint(
+                    "CK_Organizations_BaseCurrency",
+                    "char_length(\"BaseCurrency\") = 3");
+            });
+
+        var legalEntity =
+            modelBuilder.Entity<LegalEntity>();
+
+        legalEntity
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.Code
+            })
+            .IsUnique();
+
+        /*
+         * The composite alternate key is used by
+         * BusinessUnit so a unit cannot reference a legal
+         * entity that belongs to another organization.
+         */
+        legalEntity
+            .HasAlternateKey(item => new
+            {
+                item.OrganizationId,
+                item.Id
+            });
+
+        legalEntity
+            .HasOne(item =>
+                item.Organization)
+            .WithMany(item =>
+                item.LegalEntities)
+            .HasForeignKey(item =>
+                item.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        legalEntity
+            .Property(item =>
+                item.Code)
+            .HasMaxLength(50);
+
+        legalEntity
+            .Property(item =>
+                item.Name)
+            .HasMaxLength(200);
+
+        legalEntity
+            .Property(item =>
+                item.RegistrationNumber)
+            .HasMaxLength(100);
+
+        legalEntity
+            .Property(item =>
+                item.TaxIdentificationNumber)
+            .HasMaxLength(100);
+
+        legalEntity
+            .Property(item =>
+                item.CountryCode)
+            .HasMaxLength(2);
+
+        legalEntity
+            .Property(item =>
+                item.BaseCurrency)
+            .HasMaxLength(3);
+
+        legalEntity
+            .Property(item =>
+                item.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        legalEntity
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_LegalEntities_CountryCode",
+                    "char_length(\"CountryCode\") = 2");
+
+                table.HasCheckConstraint(
+                    "CK_LegalEntities_BaseCurrency",
+                    "char_length(\"BaseCurrency\") = 3");
+            });
+
+        var businessUnit =
+            modelBuilder.Entity<BusinessUnit>();
+
+        businessUnit
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.Code
+            })
+            .IsUnique();
+
+        businessUnit
+            .HasOne(item =>
+                item.Organization)
+            .WithMany(item =>
+                item.BusinessUnits)
+            .HasForeignKey(item =>
+                item.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        businessUnit
+            .HasOne(item =>
+                item.LegalEntity)
+            .WithMany(item =>
+                item.BusinessUnits)
+            .HasForeignKey(item => new
+            {
+                item.OrganizationId,
+                item.LegalEntityId
+            })
+            .HasPrincipalKey(item => new
+            {
+                item.OrganizationId,
+                item.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        businessUnit
+            .Property(item =>
+                item.Code)
+            .HasMaxLength(50);
+
+        businessUnit
+            .Property(item =>
+                item.Name)
+            .HasMaxLength(200);
+
+        businessUnit
+            .Property(item =>
+                item.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        var organizationMembership =
+            modelBuilder
+                .Entity<OrganizationMembership>();
+
+        organizationMembership
+            .HasIndex(membership => new
+            {
+                membership.OrganizationId,
+                membership.UserId
+            })
+            .IsUnique();
+
+        /*
+         * A user may eventually belong to several
+         * organizations, but only one membership can be
+         * selected as the default login context.
+         */
+        organizationMembership
+            .HasIndex(membership =>
+                membership.UserId)
+            .IsUnique()
+            .HasFilter(
+                "\"IsDefault\" = TRUE");
+
+        organizationMembership
+            .HasOne(membership =>
+                membership.Organization)
+            .WithMany(item =>
+                item.Memberships)
+            .HasForeignKey(membership =>
+                membership.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationMembership
+            .HasOne(membership =>
+                membership.User)
+            .WithMany(user =>
+                user.OrganizationMemberships)
+            .HasForeignKey(membership =>
+                membership.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationMembership
+            .HasOne(membership =>
+                membership.Role)
+            .WithMany(role =>
+                role.OrganizationMemberships)
+            .HasForeignKey(membership =>
+                membership.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationMembership
+            .Property(membership =>
+                membership.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
 
         modelBuilder.Entity<Account>()
             .HasOne(x => x.AccountType)
@@ -267,7 +786,11 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<TreasuryTransaction>();
 
         transaction
-            .HasIndex(item => item.Reference)
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.Reference
+            })
             .IsUnique();
 
         transaction
@@ -309,7 +832,11 @@ public class TreasuryDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
         
         transaction
-            .HasIndex(item => item.IdempotencyKey)
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.IdempotencyKey
+            })
             .IsUnique();
 
         transaction
@@ -342,8 +869,11 @@ public class TreasuryDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
         
         modelBuilder.Entity<Account>()
-            .HasIndex(account =>
-                account.AccountNumber)
+            .HasIndex(account => new
+            {
+                account.OrganizationId,
+                account.AccountNumber
+            })
             .IsUnique();
 
         modelBuilder.Entity<AccountType>()
@@ -428,8 +958,11 @@ public class TreasuryDbContext : DbContext
             .IsConcurrencyToken();
 
         paymentRequest
-            .HasIndex(request =>
-                request.IdempotencyKey)
+            .HasIndex(request => new
+            {
+                request.OrganizationId,
+                request.IdempotencyKey
+            })
             .IsUnique();
 
         paymentRequest
@@ -896,6 +1429,7 @@ public class TreasuryDbContext : DbContext
         fxRate
             .HasIndex(rate => new
             {
+                rate.OrganizationId,
                 rate.FromCurrency,
                 rate.ToCurrency,
                 rate.RateDateUtc
@@ -1060,7 +1594,9 @@ public class TreasuryDbContext : DbContext
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
                 "\"EntityType\" IN " +
-                "('User','Role','Account','AccountType'," +
+                "('User','Role','Organization','LegalEntity'," +
+                "'BusinessUnit','OrganizationMembership'," +
+                "'Account','AccountType'," +
                 "'TransferRequest','PaymentRequest'," +
                 "'ReversalRequest','ApprovalPolicy'," +
                 "'ApprovalDecision','TreasuryTransaction'," +
@@ -1226,8 +1762,11 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<Counterparty>();
 
         counterparty
-            .HasIndex(item =>
-                item.Code)
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.Code
+            })
             .IsUnique();
 
         counterparty
@@ -1445,8 +1984,11 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<CreditFacility>();
 
         creditFacility
-            .HasIndex(facility =>
-                facility.Reference)
+            .HasIndex(facility => new
+            {
+                facility.OrganizationId,
+                facility.Reference
+            })
             .IsUnique();
 
         creditFacility
@@ -1468,8 +2010,11 @@ public class TreasuryDbContext : DbContext
                 facility.SettlementAccountId);
 
         creditFacility
-            .HasIndex(facility =>
-                facility.ActivationIdempotencyKey)
+            .HasIndex(facility => new
+            {
+                facility.OrganizationId,
+                facility.ActivationIdempotencyKey
+            })
             .IsUnique();
 
         creditFacility
@@ -1762,13 +2307,19 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<CreditFacilityDrawdown>();
 
         creditFacilityDrawdown
-            .HasIndex(drawdown =>
-                drawdown.Reference)
+            .HasIndex(drawdown => new
+            {
+                drawdown.OrganizationId,
+                drawdown.Reference
+            })
             .IsUnique();
 
         creditFacilityDrawdown
-            .HasIndex(drawdown =>
-                drawdown.IdempotencyKey)
+            .HasIndex(drawdown => new
+            {
+                drawdown.OrganizationId,
+                drawdown.IdempotencyKey
+            })
             .IsUnique();
 
         creditFacilityDrawdown
@@ -1908,13 +2459,19 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<CreditFacilityRepayment>();
 
         creditFacilityRepayment
-            .HasIndex(repayment =>
-                repayment.Reference)
+            .HasIndex(repayment => new
+            {
+                repayment.OrganizationId,
+                repayment.Reference
+            })
             .IsUnique();
 
         creditFacilityRepayment
-            .HasIndex(repayment =>
-                repayment.IdempotencyKey)
+            .HasIndex(repayment => new
+            {
+                repayment.OrganizationId,
+                repayment.IdempotencyKey
+            })
             .IsUnique();
 
         creditFacilityRepayment
@@ -2258,8 +2815,11 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<InvestmentPlacement>();
 
         investmentPlacement
-            .HasIndex(placement =>
-                placement.Reference)
+            .HasIndex(placement => new
+            {
+                placement.OrganizationId,
+                placement.Reference
+            })
             .IsUnique();
 
         investmentPlacement
@@ -2403,8 +2963,11 @@ public class TreasuryDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         investmentPlacement
-            .HasIndex(placement =>
-                placement.ActivationIdempotencyKey)
+            .HasIndex(placement => new
+            {
+                placement.OrganizationId,
+                placement.ActivationIdempotencyKey
+            })
             .IsUnique();
 
         investmentPlacement
@@ -2485,8 +3048,11 @@ public class TreasuryDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         investmentPlacement
-            .HasIndex(placement =>
-                placement.RedemptionIdempotencyKey)
+            .HasIndex(placement => new
+            {
+                placement.OrganizationId,
+                placement.RedemptionIdempotencyKey
+            })
             .IsUnique();
 
         investmentPlacement
@@ -2753,13 +3319,19 @@ public class TreasuryDbContext : DbContext
                 InvestmentEarlyRedemptionRequest>();
 
         earlyRedemptionRequest
-            .HasIndex(request =>
-                request.RequestIdempotencyKey)
+            .HasIndex(request => new
+            {
+                request.OrganizationId,
+                request.RequestIdempotencyKey
+            })
             .IsUnique();
 
         earlyRedemptionRequest
-            .HasIndex(request =>
-                request.ExecutionIdempotencyKey)
+            .HasIndex(request => new
+            {
+                request.OrganizationId,
+                request.ExecutionIdempotencyKey
+            })
             .IsUnique();
 
         earlyRedemptionRequest
@@ -3015,13 +3587,19 @@ public class TreasuryDbContext : DbContext
             modelBuilder.Entity<InvestmentRolloverRequest>();
 
         rolloverRequest
-            .HasIndex(request =>
-                request.RequestIdempotencyKey)
+            .HasIndex(request => new
+            {
+                request.OrganizationId,
+                request.RequestIdempotencyKey
+            })
             .IsUnique();
 
         rolloverRequest
-            .HasIndex(request =>
-                request.ExecutionIdempotencyKey)
+            .HasIndex(request => new
+            {
+                request.OrganizationId,
+                request.ExecutionIdempotencyKey
+            })
             .IsUnique();
 
         rolloverRequest
@@ -3387,6 +3965,7 @@ public class TreasuryDbContext : DbContext
         approvalPolicy
             .HasIndex(policy => new
             {
+                policy.OrganizationId,
                 policy.OperationType,
                 policy.Currency
             })

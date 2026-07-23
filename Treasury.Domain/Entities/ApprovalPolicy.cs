@@ -1,8 +1,10 @@
 namespace Treasury.Domain.Entities;
 
-public class ApprovalPolicy
+public class ApprovalPolicy : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public string OperationType { get; set; }
         = string.Empty;

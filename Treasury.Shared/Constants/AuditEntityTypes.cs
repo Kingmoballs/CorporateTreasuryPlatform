@@ -4,6 +4,14 @@ public static class AuditEntityTypes
 {
     public const string User = "User";
     public const string Role = "Role";
+    public const string Organization =
+        "Organization";
+    public const string LegalEntity =
+        "LegalEntity";
+    public const string BusinessUnit =
+        "BusinessUnit";
+    public const string OrganizationMembership =
+        "OrganizationMembership";
     public const string Account = "Account";
     public const string AccountType = "AccountType";
     public const string TransferRequest = "TransferRequest";

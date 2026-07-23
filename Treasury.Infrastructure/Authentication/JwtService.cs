@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Authentication;
 
@@ -33,6 +34,21 @@ public class JwtService : IJwtService
             _configuration[
                 "JwtSettings:ExpiryMinutes"]);
 
+        var membership =
+            user.OrganizationMemberships
+                .Where(item =>
+                    item.IsActive &&
+                    item.Organization.IsActive)
+                .OrderByDescending(item =>
+                    item.IsDefault)
+                .ThenBy(item =>
+                    item.JoinedAtUtc)
+                .FirstOrDefault();
+
+        var roleName =
+            membership?.Role.Name ??
+            user.Role.Name;
+
         var claims = new List<Claim>
         {
             new Claim(
@@ -45,8 +61,29 @@ public class JwtService : IJwtService
 
             new Claim(
                 ClaimTypes.Role,
-                user.Role.Name)
+                roleName)
         };
+
+        if (membership != null)
+        {
+            claims.Add(
+                new Claim(
+                    CustomClaimTypes.OrganizationId,
+                    membership.OrganizationId
+                        .ToString()));
+
+            claims.Add(
+                new Claim(
+                    CustomClaimTypes
+                        .OrganizationCode,
+                    membership.Organization.Code));
+
+            claims.Add(
+                new Claim(
+                    CustomClaimTypes
+                        .OrganizationMembershipId,
+                    membership.Id.ToString()));
+        }
 
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(secretKey!));

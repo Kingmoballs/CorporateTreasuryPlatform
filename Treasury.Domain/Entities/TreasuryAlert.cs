@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class TreasuryAlert
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public string AlertType { get; set; } = string.Empty;
 

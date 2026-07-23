@@ -1,8 +1,10 @@
 namespace Treasury.Domain.Entities;
 
-public class AuditLog
+public class AuditLog : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid? ActorUserId { get; set; }
 

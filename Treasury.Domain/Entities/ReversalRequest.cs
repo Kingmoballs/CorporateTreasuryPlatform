@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class ReversalRequest
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid OriginalTransactionId { get; set; }
 

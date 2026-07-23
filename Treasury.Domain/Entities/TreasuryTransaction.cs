@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class TreasuryTransaction
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public string Reference { get; set; }
         = string.Empty;

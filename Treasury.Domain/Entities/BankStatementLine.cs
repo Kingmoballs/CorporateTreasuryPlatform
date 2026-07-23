@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class BankStatementLine
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid BankStatementImportId { get; set; }
 

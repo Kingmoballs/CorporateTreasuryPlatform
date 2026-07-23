@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Treasury.Application.Interfaces;
+using Treasury.Shared.Constants;
 
 public class CurrentUserService : ICurrentUserService
 {
@@ -32,4 +33,33 @@ public class CurrentUserService : ICurrentUserService
             .FindFirstValue(
                 ClaimTypes.Role)
         ?? string.Empty;
+
+    public Guid? OrganizationId =>
+        ParseGuidClaim(
+            CustomClaimTypes.OrganizationId);
+
+    public Guid? OrganizationMembershipId =>
+        ParseGuidClaim(
+            CustomClaimTypes
+                .OrganizationMembershipId);
+
+    public string OrganizationCode =>
+        _httpContextAccessor.HttpContext?
+            .User
+            .FindFirstValue(
+                CustomClaimTypes.OrganizationCode)
+        ?? string.Empty;
+
+    private Guid? ParseGuidClaim(
+        string claimType)
+    {
+        var value =
+            _httpContextAccessor.HttpContext?
+                .User
+                .FindFirstValue(claimType);
+
+        return Guid.TryParse(value, out var id)
+            ? id
+            : null;
+    }
 }

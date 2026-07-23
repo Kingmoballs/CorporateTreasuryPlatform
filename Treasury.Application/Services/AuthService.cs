@@ -18,16 +18,24 @@ public class AuthService : IAuthService
     private readonly IRoleRepository
         _roleRepository;
 
+    private readonly IOrganizationRepository
+        _organizationRepository;
+
     public AuthService(
         IUserRepository userRepository,
         IJwtService jwtService,
-        IRoleRepository roleRepository)
+        IRoleRepository roleRepository,
+        IOrganizationRepository
+            organizationRepository)
     {
         _userRepository = userRepository;
 
         _jwtService = jwtService;
 
         _roleRepository = roleRepository;
+
+        _organizationRepository =
+            organizationRepository;
     }
 
     public async Task<AuthResponseDto>
@@ -53,6 +61,18 @@ public class AuthService : IAuthService
                 "Default role not found");
         }
 
+        var organization =
+            await _organizationRepository
+                .GetByCode(
+                    OrganizationDefaults
+                        .OrganizationCode);
+
+        if (organization == null)
+        {
+            throw new ResourceNotFoundException(
+                "Default organization not found");
+        }
+
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -71,6 +91,24 @@ public class AuthService : IAuthService
             Role = role
         };
 
+        var membership =
+            new OrganizationMembership
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId =
+                    organization.Id,
+                Organization = organization,
+                UserId = user.Id,
+                User = user,
+                RoleId = role.Id,
+                Role = role,
+                IsActive = true,
+                IsDefault = true
+            };
+
+        user.OrganizationMemberships.Add(
+            membership);
+
         await _userRepository.Add(user);
 
         await _userRepository.SaveChanges();
@@ -78,13 +116,26 @@ public class AuthService : IAuthService
         var token =
             _jwtService.GenerateToken(user);
 
+        var currentMembership =
+            GetCurrentMembership(user);
+
         return new AuthResponseDto
         {
             AccessToken = token,
 
             Email = user.Email,
 
-            Role = user.Role.Name
+            Role =
+                currentMembership?.Role.Name ??
+                user.Role.Name,
+
+            OrganizationId =
+                currentMembership?.OrganizationId,
+
+            OrganizationCode =
+                currentMembership?
+                    .Organization.Code ??
+                string.Empty
         };
     }
 
@@ -121,13 +172,44 @@ public class AuthService : IAuthService
         var token =
             _jwtService.GenerateToken(user);
 
+        var currentMembership =
+            GetCurrentMembership(user);
+
         return new AuthResponseDto
         {
             AccessToken = token,
 
             Email = user.Email,
 
-            Role = user.Role.Name
+            Role =
+                currentMembership?.Role.Name ??
+                user.Role.Name,
+
+            OrganizationId =
+                currentMembership?.OrganizationId,
+
+            OrganizationCode =
+                currentMembership?
+                    .Organization.Code ??
+                string.Empty
         };
+    }
+
+    /*
+     * The default active membership determines the tenant
+     * and role represented by the issued access token.
+     */
+    private static OrganizationMembership?
+        GetCurrentMembership(User user)
+    {
+        return user.OrganizationMemberships
+            .Where(membership =>
+                membership.IsActive &&
+                membership.Organization.IsActive)
+            .OrderByDescending(membership =>
+                membership.IsDefault)
+            .ThenBy(membership =>
+                membership.JoinedAtUtc)
+            .FirstOrDefault();
     }
 }

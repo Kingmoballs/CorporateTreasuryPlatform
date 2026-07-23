@@ -1,8 +1,11 @@
 namespace Treasury.Domain.Entities;
 
 public class InvestmentEarlyRedemptionDecision
+    : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     public Guid InvestmentEarlyRedemptionRequestId
         { get; set; }

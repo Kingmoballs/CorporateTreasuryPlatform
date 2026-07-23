@@ -20,4 +20,13 @@ public class User
 
     public DateTime CreatedAt { get; set; }
         = DateTime.UtcNow;
+
+    /*
+     * RoleId remains for backward compatibility while
+     * OrganizationMemberships becomes the source of the
+     * user's organization-specific roles.
+     */
+    public ICollection<OrganizationMembership>
+        OrganizationMemberships { get; set; } =
+            new List<OrganizationMembership>();
 }

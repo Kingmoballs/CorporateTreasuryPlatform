@@ -1,8 +1,10 @@
 namespace Treasury.Domain.Entities;
 
-public class FxRate
+public class FxRate : IOrganizationOwnedEntity
 {
     public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
 
     /*
      * Example:

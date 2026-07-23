@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
+using Treasury.Application.Interfaces;
 using Treasury.Infrastructure.Persistence;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Tests.Integration;
 
@@ -9,6 +11,8 @@ public sealed class PostgreSqlTestDatabase
 {
     private readonly PostgreSqlContainer
         _container;
+
+    private Guid? _defaultOrganizationId;
 
     private PostgreSqlTestDatabase(
         PostgreSqlContainer container)
@@ -44,6 +48,16 @@ public sealed class PostgreSqlTestDatabase
             await context.Database
                 .MigrateAsync();
 
+            database._defaultOrganizationId =
+                await context.Organizations
+                    .Where(organization =>
+                        organization.Code ==
+                            OrganizationDefaults
+                                .OrganizationCode)
+                    .Select(organization =>
+                        organization.Id)
+                    .SingleAsync();
+
             return database;
         }
         catch
@@ -55,6 +69,50 @@ public sealed class PostgreSqlTestDatabase
 
     public TreasuryDbContext CreateContext()
     {
+        if (!_defaultOrganizationId.HasValue)
+        {
+            return CreateSystemContext();
+        }
+
+        return CreateContext(
+            _defaultOrganizationId.Value);
+    }
+
+    public TreasuryDbContext CreateContext(
+        Guid organizationId)
+    {
+        if (organizationId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Organization ID is required.",
+                nameof(organizationId));
+        }
+
+        return CreateContext(
+            new FixedOrganizationContext(
+                organizationId,
+                isSystemScope: false));
+    }
+
+    public TreasuryDbContext
+        CreateContextWithoutOrganization()
+    {
+        return CreateContext(
+            new FixedOrganizationContext(
+                organizationId: null,
+                isSystemScope: false));
+    }
+
+    public TreasuryDbContext CreateSystemContext()
+    {
+        return CreateContext(
+            organizationContext: null);
+    }
+
+    private TreasuryDbContext CreateContext(
+        IOrganizationContext?
+            organizationContext)
+    {
         var options =
             new DbContextOptionsBuilder<
                 TreasuryDbContext>()
@@ -64,11 +122,31 @@ public sealed class PostgreSqlTestDatabase
                 .Options;
 
         return new TreasuryDbContext(
-            options);
+            options,
+            organizationContext);
     }
 
     public async ValueTask DisposeAsync()
     {
         await _container.DisposeAsync();
+    }
+
+    private sealed class FixedOrganizationContext
+        : IOrganizationContext
+    {
+        public FixedOrganizationContext(
+            Guid? organizationId,
+            bool isSystemScope)
+        {
+            OrganizationId =
+                organizationId;
+
+            IsSystemScope =
+                isSystemScope;
+        }
+
+        public Guid? OrganizationId { get; }
+
+        public bool IsSystemScope { get; }
     }
 }
