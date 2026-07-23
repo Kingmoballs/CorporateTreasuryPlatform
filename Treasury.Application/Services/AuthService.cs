@@ -1,9 +1,6 @@
-using BCrypt.Net;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
-using Treasury.Shared.Constants;
-using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Application.Services;
 
@@ -12,131 +9,23 @@ public class AuthService : IAuthService
     private readonly IUserRepository
         _userRepository;
 
-    private readonly IJwtService
-        _jwtService;
-    
-    private readonly IRoleRepository
-        _roleRepository;
+    private readonly IAuthenticationSessionService
+        _sessionService;
 
-    private readonly IOrganizationRepository
-        _organizationRepository;
+    private readonly ICurrentUserService
+        _currentUserService;
 
     public AuthService(
         IUserRepository userRepository,
-        IJwtService jwtService,
-        IRoleRepository roleRepository,
-        IOrganizationRepository
-            organizationRepository)
+        IAuthenticationSessionService
+            sessionService,
+        ICurrentUserService currentUserService)
     {
         _userRepository = userRepository;
 
-        _jwtService = jwtService;
+        _sessionService = sessionService;
 
-        _roleRepository = roleRepository;
-
-        _organizationRepository =
-            organizationRepository;
-    }
-
-    public async Task<AuthResponseDto>
-        Register(RegisterDto dto)
-    {
-        var existingUser =
-            await _userRepository
-                .GetByEmail(dto.Email);
-
-        if(existingUser != null)
-        {
-            throw new ConflictException(
-                "Email already exists");
-        }
-
-        var role =
-            await _roleRepository
-                .GetByName(Roles.TreasuryOfficer);
-
-        if(role == null)
-        {
-            throw new ResourceNotFoundException(
-                "Default role not found");
-        }
-
-        var organization =
-            await _organizationRepository
-                .GetByCode(
-                    OrganizationDefaults
-                        .OrganizationCode);
-
-        if (organization == null)
-        {
-            throw new ResourceNotFoundException(
-                "Default organization not found");
-        }
-
-        var user = new User
-        {
-            Id = Guid.NewGuid(),
-
-            FirstName = dto.FirstName,
-
-            LastName = dto.LastName,
-
-            Email = dto.Email,
-
-            PasswordHash = BCrypt.Net.BCrypt
-                .HashPassword(dto.Password),
-
-            RoleId = role.Id,
-
-            Role = role
-        };
-
-        var membership =
-            new OrganizationMembership
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId =
-                    organization.Id,
-                Organization = organization,
-                UserId = user.Id,
-                User = user,
-                RoleId = role.Id,
-                Role = role,
-                IsActive = true,
-                IsDefault = true
-            };
-
-        user.OrganizationMemberships.Add(
-            membership);
-
-        await _userRepository.Add(user);
-
-        await _userRepository.SaveChanges();
-
-        var token =
-            _jwtService.GenerateToken(user);
-
-        var currentMembership =
-            GetCurrentMembership(user);
-
-        return new AuthResponseDto
-        {
-            AccessToken = token,
-
-            Email = user.Email,
-
-            Role =
-                currentMembership?.Role.Name ??
-                user.Role.Name,
-
-            OrganizationId =
-                currentMembership?.OrganizationId,
-
-            OrganizationCode =
-                currentMembership?
-                    .Organization.Code ??
-                string.Empty
-        };
+        _currentUserService = currentUserService;
     }
 
     public async Task<AuthResponseDto>
@@ -169,29 +58,87 @@ public class AuthService : IAuthService
                 "This user account is inactive.");
         }
 
-        var token =
-            _jwtService.GenerateToken(user);
+        if (!user.EmailVerifiedAtUtc.HasValue)
+        {
+            throw new UnauthorizedAccessException(
+                "This email address has not been " +
+                "verified.");
+        }
 
         var currentMembership =
             GetCurrentMembership(user);
 
+        if (currentMembership is null)
+        {
+            throw new UnauthorizedAccessException(
+                "No active organization membership " +
+                "is available.");
+        }
+
+        var tokens =
+            await _sessionService.Create(
+                user,
+                currentMembership);
+
+        return MapResponse(
+            user,
+            currentMembership,
+            tokens);
+    }
+
+    public Task<AuthResponseDto> Refresh(
+        RefreshTokenDto dto)
+    {
+        return _sessionService.Refresh(
+            dto.RefreshToken);
+    }
+
+    public async Task Logout()
+    {
+        var sessionId =
+            _currentUserService
+                .AuthenticationSessionId;
+
+        if (!sessionId.HasValue ||
+            sessionId.Value == Guid.Empty)
+        {
+            throw new UnauthorizedAccessException(
+                "A valid authentication session is " +
+                "required.");
+        }
+
+        await _sessionService.RevokeSession(
+            sessionId.Value,
+            "User signed out.");
+    }
+
+    public async Task LogoutAll()
+    {
+        await _sessionService
+            .RevokeSessionsForUser(
+                _currentUserService.UserId,
+                "User signed out from all sessions.");
+    }
+
+    private static AuthResponseDto MapResponse(
+        User user,
+        OrganizationMembership membership,
+        AuthenticationTokenPairDto tokens)
+    {
         return new AuthResponseDto
         {
-            AccessToken = token,
-
+            AccessToken = tokens.AccessToken,
+            RefreshToken = tokens.RefreshToken,
+            AccessTokenExpiresAtUtc =
+                tokens.AccessTokenExpiresAtUtc,
+            RefreshTokenExpiresAtUtc =
+                tokens.RefreshTokenExpiresAtUtc,
             Email = user.Email,
-
-            Role =
-                currentMembership?.Role.Name ??
-                user.Role.Name,
-
+            Role = membership.Role.Name,
             OrganizationId =
-                currentMembership?.OrganizationId,
-
+                membership.OrganizationId,
             OrganizationCode =
-                currentMembership?
-                    .Organization.Code ??
-                string.Empty
+                membership.Organization.Code
         };
     }
 

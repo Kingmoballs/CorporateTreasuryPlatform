@@ -25,6 +25,9 @@ public class UserRepository : IUserRepository
     public async Task<User?>
         GetByEmail(string email)
     {
+        var normalizedEmail =
+            email.Trim().ToLowerInvariant();
+
         return await _context.Users
             .Include(x => x.Role)
             .Include(user =>
@@ -36,7 +39,8 @@ public class UserRepository : IUserRepository
                 .ThenInclude(membership =>
                     membership.Role)
             .FirstOrDefaultAsync(
-                x => x.Email == email);
+                x => x.Email.ToLower() ==
+                    normalizedEmail);
     }
 
     public async Task<User?>

@@ -1,7 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
@@ -11,44 +11,23 @@ namespace Treasury.Infrastructure.Authentication;
 
 public class JwtService : IJwtService
 {
-    private readonly IConfiguration _configuration;
+    private readonly JwtSettingsOptions _options;
+
+    private readonly TimeProvider _timeProvider;
 
     public JwtService(
-        IConfiguration configuration)
+        IOptions<JwtSettingsOptions> options,
+        TimeProvider timeProvider)
     {
-        _configuration = configuration;
+        _options = options.Value;
+        _timeProvider = timeProvider;
     }
 
-    public string GenerateToken(User user)
+    public string GenerateToken(
+        User user,
+        OrganizationMembership membership,
+        Guid authenticationSessionId)
     {
-        var secretKey = _configuration[
-            "JwtSettings:SecretKey"];
-
-        var issuer = _configuration[
-            "JwtSettings:Issuer"];
-
-        var audience = _configuration[
-            "JwtSettings:Audience"];
-
-        var expiryMinutes = Convert.ToInt32(
-            _configuration[
-                "JwtSettings:ExpiryMinutes"]);
-
-        var membership =
-            user.OrganizationMemberships
-                .Where(item =>
-                    item.IsActive &&
-                    item.Organization.IsActive)
-                .OrderByDescending(item =>
-                    item.IsDefault)
-                .ThenBy(item =>
-                    item.JoinedAtUtc)
-                .FirstOrDefault();
-
-        var roleName =
-            membership?.Role.Name ??
-            user.Role.Name;
-
         var claims = new List<Claim>
         {
             new Claim(
@@ -61,32 +40,35 @@ public class JwtService : IJwtService
 
             new Claim(
                 ClaimTypes.Role,
-                roleName)
+                membership.Role.Name),
+
+            new Claim(
+                JwtRegisteredClaimNames.Jti,
+                Guid.NewGuid().ToString()),
+
+            new Claim(
+                CustomClaimTypes.OrganizationId,
+                membership.OrganizationId
+                    .ToString()),
+
+            new Claim(
+                CustomClaimTypes.OrganizationCode,
+                membership.Organization.Code),
+
+            new Claim(
+                CustomClaimTypes
+                    .OrganizationMembershipId,
+                membership.Id.ToString()),
+
+            new Claim(
+                CustomClaimTypes
+                    .AuthenticationSessionId,
+                authenticationSessionId.ToString())
         };
 
-        if (membership != null)
-        {
-            claims.Add(
-                new Claim(
-                    CustomClaimTypes.OrganizationId,
-                    membership.OrganizationId
-                        .ToString()));
-
-            claims.Add(
-                new Claim(
-                    CustomClaimTypes
-                        .OrganizationCode,
-                    membership.Organization.Code));
-
-            claims.Add(
-                new Claim(
-                    CustomClaimTypes
-                        .OrganizationMembershipId,
-                    membership.Id.ToString()));
-        }
-
         var key = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(secretKey!));
+            Encoding.UTF8.GetBytes(
+                _options.SecretKey));
 
         var credentials =
             new SigningCredentials(
@@ -94,11 +76,17 @@ public class JwtService : IJwtService
                 SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
-            issuer,
-            audience,
+            _options.Issuer,
+            _options.Audience,
             claims,
-            expires: DateTime.UtcNow.AddMinutes(
-                expiryMinutes),
+            notBefore: _timeProvider
+                .GetUtcNow()
+                .UtcDateTime,
+            expires: _timeProvider
+                .GetUtcNow()
+                .UtcDateTime
+                .AddMinutes(
+                    _options.ExpiryMinutes),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler()

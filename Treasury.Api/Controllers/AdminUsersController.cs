@@ -15,12 +15,20 @@ public class AdminUsersController
     private readonly IUserAdministrationService
         _administrationService;
 
+    private readonly IUserInvitationService
+        _invitationService;
+
     public AdminUsersController(
         IUserAdministrationService
-            administrationService)
+            administrationService,
+        IUserInvitationService
+            invitationService)
     {
         _administrationService =
             administrationService;
+
+        _invitationService =
+            invitationService;
     }
 
     [HttpGet("users")]
@@ -70,5 +78,53 @@ public class AdminUsersController
                     dto.IsActive);
 
         return Ok(result);
+    }
+
+    [HttpPost("invitations")]
+    public async Task<IActionResult>
+        InviteUser(
+            CreateUserInvitationDto dto)
+    {
+        var result =
+            await _invitationService.Invite(dto);
+
+        return CreatedAtAction(
+            nameof(GetInvitations),
+            new { },
+            result);
+    }
+
+    [HttpGet("invitations")]
+    public async Task<IActionResult>
+        GetInvitations()
+    {
+        var result =
+            await _invitationService
+                .GetPending();
+
+        return Ok(result);
+    }
+
+    [HttpPost(
+        "invitations/{invitationId}/resend")]
+    public async Task<IActionResult>
+        ResendInvitation(Guid invitationId)
+    {
+        var result =
+            await _invitationService.Resend(
+                invitationId);
+
+        return Ok(result);
+    }
+
+    [HttpDelete(
+        "invitations/{invitationId}")]
+    public async Task<IActionResult>
+        RevokeInvitation(Guid invitationId)
+    {
+        await _invitationService.Revoke(
+            invitationId);
+
+        return NoContent();
     }
 }

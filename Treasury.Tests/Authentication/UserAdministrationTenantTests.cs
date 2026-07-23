@@ -74,6 +74,14 @@ public class UserAdministrationTenantTests
             repository =>
                 repository.SaveChanges(),
             Times.Once);
+
+        serviceSetup.SessionService.Verify(
+            service =>
+                service
+                    .RevokeSessionsForMembership(
+                        currentMembership.Id,
+                        It.IsAny<string>()),
+            Times.Once);
     }
 
     [Fact]
@@ -130,6 +138,14 @@ public class UserAdministrationTenantTests
 
         Assert.False(
             result.IsActive);
+
+        serviceSetup.SessionService.Verify(
+            service =>
+                service
+                    .RevokeSessionsForMembership(
+                        currentMembership.Id,
+                        It.IsAny<string>()),
+            Times.Once);
     }
 
     private static ServiceSetup CreateService(
@@ -168,12 +184,18 @@ public class UserAdministrationTenantTests
             .Returns(
                 Guid.NewGuid());
 
+        var sessionService =
+            new Mock<
+                IAuthenticationSessionService>();
+
         return new ServiceSetup(
             new UserAdministrationService(
                 userRepository.Object,
                 roleRepository.Object,
-                currentUserService.Object),
-            userRepository);
+                currentUserService.Object,
+                sessionService.Object),
+            userRepository,
+            sessionService);
     }
 
     private static User CreateUser(
@@ -243,5 +265,7 @@ public class UserAdministrationTenantTests
 
     private sealed record ServiceSetup(
         UserAdministrationService Service,
-        Mock<IUserRepository> UserRepository);
+        Mock<IUserRepository> UserRepository,
+        Mock<IAuthenticationSessionService>
+            SessionService);
 }

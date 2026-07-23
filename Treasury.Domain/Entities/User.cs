@@ -12,6 +12,15 @@ public class User
 
     public string PasswordHash { get; set; } = string.Empty;
 
+    public DateTime? EmailVerifiedAtUtc
+        { get; set; }
+
+    public DateTime? PasswordChangedAtUtc
+        { get; set; }
+
+    public Guid SecurityStamp { get; set; } =
+        Guid.NewGuid();
+
     public bool IsActive { get; set; } = true;
 
     public Guid RoleId { get; set; }

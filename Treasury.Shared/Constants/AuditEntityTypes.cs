@@ -12,6 +12,8 @@ public static class AuditEntityTypes
         "BusinessUnit";
     public const string OrganizationMembership =
         "OrganizationMembership";
+    public const string UserInvitation =
+        "UserInvitation";
     public const string Account = "Account";
     public const string AccountType = "AccountType";
     public const string TransferRequest = "TransferRequest";

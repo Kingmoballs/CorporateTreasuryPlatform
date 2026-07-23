@@ -35,7 +35,7 @@ builder.Services.AddScoped<
 
 builder.Services
     .AddValidatorsFromAssemblyContaining<
-        RegisterDtoValidator>();
+        LoginDtoValidator>();
 
 
 builder.Services.AddSwaggerGen(options =>
@@ -110,8 +110,140 @@ builder.Services.AddScoped<
     UserRepository>();
 
 builder.Services.AddScoped<
+    IAuthenticationSessionRepository,
+    AuthenticationSessionRepository>();
+
+builder.Services.AddScoped<
+    IAuthenticationSessionService,
+    AuthenticationSessionService>();
+
+builder.Services.AddScoped<
+    IPasswordResetTokenRepository,
+    PasswordResetTokenRepository>();
+
+builder.Services.AddScoped<
+    IPasswordRecoveryService,
+    PasswordRecoveryService>();
+
+builder.Services.AddScoped<
+    IUserInvitationRepository,
+    UserInvitationRepository>();
+
+builder.Services.AddScoped<
+    IUserInvitationService,
+    UserInvitationService>();
+
+builder.Services.AddScoped<
+    IEmailSender,
+    SmtpEmailSender>();
+
+builder.Services.AddSingleton(
+    TimeProvider.System);
+
+builder.Services
+    .AddOptions<UserInvitationOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            UserInvitationOptions.SectionName))
+    .Validate(
+        options =>
+            options.ExpiryHours >= 1 &&
+            options.ExpiryHours <= 168,
+        "Invitation expiry must be between " +
+        "1 and 168 hours.")
+    .Validate(
+        options =>
+            Uri.TryCreate(
+                options.AcceptanceUrl,
+                UriKind.Absolute,
+                out _),
+        "Invitation acceptance URL must be an " +
+        "absolute URL.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<PasswordRecoveryOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            PasswordRecoveryOptions.SectionName))
+    .Validate(
+        options =>
+            options.TokenExpiryMinutes
+                is >= 5 and <= 120,
+        "Password-reset expiry must be between " +
+        "5 and 120 minutes.")
+    .Validate(
+        options =>
+            options.RequestCooldownMinutes
+                is >= 1 and <= 60,
+        "Password-reset request cooldown must be " +
+        "between 1 and 60 minutes.")
+    .Validate(
+        options =>
+            Uri.TryCreate(
+                options.ResetUrl,
+                UriKind.Absolute,
+                out _),
+        "Password-reset URL must be an absolute URL.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<EmailDeliveryOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            EmailDeliveryOptions.SectionName))
+    .Validate(
+        options =>
+            !options.Enabled ||
+            (!string.IsNullOrWhiteSpace(
+                 options.Host) &&
+             !string.IsNullOrWhiteSpace(
+                 options.FromAddress) &&
+             options.Port is >= 1 and <= 65535),
+        "Enabled email delivery requires an SMTP " +
+        "host, sender address and valid port.")
+    .ValidateOnStart();
+
+builder.Services.AddScoped<
     IOrganizationRepository,
     OrganizationRepository>();
+
+builder.Services
+    .AddOptions<JwtSettingsOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            JwtSettingsOptions.SectionName))
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(
+                options.SecretKey) &&
+            options.SecretKey.Length >= 32,
+        "JWT secret key must contain at least " +
+        "32 characters.")
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(
+                options.Issuer) &&
+            !string.IsNullOrWhiteSpace(
+                options.Audience) &&
+            options.ExpiryMinutes is >= 5 and <= 60,
+        "JWT issuer, audience and an expiry between " +
+        "5 and 60 minutes are required.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<AuthenticationSessionOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            AuthenticationSessionOptions
+                .SectionName))
+    .Validate(
+        options =>
+            options.RefreshTokenDays
+                is >= 1 and <= 30,
+        "Refresh-token lifetime must be between " +
+        "1 and 30 days.")
+    .ValidateOnStart();
 
 builder.Services.AddScoped<
     IJwtService,
@@ -438,6 +570,9 @@ builder.Services
                 ValidateLifetime = true,
 
                 ValidateIssuerSigningKey = true,
+
+                ClockSkew =
+                    TimeSpan.FromSeconds(30),
 
                 ValidIssuer =
                     builder.Configuration[

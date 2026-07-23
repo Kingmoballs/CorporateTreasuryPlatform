@@ -4,5 +4,8 @@ namespace Treasury.Application.Interfaces;
 
 public interface IJwtService
 {
-    string GenerateToken(User user);
+    string GenerateToken(
+        User user,
+        OrganizationMembership membership,
+        Guid authenticationSessionId);
 }

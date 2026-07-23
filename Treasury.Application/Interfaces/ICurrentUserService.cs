@@ -10,5 +10,7 @@ public interface ICurrentUserService
 
     Guid? OrganizationMembershipId { get; }
 
+    Guid? AuthenticationSessionId { get; }
+
     string OrganizationCode { get; }
 }

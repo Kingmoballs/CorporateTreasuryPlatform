@@ -23,6 +23,9 @@ public class TreasuryDbContext : DbContext
     public Guid? CurrentOrganizationId =>
         _organizationContext?.OrganizationId;
 
+    public Guid CurrentOrganizationIdOrEmpty =>
+        CurrentOrganizationId ?? Guid.Empty;
+
     public bool IsSystemScope =>
         _organizationContext is null ||
         _organizationContext.IsSystemScope;
@@ -43,6 +46,22 @@ public class TreasuryDbContext : DbContext
     public DbSet<OrganizationMembership>
         OrganizationMemberships =>
             Set<OrganizationMembership>();
+
+    public DbSet<UserInvitation>
+        UserInvitations =>
+            Set<UserInvitation>();
+
+    public DbSet<AuthenticationSession>
+        AuthenticationSessions =>
+            Set<AuthenticationSession>();
+
+    public DbSet<AuthenticationRefreshToken>
+        AuthenticationRefreshTokens =>
+            Set<AuthenticationRefreshToken>();
+
+    public DbSet<PasswordResetToken>
+        PasswordResetTokens =>
+            Set<PasswordResetToken>();
 
     public DbSet<Account> Accounts  => Set<Account>();
 
@@ -469,9 +488,8 @@ public class TreasuryDbContext : DbContext
 
         entity.HasQueryFilter(item =>
             IsSystemScope ||
-            (CurrentOrganizationId.HasValue &&
-             item.OrganizationId ==
-                 CurrentOrganizationId.Value));
+            item.OrganizationId ==
+                CurrentOrganizationIdOrEmpty);
     }
 
     private void ApplyOrganizationFilter<TEntity>(
@@ -483,9 +501,8 @@ public class TreasuryDbContext : DbContext
             .Entity<TEntity>()
             .HasQueryFilter(item =>
                 IsSystemScope ||
-                (CurrentOrganizationId.HasValue &&
-                 item.OrganizationId ==
-                     CurrentOrganizationId.Value));
+                item.OrganizationId ==
+                    CurrentOrganizationIdOrEmpty);
     }
 
     protected override void OnModelCreating(
@@ -500,6 +517,11 @@ public class TreasuryDbContext : DbContext
             .HasOne(u => u.Role)
             .WithMany(r => r.Users)
             .HasForeignKey(u => u.RoleId);
+
+        modelBuilder.Entity<User>()
+            .Property(user => user.SecurityStamp)
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
 
         var organization =
             modelBuilder.Entity<Organization>();
@@ -716,6 +738,14 @@ public class TreasuryDbContext : DbContext
                 "\"IsDefault\" = TRUE");
 
         organizationMembership
+            .HasAlternateKey(membership => new
+            {
+                membership.OrganizationId,
+                membership.UserId,
+                membership.Id
+            });
+
+        organizationMembership
             .HasOne(membership =>
                 membership.Organization)
             .WithMany(item =>
@@ -748,6 +778,309 @@ public class TreasuryDbContext : DbContext
             .IsConcurrencyToken()
             .HasDefaultValueSql(
                 "gen_random_uuid()");
+
+        /*
+         * Administrator operations always include the
+         * organization key. Token acceptance is the only
+         * unscoped lookup and uses the unique SHA-256 hash.
+         */
+        var userInvitation =
+            modelBuilder.Entity<UserInvitation>();
+
+        userInvitation
+            .HasIndex(invitation =>
+                invitation.TokenHash)
+            .IsUnique();
+
+        userInvitation
+            .HasIndex(invitation => new
+            {
+                invitation.OrganizationId,
+                invitation.Email
+            })
+            .IsUnique()
+            .HasFilter(
+                "\"AcceptedAtUtc\" IS NULL AND " +
+                "\"RevokedAtUtc\" IS NULL");
+
+        userInvitation
+            .HasOne(invitation =>
+                invitation.Organization)
+            .WithMany()
+            .HasForeignKey(invitation =>
+                invitation.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        userInvitation
+            .HasOne(invitation =>
+                invitation.Role)
+            .WithMany()
+            .HasForeignKey(invitation =>
+                invitation.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        userInvitation
+            .HasOne(invitation =>
+                invitation.InvitedByUser)
+            .WithMany()
+            .HasForeignKey(invitation =>
+                invitation.InvitedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        userInvitation
+            .Property(invitation =>
+                invitation.Email)
+            .HasMaxLength(320);
+
+        userInvitation
+            .Property(invitation =>
+                invitation.FirstName)
+            .HasMaxLength(100);
+
+        userInvitation
+            .Property(invitation =>
+                invitation.LastName)
+            .HasMaxLength(100);
+
+        userInvitation
+            .Property(invitation =>
+                invitation.TokenHash)
+            .HasMaxLength(64)
+            .IsFixedLength();
+
+        userInvitation
+            .Property(invitation =>
+                invitation.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        userInvitation
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_UserInvitations_Expiry",
+                    "\"ExpiresAtUtc\" > " +
+                    "\"CreatedAtUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_UserInvitations_FinalState",
+                    "NOT (\"AcceptedAtUtc\" IS NOT " +
+                    "NULL AND \"RevokedAtUtc\" IS NOT " +
+                    "NULL)");
+            });
+
+        var authenticationSession =
+            modelBuilder
+                .Entity<AuthenticationSession>();
+
+        authenticationSession
+            .HasIndex(session => new
+            {
+                session.UserId,
+                session.OrganizationId
+            });
+
+        authenticationSession
+            .HasIndex(session =>
+                session.OrganizationMembershipId);
+
+        authenticationSession
+            .HasIndex(session =>
+                session.ExpiresAtUtc);
+
+        authenticationSession
+            .HasOne(session => session.User)
+            .WithMany()
+            .HasForeignKey(session =>
+                session.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationSession
+            .HasOne(session =>
+                session.Organization)
+            .WithMany()
+            .HasForeignKey(session =>
+                session.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        /*
+         * The composite relationship prevents a session
+         * from combining a user, organization and
+         * membership that do not belong together.
+         */
+        authenticationSession
+            .HasOne(session =>
+                session.OrganizationMembership)
+            .WithMany()
+            .HasForeignKey(session => new
+            {
+                session.OrganizationId,
+                session.UserId,
+                session.OrganizationMembershipId
+            })
+            .HasPrincipalKey(membership => new
+            {
+                membership.OrganizationId,
+                membership.UserId,
+                membership.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationSession
+            .Property(session =>
+                session.RevocationReason)
+            .HasMaxLength(200);
+
+        authenticationSession
+            .Property(session =>
+                session.SecurityStamp)
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        authenticationSession
+            .Property(session =>
+                session.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        authenticationSession
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_AuthenticationSessions_Expiry",
+                    "\"ExpiresAtUtc\" > " +
+                    "\"CreatedAtUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_AuthenticationSessions_Activity",
+                    "\"LastActivityAtUtc\" >= " +
+                    "\"CreatedAtUtc\"");
+            });
+
+        var authenticationRefreshToken =
+            modelBuilder.Entity<
+                AuthenticationRefreshToken>();
+
+        authenticationRefreshToken
+            .HasIndex(token => token.TokenHash)
+            .IsUnique();
+
+        authenticationRefreshToken
+            .HasIndex(token => new
+            {
+                token.AuthenticationSessionId,
+                token.ExpiresAtUtc
+            });
+
+        authenticationRefreshToken
+            .HasIndex(token =>
+                token.ReplacedByTokenId)
+            .IsUnique()
+            .HasFilter(
+                "\"ReplacedByTokenId\" IS NOT NULL");
+
+        authenticationRefreshToken
+            .HasOne(token =>
+                token.AuthenticationSession)
+            .WithMany(session =>
+                session.RefreshTokens)
+            .HasForeignKey(token =>
+                token.AuthenticationSessionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationRefreshToken
+            .HasOne(token =>
+                token.ReplacedByToken)
+            .WithMany()
+            .HasForeignKey(token =>
+                token.ReplacedByTokenId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationRefreshToken
+            .Property(token =>
+                token.TokenHash)
+            .HasMaxLength(64)
+            .IsFixedLength();
+
+        authenticationRefreshToken
+            .Property(token =>
+                token.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        authenticationRefreshToken
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_AuthenticationRefreshTokens_Expiry",
+                    "\"ExpiresAtUtc\" > " +
+                    "\"CreatedAtUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_AuthenticationRefreshTokens_Replacement",
+                    "\"ReplacedByTokenId\" IS NULL OR " +
+                    "\"ConsumedAtUtc\" IS NOT NULL");
+            });
+
+        var passwordResetToken =
+            modelBuilder.Entity<PasswordResetToken>();
+
+        passwordResetToken
+            .HasIndex(token => token.TokenHash)
+            .IsUnique();
+
+        /*
+         * Only one pending reset credential can exist for
+         * an account. Repository operations acquire a
+         * per-user row lock before replacing it.
+         */
+        passwordResetToken
+            .HasIndex(token => token.UserId)
+            .IsUnique()
+            .HasFilter(
+                "\"ConsumedAtUtc\" IS NULL AND " +
+                "\"RevokedAtUtc\" IS NULL");
+
+        passwordResetToken
+            .HasIndex(token =>
+                token.ExpiresAtUtc);
+
+        passwordResetToken
+            .HasOne(token => token.User)
+            .WithMany()
+            .HasForeignKey(token =>
+                token.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        passwordResetToken
+            .Property(token => token.TokenHash)
+            .HasMaxLength(64)
+            .IsFixedLength();
+
+        passwordResetToken
+            .Property(token =>
+                token.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        passwordResetToken
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_PasswordResetTokens_Expiry",
+                    "\"ExpiresAtUtc\" > " +
+                    "\"CreatedAtUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_PasswordResetTokens_FinalState",
+                    "NOT (\"ConsumedAtUtc\" IS NOT " +
+                    "NULL AND \"RevokedAtUtc\" IS NOT " +
+                    "NULL)");
+            });
 
         modelBuilder.Entity<Account>()
             .HasOne(x => x.AccountType)
@@ -1596,6 +1929,7 @@ public class TreasuryDbContext : DbContext
                 "\"EntityType\" IN " +
                 "('User','Role','Organization','LegalEntity'," +
                 "'BusinessUnit','OrganizationMembership'," +
+                "'UserInvitation'," +
                 "'Account','AccountType'," +
                 "'TransferRequest','PaymentRequest'," +
                 "'ReversalRequest','ApprovalPolicy'," +

@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Moq;
+using Treasury.Api.Controllers;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 using Treasury.Application.Services;
@@ -13,7 +14,92 @@ namespace Treasury.Tests.Authentication;
 public class OrganizationAuthenticationTests
 {
     [Fact]
-    public async Task Register_AddsDefaultOrganizationMembership()
+    public void AuthController_DoesNotExposePublicRegistration()
+    {
+        var publicRegisterMethod =
+            typeof(AuthController)
+                .GetMethods()
+                .FirstOrDefault(method =>
+                    string.Equals(
+                        method.Name,
+                        "Register",
+                        StringComparison.Ordinal));
+
+        Assert.Null(publicRegisterMethod);
+    }
+
+    [Fact]
+    public async Task Login_RejectsUnverifiedEmail()
+    {
+        var role = new Role
+        {
+            Id = Guid.NewGuid(),
+            Name = Roles.TreasuryOfficer
+        };
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Ada",
+            LastName = "Okafor",
+            Email = "ada@example.com",
+            PasswordHash =
+                BCrypt.Net.BCrypt.HashPassword(
+                    "SecurePassword123!"),
+            EmailVerifiedAtUtc = null,
+            IsActive = true,
+            RoleId = role.Id,
+            Role = role
+        };
+
+        var userRepository =
+            new Mock<IUserRepository>();
+
+        userRepository
+            .Setup(repository =>
+                repository.GetByEmail(
+                    user.Email))
+            .ReturnsAsync(user);
+
+        var sessionService =
+            new Mock<
+                IAuthenticationSessionService>();
+
+        var currentUserService =
+            new Mock<ICurrentUserService>();
+
+        var service = new AuthService(
+            userRepository.Object,
+            sessionService.Object,
+            currentUserService.Object);
+
+        var exception =
+            await Assert.ThrowsAsync<
+                UnauthorizedAccessException>(
+                () => service.Login(
+                    new LoginDto
+                    {
+                        Email = user.Email,
+                        Password =
+                            "SecurePassword123!"
+                    }));
+
+        Assert.Contains(
+            "verified",
+            exception.Message,
+            StringComparison.OrdinalIgnoreCase);
+
+        sessionService.Verify(
+            item =>
+                item.Create(
+                    It.IsAny<User>(),
+                    It.IsAny<
+                        OrganizationMembership>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Login_CreatesServerSession()
     {
         var role = new Role
         {
@@ -24,99 +110,123 @@ public class OrganizationAuthenticationTests
         var organization = new Organization
         {
             Id = Guid.NewGuid(),
-            Code = OrganizationDefaults
-                .OrganizationCode,
-            Name = OrganizationDefaults
-                .OrganizationName,
-            Slug = OrganizationDefaults
-                .OrganizationSlug
+            Code = "MOBALLS",
+            Name = "Moballs Limited",
+            Slug = "moballs"
         };
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "ada@example.com",
+            PasswordHash =
+                BCrypt.Net.BCrypt.HashPassword(
+                    "SecurePassword123!"),
+            EmailVerifiedAtUtc = DateTime.UtcNow,
+            IsActive = true,
+            RoleId = role.Id,
+            Role = role
+        };
+
+        var membership =
+            new OrganizationMembership
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId =
+                    organization.Id,
+                Organization = organization,
+                UserId = user.Id,
+                User = user,
+                RoleId = role.Id,
+                Role = role,
+                IsActive = true,
+                IsDefault = true
+            };
+
+        user.OrganizationMemberships.Add(
+            membership);
 
         var userRepository =
             new Mock<IUserRepository>();
 
         userRepository
             .Setup(repository =>
-                repository.GetByEmail(
-                    It.IsAny<string>()))
-            .ReturnsAsync((User?)null);
+                repository.GetByEmail(user.Email))
+            .ReturnsAsync(user);
 
-        User? savedUser = null;
+        var sessionService =
+            new Mock<
+                IAuthenticationSessionService>();
 
-        userRepository
-            .Setup(repository =>
-                repository.Add(
-                    It.IsAny<User>()))
-            .Callback<User>(user =>
-                savedUser = user)
-            .Returns(Task.CompletedTask);
-
-        userRepository
-            .Setup(repository =>
-                repository.SaveChanges())
-            .Returns(Task.CompletedTask);
-
-        var roleRepository =
-            new Mock<IRoleRepository>();
-
-        roleRepository
-            .Setup(repository =>
-                repository.GetByName(
-                    Roles.TreasuryOfficer))
-            .ReturnsAsync(role);
-
-        var organizationRepository =
-            new Mock<IOrganizationRepository>();
-
-        organizationRepository
-            .Setup(repository =>
-                repository.GetByCode(
-                    OrganizationDefaults
-                        .OrganizationCode))
-            .ReturnsAsync(organization);
-
-        var jwtService =
-            new Mock<IJwtService>();
-
-        jwtService
+        sessionService
             .Setup(service =>
-                service.GenerateToken(
-                    It.IsAny<User>()))
-            .Returns("test-token");
+                service.Create(user, membership))
+            .ReturnsAsync(
+                new AuthenticationTokenPairDto
+                {
+                    AccessToken = "access",
+                    RefreshToken = "refresh",
+                    AccessTokenExpiresAtUtc =
+                        DateTime.UtcNow
+                            .AddMinutes(15),
+                    RefreshTokenExpiresAtUtc =
+                        DateTime.UtcNow.AddDays(7)
+                });
 
         var service = new AuthService(
             userRepository.Object,
-            jwtService.Object,
-            roleRepository.Object,
-            organizationRepository.Object);
+            sessionService.Object,
+            Mock.Of<ICurrentUserService>());
 
-        var response = await service.Register(
-            new RegisterDto
-            {
-                FirstName = "Ada",
-                LastName = "Okafor",
-                Email = "ada@example.com",
-                Password = "SecurePassword123!"
-            });
-
-        Assert.NotNull(savedUser);
-
-        var membership = Assert.Single(
-            savedUser.OrganizationMemberships);
+        var response =
+            await service.Login(
+                new LoginDto
+                {
+                    Email = user.Email,
+                    Password =
+                        "SecurePassword123!"
+                });
 
         Assert.Equal(
-            organization.Id,
-            membership.OrganizationId);
-
-        Assert.Equal(role.Id, membership.RoleId);
-        Assert.True(membership.IsActive);
-        Assert.True(membership.IsDefault);
+            "access",
+            response.AccessToken);
+        Assert.Equal(
+            "refresh",
+            response.RefreshToken);
         Assert.Equal(
             organization.Id,
             response.OrganizationId);
-        Assert.Equal(
-            organization.Code,
-            response.OrganizationCode);
+    }
+
+    [Fact]
+    public async Task LogoutAll_RevokesEveryUserSession()
+    {
+        var userId = Guid.NewGuid();
+
+        var sessionService =
+            new Mock<
+                IAuthenticationSessionService>();
+
+        var currentUserService =
+            new Mock<ICurrentUserService>();
+
+        currentUserService
+            .SetupGet(service => service.UserId)
+            .Returns(userId);
+
+        var service = new AuthService(
+            Mock.Of<IUserRepository>(),
+            sessionService.Object,
+            currentUserService.Object);
+
+        await service.LogoutAll();
+
+        sessionService.Verify(
+            item =>
+                item.RevokeSessionsForUser(
+                    userId,
+                    It.IsAny<string>()),
+            Times.Once);
     }
 
     [Fact]
@@ -143,6 +253,7 @@ public class OrganizationAuthenticationTests
             LastName = "Okafor",
             Email = "ada@example.com",
             PasswordHash = "not-used",
+            EmailVerifiedAtUtc = DateTime.UtcNow,
             RoleId = role.Id,
             Role = role
         };
@@ -165,35 +276,27 @@ public class OrganizationAuthenticationTests
         user.OrganizationMemberships.Add(
             membership);
 
-        var configuration =
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(
-                    new Dictionary<
-                        string,
-                        string?>
-                    {
-                        [
-                            "JwtSettings:SecretKey"
-                        ] =
-                            "a-test-secret-key-that-is-" +
-                            "long-enough-for-hmac-sha256",
-                        [
-                            "JwtSettings:Issuer"
-                        ] = "Treasury.Tests",
-                        [
-                            "JwtSettings:Audience"
-                        ] = "Treasury.Tests",
-                        [
-                            "JwtSettings:ExpiryMinutes"
-                        ] = "30"
-                    })
-                .Build();
+        var sessionId = Guid.NewGuid();
 
         var service =
-            new JwtService(configuration);
+            new JwtService(
+                Options.Create(
+                    new JwtSettingsOptions
+                    {
+                        SecretKey =
+                            "a-test-secret-key-that-is-" +
+                            "long-enough-for-hmac-sha256",
+                        Issuer = "Treasury.Tests",
+                        Audience = "Treasury.Tests",
+                        ExpiryMinutes = 30
+                    }),
+                TimeProvider.System);
 
         var encodedToken =
-            service.GenerateToken(user);
+            service.GenerateToken(
+                user,
+                membership,
+                sessionId);
 
         var token =
             new JwtSecurityTokenHandler()
@@ -219,6 +322,14 @@ public class OrganizationAuthenticationTests
                 claim.Type ==
                 CustomClaimTypes
                     .OrganizationMembershipId)
+                .Value);
+
+        Assert.Equal(
+            sessionId.ToString(),
+            token.Claims.Single(claim =>
+                claim.Type ==
+                CustomClaimTypes
+                    .AuthenticationSessionId)
                 .Value);
     }
 }

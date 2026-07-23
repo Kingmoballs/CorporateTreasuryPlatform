@@ -14,4 +14,7 @@ public static class CustomClaimTypes
 
     public const string OrganizationMembershipId =
         "organization_membership_id";
+
+    public const string AuthenticationSessionId =
+        "authentication_session_id";
 }

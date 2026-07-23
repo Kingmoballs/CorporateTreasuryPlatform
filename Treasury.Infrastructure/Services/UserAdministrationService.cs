@@ -18,14 +18,20 @@ public class UserAdministrationService
     private readonly ICurrentUserService
         _currentUserService;
 
+    private readonly IAuthenticationSessionService
+        _sessionService;
+
     public UserAdministrationService(
         IUserRepository userRepository,
         IRoleRepository roleRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IAuthenticationSessionService
+            sessionService)
     {
         _userRepository = userRepository;
         _roleRepository = roleRepository;
         _currentUserService = currentUserService;
+        _sessionService = sessionService;
     }
 
     public async Task<List<AdminUserDto>>
@@ -124,6 +130,11 @@ public class UserAdministrationService
         await _userRepository
             .SaveChanges();
 
+        await _sessionService
+            .RevokeSessionsForMembership(
+                membership.Id,
+                "Organization role changed.");
+
         return MapUser(
             user,
             membership);
@@ -176,6 +187,15 @@ public class UserAdministrationService
 
         await _userRepository
             .SaveChanges();
+
+        if (!isActive)
+        {
+            await _sessionService
+                .RevokeSessionsForMembership(
+                    membership.Id,
+                    "Organization membership " +
+                    "disabled.");
+        }
 
         return MapUser(
             user,

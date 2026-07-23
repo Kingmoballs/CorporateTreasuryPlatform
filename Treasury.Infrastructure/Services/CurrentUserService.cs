@@ -43,6 +43,11 @@ public class CurrentUserService : ICurrentUserService
             CustomClaimTypes
                 .OrganizationMembershipId);
 
+    public Guid? AuthenticationSessionId =>
+        ParseGuidClaim(
+            CustomClaimTypes
+                .AuthenticationSessionId);
+
     public string OrganizationCode =>
         _httpContextAccessor.HttpContext?
             .User
