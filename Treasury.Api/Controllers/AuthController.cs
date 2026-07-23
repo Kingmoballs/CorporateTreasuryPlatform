@@ -64,6 +64,80 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
+    [Authorize]
+    [HttpGet("sessions")]
+    public async Task<IActionResult> GetSessions(
+        [FromServices]
+        IAuthenticationSessionManagementService
+            sessionManagementService)
+    {
+        var sessions =
+            await sessionManagementService
+                .GetActiveSessions();
+
+        return Ok(sessions);
+    }
+
+    [Authorize]
+    [HttpDelete("sessions/{sessionId:guid}")]
+    public async Task<IActionResult> RevokeSession(
+        Guid sessionId,
+        [FromServices]
+        IAuthenticationSessionManagementService
+            sessionManagementService)
+    {
+        await sessionManagementService
+            .RevokeOwnedSession(sessionId);
+
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpPost("logout-others")]
+    public async Task<IActionResult> LogoutOthers(
+        [FromServices]
+        IAuthenticationSessionManagementService
+            sessionManagementService)
+    {
+        await sessionManagementService
+            .RevokeOtherSessions();
+
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpGet("organizations")]
+    public async Task<IActionResult>
+        GetAvailableOrganizations(
+            [FromServices]
+            IOrganizationAccessService
+                organizationAccessService)
+    {
+        var result =
+            await organizationAccessService
+                .GetAvailableOrganizations();
+
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("organizations/switch")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies.Refresh)]
+    public async Task<IActionResult>
+        SwitchOrganization(
+            SwitchOrganizationDto dto,
+            [FromServices]
+            IOrganizationAccessService
+                organizationAccessService)
+    {
+        var result =
+            await organizationAccessService
+                .SwitchOrganization(dto);
+
+        return Ok(result);
+    }
+
     [HttpPost("invitations/accept")]
     public async Task<IActionResult>
         AcceptInvitation(
@@ -109,6 +183,116 @@ public class AuthController : ControllerBase
     {
         await passwordRecoveryService
             .ResetPassword(dto);
+
+        return NoContent();
+    }
+
+    [HttpPost("mfa/challenges/verify")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    public async Task<IActionResult>
+        VerifyMfaChallenge(
+            VerifyMfaChallengeDto dto,
+            [FromServices]
+            IMultiFactorAuthenticationService
+                multiFactorService)
+    {
+        var result =
+            await multiFactorService
+                .VerifyChallenge(dto);
+
+        return Ok(result);
+    }
+
+    [HttpPost("mfa/challenges/recovery-code")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    public async Task<IActionResult>
+        UseMfaRecoveryCode(
+            UseMfaRecoveryCodeDto dto,
+            [FromServices]
+            IMultiFactorAuthenticationService
+                multiFactorService)
+    {
+        var result =
+            await multiFactorService
+                .UseRecoveryCode(dto);
+
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("mfa/enrollment/start")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    public async Task<IActionResult>
+        StartMfaEnrollment(
+            StartMfaEnrollmentDto dto,
+            [FromServices]
+            IMultiFactorAuthenticationService
+                multiFactorService)
+    {
+        var result =
+            await multiFactorService
+                .StartEnrollment(dto);
+
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("mfa/enrollment/confirm")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    public async Task<IActionResult>
+        ConfirmMfaEnrollment(
+            ConfirmMfaEnrollmentDto dto,
+            [FromServices]
+            IMultiFactorAuthenticationService
+                multiFactorService)
+    {
+        var result =
+            await multiFactorService
+                .ConfirmEnrollment(dto);
+
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("mfa/recovery-codes/regenerate")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    public async Task<IActionResult>
+        RegenerateMfaRecoveryCodes(
+            RegenerateMfaRecoveryCodesDto dto,
+            [FromServices]
+            IMultiFactorAuthenticationService
+                multiFactorService)
+    {
+        var result =
+            await multiFactorService
+                .RegenerateRecoveryCodes(dto);
+
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("mfa/disable")]
+    [EnableRateLimiting(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    public async Task<IActionResult>
+        DisableMfa(
+            DisableMfaDto dto,
+            [FromServices]
+            IMultiFactorAuthenticationService
+                multiFactorService)
+    {
+        await multiFactorService.Disable(dto);
 
         return NoContent();
     }

@@ -443,7 +443,9 @@ public class PasswordRecoveryServiceTests
                 new FixedTimeProvider(Now),
                 NullLogger<
                     PasswordRecoveryService>
-                    .Instance);
+                    .Instance,
+                Mock.Of<
+                    IAuthenticationSecurityEventService>());
 
         return new ServiceSetup(
             service,

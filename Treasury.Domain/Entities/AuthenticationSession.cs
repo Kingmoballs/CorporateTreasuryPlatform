@@ -36,6 +36,13 @@ public class AuthenticationSession
 
     public DateTime? RevokedAtUtc { get; set; }
 
+    public string AuthenticationMethod
+        { get; set; } = "password";
+
+    public string? IpAddress { get; set; }
+
+    public string? UserAgent { get; set; }
+
     public Guid SecurityStamp { get; set; }
 
     public string? RevocationReason { get; set; }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Authentication;
 
@@ -27,13 +28,18 @@ public class PasswordRecoveryService
     private readonly ILogger<PasswordRecoveryService>
         _logger;
 
+    private readonly IAuthenticationSecurityEventService
+        _securityEventService;
+
     public PasswordRecoveryService(
         IUserRepository userRepository,
         IPasswordResetTokenRepository tokenRepository,
         IEmailSender emailSender,
         IOptions<PasswordRecoveryOptions> options,
         TimeProvider timeProvider,
-        ILogger<PasswordRecoveryService> logger)
+        ILogger<PasswordRecoveryService> logger,
+        IAuthenticationSecurityEventService
+            securityEventService)
     {
         _userRepository = userRepository;
         _tokenRepository = tokenRepository;
@@ -41,6 +47,8 @@ public class PasswordRecoveryService
         _options = options.Value;
         _timeProvider = timeProvider;
         _logger = logger;
+        _securityEventService =
+            securityEventService;
     }
 
     public async Task<ForgotPasswordResponseDto>
@@ -174,6 +182,41 @@ public class PasswordRecoveryService
         if (!changed)
         {
             throw InvalidResetToken();
+        }
+
+        var organizationIds =
+            token.User.OrganizationMemberships
+                .Where(membership =>
+                    membership.IsActive)
+                .Select(membership =>
+                    (Guid?)membership.OrganizationId)
+                .Distinct()
+                .ToList();
+
+        if (organizationIds.Count == 0)
+        {
+            organizationIds.Add(null);
+        }
+
+        foreach (var organizationId in
+                 organizationIds)
+        {
+            await _securityEventService.Record(
+                new
+                    RecordAuthenticationSecurityEventDto
+                    {
+                        OrganizationId =
+                            organizationId,
+                        UserId = token.UserId,
+                        EventType =
+                            AuthenticationSecurityEventTypes
+                                .PasswordChanged,
+                        Outcome =
+                            AuthenticationSecurityOutcomes
+                                .Succeeded,
+                        ReasonCode =
+                            "password_reset"
+                    });
         }
     }
 

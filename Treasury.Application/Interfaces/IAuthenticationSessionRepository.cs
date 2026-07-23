@@ -16,6 +16,14 @@ public interface IAuthenticationSessionRepository
         AuthenticationRefreshToken replacement,
         DateTime consumedAtUtc);
 
+    Task<bool> ReplaceSession(
+        Guid currentSessionId,
+        Guid userId,
+        AuthenticationSession replacementSession,
+        AuthenticationRefreshToken replacementToken,
+        DateTime replacedAtUtc,
+        string reason);
+
     Task<bool> IsSessionActive(
         Guid sessionId,
         Guid userId,
@@ -34,6 +42,23 @@ public interface IAuthenticationSessionRepository
 
     Task RevokeSessionsForUser(
         Guid userId,
+        DateTime revokedAtUtc,
+        string reason);
+
+    Task<IReadOnlyList<AuthenticationSession>>
+        GetActiveSessionsForUser(
+            Guid userId,
+            DateTime nowUtc);
+
+    Task<bool> RevokeOwnedSession(
+        Guid sessionId,
+        Guid userId,
+        DateTime revokedAtUtc,
+        string reason);
+
+    Task<int> RevokeOtherSessions(
+        Guid userId,
+        Guid currentSessionId,
         DateTime revokedAtUtc,
         string reason);
 

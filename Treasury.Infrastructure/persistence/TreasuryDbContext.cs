@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Persistence;
 
@@ -59,9 +60,21 @@ public class TreasuryDbContext : DbContext
         AuthenticationRefreshTokens =>
             Set<AuthenticationRefreshToken>();
 
+    public DbSet<AuthenticationSecurityEvent>
+        AuthenticationSecurityEvents =>
+            Set<AuthenticationSecurityEvent>();
+
     public DbSet<PasswordResetToken>
         PasswordResetTokens =>
             Set<PasswordResetToken>();
+
+    public DbSet<MfaRecoveryCode>
+        MfaRecoveryCodes =>
+            Set<MfaRecoveryCode>();
+
+    public DbSet<MfaLoginChallenge>
+        MfaLoginChallenges =>
+            Set<MfaLoginChallenge>();
 
     public DbSet<Account> Accounts  => Set<Account>();
 
@@ -242,6 +255,23 @@ public class TreasuryDbContext : DbContext
         {
             throw new InvalidOperationException(
                 "Audit logs are immutable and cannot be modified or deleted.");
+        }
+
+        var changedAuthenticationEvents =
+            ChangeTracker
+                .Entries<
+                    AuthenticationSecurityEvent>()
+                .Any(entry =>
+                    entry.State is
+                        EntityState.Modified or
+                        EntityState.Deleted);
+
+        if (changedAuthenticationEvents)
+        {
+            throw new InvalidOperationException(
+                "Authentication security events are " +
+                "immutable and cannot be modified or " +
+                "deleted.");
         }
 
         var changedCompletedTransactions =
@@ -533,10 +563,23 @@ public class TreasuryDbContext : DbContext
                 user.LoginLockoutEndUtc);
 
         modelBuilder.Entity<User>()
+            .Property(user =>
+                user.ProtectedTotpSecret)
+            .HasMaxLength(2048);
+
+        modelBuilder.Entity<User>()
             .ToTable(table =>
+            {
                 table.HasCheckConstraint(
                     "CK_Users_FailedLoginAttempts",
-                    "\"FailedLoginAttempts\" >= 0"));
+                    "\"FailedLoginAttempts\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_Users_MfaEnabledSecret",
+                    "\"MfaEnabledAtUtc\" IS NULL OR " +
+                    "\"ProtectedTotpSecret\" IS NOT " +
+                    "NULL");
+            });
 
         var organization =
             modelBuilder.Entity<Organization>();
@@ -949,6 +992,23 @@ public class TreasuryDbContext : DbContext
 
         authenticationSession
             .Property(session =>
+                session.AuthenticationMethod)
+            .HasMaxLength(30)
+            .HasDefaultValue(
+                AuthenticationMethods.Password);
+
+        authenticationSession
+            .Property(session =>
+                session.IpAddress)
+            .HasMaxLength(64);
+
+        authenticationSession
+            .Property(session =>
+                session.UserAgent)
+            .HasMaxLength(512);
+
+        authenticationSession
+            .Property(session =>
                 session.SecurityStamp)
             .HasDefaultValueSql(
                 "gen_random_uuid()");
@@ -1026,6 +1086,91 @@ public class TreasuryDbContext : DbContext
             .HasDefaultValueSql(
                 "gen_random_uuid()");
 
+        var authenticationSecurityEvent =
+            modelBuilder.Entity<
+                AuthenticationSecurityEvent>();
+
+        authenticationSecurityEvent
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.OccurredAtUtc
+            });
+
+        authenticationSecurityEvent
+            .HasIndex(item => new
+            {
+                item.UserId,
+                item.OccurredAtUtc
+            });
+
+        authenticationSecurityEvent
+            .HasIndex(item => item.EventType);
+
+        authenticationSecurityEvent
+            .HasIndex(item => item.IdentifierHash);
+
+        authenticationSecurityEvent
+            .HasOne(item => item.Organization)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationSecurityEvent
+            .HasOne(item => item.User)
+            .WithMany()
+            .HasForeignKey(item => item.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationSecurityEvent
+            .HasOne(item =>
+                item.AuthenticationSession)
+            .WithMany()
+            .HasForeignKey(item =>
+                item.AuthenticationSessionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        authenticationSecurityEvent
+            .Property(item => item.EventType)
+            .HasMaxLength(80);
+
+        authenticationSecurityEvent
+            .Property(item => item.Outcome)
+            .HasMaxLength(20);
+
+        authenticationSecurityEvent
+            .Property(item => item.ReasonCode)
+            .HasMaxLength(100);
+
+        authenticationSecurityEvent
+            .Property(item => item.IdentifierHash)
+            .HasMaxLength(64)
+            .IsFixedLength();
+
+        authenticationSecurityEvent
+            .Property(item => item.IpAddress)
+            .HasMaxLength(64);
+
+        authenticationSecurityEvent
+            .Property(item => item.UserAgent)
+            .HasMaxLength(512);
+
+        authenticationSecurityEvent
+            .Property(item => item.MetadataJson)
+            .HasColumnType("jsonb");
+
+        authenticationSecurityEvent
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_AuthenticationSecurityEvents_Outcome",
+                    "\"Outcome\" IN " +
+                    $"('{AuthenticationSecurityOutcomes.Succeeded}'," +
+                    $"'{AuthenticationSecurityOutcomes.Failed}'," +
+                    $"'{AuthenticationSecurityOutcomes.Blocked}')");
+            });
+
         authenticationRefreshToken
             .ToTable(table =>
             {
@@ -1092,6 +1237,137 @@ public class TreasuryDbContext : DbContext
 
                 table.HasCheckConstraint(
                     "CK_PasswordResetTokens_FinalState",
+                    "NOT (\"ConsumedAtUtc\" IS NOT " +
+                    "NULL AND \"RevokedAtUtc\" IS NOT " +
+                    "NULL)");
+            });
+
+        var mfaRecoveryCode =
+            modelBuilder.Entity<MfaRecoveryCode>();
+
+        mfaRecoveryCode
+            .HasIndex(code => code.CodeHash)
+            .IsUnique();
+
+        mfaRecoveryCode
+            .HasIndex(code => new
+            {
+                code.UserId,
+                code.ConsumedAtUtc,
+                code.RevokedAtUtc
+            });
+
+        mfaRecoveryCode
+            .HasOne(code => code.User)
+            .WithMany()
+            .HasForeignKey(code => code.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mfaRecoveryCode
+            .Property(code => code.CodeHash)
+            .HasMaxLength(64)
+            .IsFixedLength();
+
+        mfaRecoveryCode
+            .Property(code =>
+                code.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        mfaRecoveryCode
+            .ToTable(table =>
+                table.HasCheckConstraint(
+                    "CK_MfaRecoveryCodes_FinalState",
+                    "NOT (\"ConsumedAtUtc\" IS NOT " +
+                    "NULL AND \"RevokedAtUtc\" IS NOT " +
+                    "NULL)"));
+
+        var mfaLoginChallenge =
+            modelBuilder.Entity<MfaLoginChallenge>();
+
+        mfaLoginChallenge
+            .HasIndex(challenge =>
+                challenge.TokenHash)
+            .IsUnique();
+
+        mfaLoginChallenge
+            .HasIndex(challenge =>
+                challenge.UserId)
+            .IsUnique()
+            .HasFilter(
+                "\"ConsumedAtUtc\" IS NULL AND " +
+                "\"RevokedAtUtc\" IS NULL");
+
+        mfaLoginChallenge
+            .HasIndex(challenge =>
+                challenge.ExpiresAtUtc);
+
+        mfaLoginChallenge
+            .HasOne(challenge => challenge.User)
+            .WithMany()
+            .HasForeignKey(challenge =>
+                challenge.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mfaLoginChallenge
+            .HasOne(challenge =>
+                challenge.Organization)
+            .WithMany()
+            .HasForeignKey(challenge =>
+                challenge.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mfaLoginChallenge
+            .HasOne(challenge =>
+                challenge.OrganizationMembership)
+            .WithMany()
+            .HasForeignKey(challenge => new
+            {
+                challenge.OrganizationId,
+                challenge.UserId,
+                challenge.OrganizationMembershipId
+            })
+            .HasPrincipalKey(membership => new
+            {
+                membership.OrganizationId,
+                membership.UserId,
+                membership.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mfaLoginChallenge
+            .Property(challenge =>
+                challenge.TokenHash)
+            .HasMaxLength(64)
+            .IsFixedLength();
+
+        mfaLoginChallenge
+            .Property(challenge =>
+                challenge.FailedAttempts)
+            .HasDefaultValue(0);
+
+        mfaLoginChallenge
+            .Property(challenge =>
+                challenge.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        mfaLoginChallenge
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_MfaLoginChallenges_Expiry",
+                    "\"ExpiresAtUtc\" > " +
+                    "\"CreatedAtUtc\"");
+
+                table.HasCheckConstraint(
+                    "CK_MfaLoginChallenges_Attempts",
+                    "\"FailedAttempts\" >= 0");
+
+                table.HasCheckConstraint(
+                    "CK_MfaLoginChallenges_FinalState",
                     "NOT (\"ConsumedAtUtc\" IS NOT " +
                     "NULL AND \"RevokedAtUtc\" IS NOT " +
                     "NULL)");

@@ -22,4 +22,7 @@ public class AuthenticationSecurityOptions
 
     public int PasswordRecoveryRequestsPerMinute
         { get; set; } = 5;
+
+    public int MfaVerificationRequestsPerMinute
+        { get; set; } = 10;
 }

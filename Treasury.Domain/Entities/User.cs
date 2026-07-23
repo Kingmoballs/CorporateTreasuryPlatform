@@ -32,6 +32,15 @@ public class User
     public DateTime? LoginLockoutEndUtc
         { get; set; }
 
+    public string? ProtectedTotpSecret
+        { get; set; }
+
+    public DateTime? MfaEnrollmentStartedAtUtc
+        { get; set; }
+
+    public DateTime? MfaEnabledAtUtc
+        { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public Guid RoleId { get; set; }

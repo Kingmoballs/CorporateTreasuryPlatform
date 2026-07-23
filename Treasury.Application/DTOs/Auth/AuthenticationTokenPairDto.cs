@@ -2,6 +2,9 @@ namespace Treasury.Application.DTOs.Auth;
 
 public class AuthenticationTokenPairDto
 {
+    public Guid AuthenticationSessionId
+        { get; set; }
+
     public string AccessToken { get; set; } =
         string.Empty;
 

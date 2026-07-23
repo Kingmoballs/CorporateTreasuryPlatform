@@ -383,7 +383,10 @@ public class AuthenticationSessionServiceTests
                     {
                         RefreshTokenDays = 7
                     }),
-                new FixedTimeProvider(Now));
+                new FixedTimeProvider(Now),
+                Mock.Of<IClientRequestContext>(),
+                Mock.Of<
+                    IAuthenticationSecurityEventService>());
 
         return new ServiceSetup(
             service,

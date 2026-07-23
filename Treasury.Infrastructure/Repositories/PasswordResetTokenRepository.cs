@@ -92,6 +92,8 @@ public class PasswordResetTokenRepository
         return _context.PasswordResetTokens
             .AsNoTracking()
             .Include(token => token.User)
+                .ThenInclude(user =>
+                    user.OrganizationMemberships)
             .FirstOrDefaultAsync(token =>
                 token.TokenHash == tokenHash);
     }

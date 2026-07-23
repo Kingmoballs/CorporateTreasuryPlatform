@@ -9,6 +9,17 @@ public interface IAuthenticationSessionService
         User user,
         OrganizationMembership membership);
 
+    Task<AuthenticationTokenPairDto> Create(
+        User user,
+        OrganizationMembership membership,
+        string authenticationMethod);
+
+    Task<AuthenticationTokenPairDto>
+        SwitchOrganization(
+            User user,
+            OrganizationMembership membership,
+            Guid currentSessionId);
+
     Task<AuthResponseDto> Refresh(
         string rawRefreshToken);
 

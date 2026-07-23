@@ -71,8 +71,12 @@ public class OrganizationAuthenticationTests
         var service = new AuthService(
             userRepository.Object,
             Mock.Of<ILoginAttemptService>(),
+            Mock.Of<
+                IMultiFactorAuthenticationService>(),
             sessionService.Object,
-            currentUserService.Object);
+            currentUserService.Object,
+            Mock.Of<
+                IAuthenticationSecurityEventService>());
 
         var exception =
             await Assert.ThrowsAsync<
@@ -187,8 +191,12 @@ public class OrganizationAuthenticationTests
         var service = new AuthService(
             userRepository.Object,
             loginAttemptService.Object,
+            Mock.Of<
+                IMultiFactorAuthenticationService>(),
             sessionService.Object,
-            Mock.Of<ICurrentUserService>());
+            Mock.Of<ICurrentUserService>(),
+            Mock.Of<
+                IAuthenticationSecurityEventService>());
 
         var response =
             await service.Login(
@@ -229,8 +237,12 @@ public class OrganizationAuthenticationTests
         var service = new AuthService(
             Mock.Of<IUserRepository>(),
             Mock.Of<ILoginAttemptService>(),
+            Mock.Of<
+                IMultiFactorAuthenticationService>(),
             sessionService.Object,
-            currentUserService.Object);
+            currentUserService.Object,
+            Mock.Of<
+                IAuthenticationSecurityEventService>());
 
         await service.LogoutAll();
 

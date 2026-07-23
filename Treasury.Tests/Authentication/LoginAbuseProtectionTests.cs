@@ -127,6 +127,55 @@ public class LoginAbuseProtectionTests
 
     [Fact]
     public async Task
+        Login_MfaEnabledCreatesChallengeWithoutSession()
+    {
+        var setup = CreateSetup();
+
+        setup.User.MfaEnabledAtUtc =
+            Now.AddDays(-1).UtcDateTime;
+
+        setup.MultiFactorService
+            .Setup(service =>
+                service.CreateLoginChallenge(
+                    setup.User,
+                    It.IsAny<
+                        OrganizationMembership>()))
+            .ReturnsAsync(
+                new AuthResponseDto
+                {
+                    MfaRequired = true,
+                    MfaChallengeToken =
+                        "challenge-token",
+                    MfaChallengeExpiresAtUtc =
+                        Now.AddMinutes(5)
+                            .UtcDateTime
+                });
+
+        var response =
+            await setup.Service.Login(
+                new LoginDto
+                {
+                    Email = setup.User.Email,
+                    Password =
+                        "SecurePassword123!"
+                });
+
+        Assert.True(response.MfaRequired);
+        Assert.Equal(
+            "challenge-token",
+            response.MfaChallengeToken);
+
+        setup.SessionService.Verify(
+            service =>
+                service.Create(
+                    It.IsAny<User>(),
+                    It.IsAny<
+                        OrganizationMembership>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task
         LoginAttemptService_UsesConfiguredThresholds()
     {
         var repository =
@@ -174,6 +223,14 @@ public class LoginAbuseProtectionTests
         nameof(AuthController.ResetPassword),
         AuthenticationRateLimitPolicies
             .PasswordRecovery)]
+    [InlineData(
+        nameof(AuthController.VerifyMfaChallenge),
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
+    [InlineData(
+        nameof(AuthController.UseMfaRecoveryCode),
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication)]
     public void AuthenticationEndpoint_HasRateLimit(
         string methodName,
         string expectedPolicy)
@@ -268,17 +325,25 @@ public class LoginAbuseProtectionTests
             new Mock<
                 IAuthenticationSessionService>();
 
+        var multiFactorService =
+            new Mock<
+                IMultiFactorAuthenticationService>();
+
         var service =
             new AuthService(
                 userRepository.Object,
                 loginAttemptService.Object,
+                multiFactorService.Object,
                 sessionService.Object,
-                Mock.Of<ICurrentUserService>());
+                Mock.Of<ICurrentUserService>(),
+                Mock.Of<
+                    IAuthenticationSecurityEventService>());
 
         return new ServiceSetup(
             service,
             userRepository,
             loginAttemptService,
+            multiFactorService,
             sessionService,
             user);
     }
@@ -306,6 +371,8 @@ public class LoginAbuseProtectionTests
         Mock<IUserRepository> UserRepository,
         Mock<ILoginAttemptService>
             LoginAttemptService,
+        Mock<IMultiFactorAuthenticationService>
+            MultiFactorService,
         Mock<IAuthenticationSessionService>
             SessionService,
         User User);

@@ -1,6 +1,7 @@
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Application.Services;
 
@@ -16,27 +17,43 @@ public class AuthService : IAuthService
     private readonly ILoginAttemptService
         _loginAttemptService;
 
+    private readonly IMultiFactorAuthenticationService
+        _multiFactorAuthenticationService;
+
     private readonly IAuthenticationSessionService
         _sessionService;
 
     private readonly ICurrentUserService
         _currentUserService;
 
+    private readonly IAuthenticationSecurityEventService
+        _securityEventService;
+
     public AuthService(
         IUserRepository userRepository,
         ILoginAttemptService loginAttemptService,
+        IMultiFactorAuthenticationService
+            multiFactorAuthenticationService,
         IAuthenticationSessionService
             sessionService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IAuthenticationSecurityEventService
+            securityEventService)
     {
         _userRepository = userRepository;
 
         _loginAttemptService =
             loginAttemptService;
 
+        _multiFactorAuthenticationService =
+            multiFactorAuthenticationService;
+
         _sessionService = sessionService;
 
         _currentUserService = currentUserService;
+
+        _securityEventService =
+            securityEventService;
     }
 
     public async Task<AuthResponseDto>
@@ -57,6 +74,16 @@ public class AuthService : IAuthService
                 dto.Password,
                 DummyPasswordHash);
 
+            await RecordLoginEvent(
+                dto.Email,
+                null,
+                null,
+                AuthenticationSecurityEventTypes
+                    .LoginFailed,
+                AuthenticationSecurityOutcomes
+                    .Failed,
+                "invalid_credentials");
+
             throw InvalidCredentials();
         }
 
@@ -70,16 +97,58 @@ public class AuthService : IAuthService
             await _loginAttemptService
                 .RecordFailure(user.Id);
 
+            var locked =
+                user.LoginLockoutEndUtc.HasValue;
+
+            await RecordLoginEvent(
+                dto.Email,
+                user.Id,
+                GetCurrentMembership(user)?
+                    .OrganizationId,
+                locked
+                    ? AuthenticationSecurityEventTypes
+                        .LoginBlocked
+                    : AuthenticationSecurityEventTypes
+                        .LoginFailed,
+                locked
+                    ? AuthenticationSecurityOutcomes
+                        .Blocked
+                    : AuthenticationSecurityOutcomes
+                        .Failed,
+                locked
+                    ? "failure_limit_reached"
+                    : "invalid_credentials");
+
             throw InvalidCredentials();
         }
 
         if (!user.IsActive)
         {
+            await RecordLoginEvent(
+                dto.Email,
+                user.Id,
+                null,
+                AuthenticationSecurityEventTypes
+                    .LoginBlocked,
+                AuthenticationSecurityOutcomes
+                    .Blocked,
+                "account_inactive");
+
             throw InvalidCredentials();
         }
 
         if (!user.EmailVerifiedAtUtc.HasValue)
         {
+            await RecordLoginEvent(
+                dto.Email,
+                user.Id,
+                null,
+                AuthenticationSecurityEventTypes
+                    .LoginBlocked,
+                AuthenticationSecurityOutcomes
+                    .Blocked,
+                "email_unverified");
+
             throw InvalidCredentials();
         }
 
@@ -88,6 +157,16 @@ public class AuthService : IAuthService
 
         if (currentMembership is null)
         {
+            await RecordLoginEvent(
+                dto.Email,
+                user.Id,
+                null,
+                AuthenticationSecurityEventTypes
+                    .LoginBlocked,
+                AuthenticationSecurityOutcomes
+                    .Blocked,
+                "membership_unavailable");
+
             throw InvalidCredentials();
         }
 
@@ -98,13 +177,53 @@ public class AuthService : IAuthService
 
         if (!loginAllowed)
         {
+            await RecordLoginEvent(
+                dto.Email,
+                user.Id,
+                currentMembership.OrganizationId,
+                AuthenticationSecurityEventTypes
+                    .LoginBlocked,
+                AuthenticationSecurityOutcomes
+                    .Blocked,
+                "login_lockout_active");
+
             throw InvalidCredentials();
+        }
+
+        if (user.MfaEnabledAtUtc.HasValue)
+        {
+            return await
+                _multiFactorAuthenticationService
+                    .CreateLoginChallenge(
+                        user,
+                        currentMembership);
         }
 
         var tokens =
             await _sessionService.Create(
                 user,
                 currentMembership);
+
+        await _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId =
+                    currentMembership.OrganizationId,
+                UserId = user.Id,
+                AuthenticationSessionId =
+                    tokens.AuthenticationSessionId,
+                EventType =
+                    AuthenticationSecurityEventTypes
+                        .LoginSucceeded,
+                Outcome =
+                    AuthenticationSecurityOutcomes
+                        .Succeeded,
+                Metadata = new
+                {
+                    authenticationMethod =
+                        AuthenticationMethods.Password
+                }
+            });
 
         return MapResponse(
             user,
@@ -136,6 +255,11 @@ public class AuthService : IAuthService
         await _sessionService.RevokeSession(
             sessionId.Value,
             "User signed out.");
+
+        await RecordSessionRevocation(
+            sessionId.Value,
+            "user_logout",
+            "current_session");
     }
 
     public async Task LogoutAll()
@@ -144,6 +268,12 @@ public class AuthService : IAuthService
             .RevokeSessionsForUser(
                 _currentUserService.UserId,
                 "User signed out from all sessions.");
+
+        await RecordSessionRevocation(
+            _currentUserService
+                .AuthenticationSessionId,
+            "user_logout_all",
+            "all_sessions");
     }
 
     private static AuthResponseDto MapResponse(
@@ -163,6 +293,8 @@ public class AuthService : IAuthService
             Role = membership.Role.Name,
             OrganizationId =
                 membership.OrganizationId,
+            OrganizationMembershipId =
+                membership.Id,
             OrganizationCode =
                 membership.Organization.Code
         };
@@ -191,5 +323,53 @@ public class AuthService : IAuthService
     {
         return new UnauthorizedAccessException(
             "Invalid credentials.");
+    }
+
+    private Task RecordLoginEvent(
+        string identifier,
+        Guid? userId,
+        Guid? organizationId,
+        string eventType,
+        string outcome,
+        string reasonCode)
+    {
+        return _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId = organizationId,
+                UserId = userId,
+                EventType = eventType,
+                Outcome = outcome,
+                ReasonCode = reasonCode,
+                Identifier = identifier
+            });
+    }
+
+    private Task RecordSessionRevocation(
+        Guid? sessionId,
+        string reasonCode,
+        string scope)
+    {
+        return _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId =
+                    _currentUserService.OrganizationId,
+                UserId =
+                    _currentUserService.UserId,
+                AuthenticationSessionId =
+                    sessionId,
+                EventType =
+                    AuthenticationSecurityEventTypes
+                        .SessionRevoked,
+                Outcome =
+                    AuthenticationSecurityOutcomes
+                        .Succeeded,
+                ReasonCode = reasonCode,
+                Metadata = new
+                {
+                    scope
+                }
+            });
     }
 }

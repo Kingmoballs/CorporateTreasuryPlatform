@@ -375,11 +375,84 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Treasury.Domain.Entities.AuthenticationSecurityEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AuthenticationSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("IdentifierHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthenticationSessionId");
+
+                    b.HasIndex("EventType");
+
+                    b.HasIndex("IdentifierHash");
+
+                    b.HasIndex("OrganizationId", "OccurredAtUtc");
+
+                    b.HasIndex("UserId", "OccurredAtUtc");
+
+                    b.ToTable("AuthenticationSecurityEvents", t =>
+                        {
+                            t.HasCheckConstraint("CK_AuthenticationSecurityEvents_Outcome", "\"Outcome\" IN ('succeeded','failed','blocked')");
+                        });
+                });
+
             modelBuilder.Entity("Treasury.Domain.Entities.AuthenticationSession", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AuthenticationMethod")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("password");
 
                     b.Property<Guid>("ConcurrencyToken")
                         .IsConcurrencyToken()
@@ -392,6 +465,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime>("LastActivityAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -413,6 +490,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -2578,6 +2659,122 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Treasury.Domain.Entities.MfaLoginChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FailedAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("LockedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrganizationMembershipId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SecurityStamp")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"ConsumedAtUtc\" IS NULL AND \"RevokedAtUtc\" IS NULL");
+
+                    b.HasIndex("OrganizationId", "UserId", "OrganizationMembershipId");
+
+                    b.ToTable("MfaLoginChallenges", t =>
+                        {
+                            t.HasCheckConstraint("CK_MfaLoginChallenges_Attempts", "\"FailedAttempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_MfaLoginChallenges_Expiry", "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_MfaLoginChallenges_FinalState", "NOT (\"ConsumedAtUtc\" IS NOT NULL AND \"RevokedAtUtc\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.MfaRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ConsumedAtUtc", "RevokedAtUtc");
+
+                    b.ToTable("MfaRecoveryCodes", t =>
+                        {
+                            t.HasCheckConstraint("CK_MfaRecoveryCodes_FinalState", "NOT (\"ConsumedAtUtc\" IS NOT NULL AND \"RevokedAtUtc\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Treasury.Domain.Entities.Organization", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3272,12 +3469,22 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LoginLockoutEndUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("MfaEnabledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("MfaEnrollmentStartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("PasswordChangedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("ProtectedTotpSecret")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uuid");
@@ -3296,6 +3503,8 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.ToTable("Users", t =>
                         {
                             t.HasCheckConstraint("CK_Users_FailedLoginAttempts", "\"FailedLoginAttempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_Users_MfaEnabledSecret", "\"MfaEnabledAtUtc\" IS NULL OR \"ProtectedTotpSecret\" IS NOT NULL");
                         });
                 });
 
@@ -3482,6 +3691,30 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("AuthenticationSession");
 
                     b.Navigation("ReplacedByToken");
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.AuthenticationSecurityEvent", b =>
+                {
+                    b.HasOne("Treasury.Domain.Entities.AuthenticationSession", "AuthenticationSession")
+                        .WithMany()
+                        .HasForeignKey("AuthenticationSessionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AuthenticationSession");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.AuthenticationSession", b =>
@@ -4197,6 +4430,45 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.MfaLoginChallenge", b =>
+                {
+                    b.HasOne("Treasury.Domain.Entities.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Treasury.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Treasury.Domain.Entities.OrganizationMembership", "OrganizationMembership")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "UserId", "OrganizationMembershipId")
+                        .HasPrincipalKey("OrganizationId", "UserId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("OrganizationMembership");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Treasury.Domain.Entities.MfaRecoveryCode", b =>
+                {
+                    b.HasOne("Treasury.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.OrganizationMembership", b =>

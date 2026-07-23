@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Authentication;
 
@@ -24,6 +25,12 @@ public class AuthenticationSessionService
 
     private readonly TimeProvider _timeProvider;
 
+    private readonly IClientRequestContext
+        _clientRequestContext;
+
+    private readonly IAuthenticationSecurityEventService
+        _securityEventService;
+
     public AuthenticationSessionService(
         IAuthenticationSessionRepository
             repository,
@@ -31,19 +38,37 @@ public class AuthenticationSessionService
         IOptions<JwtSettingsOptions> jwtOptions,
         IOptions<AuthenticationSessionOptions>
             sessionOptions,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IClientRequestContext clientRequestContext,
+        IAuthenticationSecurityEventService
+            securityEventService)
     {
         _repository = repository;
         _jwtService = jwtService;
         _jwtOptions = jwtOptions.Value;
         _sessionOptions = sessionOptions.Value;
         _timeProvider = timeProvider;
+        _clientRequestContext =
+            clientRequestContext;
+        _securityEventService =
+            securityEventService;
+    }
+
+    public Task<AuthenticationTokenPairDto> Create(
+            User user,
+            OrganizationMembership membership)
+    {
+        return Create(
+            user,
+            membership,
+            AuthenticationMethods.Password);
     }
 
     public async Task<AuthenticationTokenPairDto>
         Create(
             User user,
-            OrganizationMembership membership)
+            OrganizationMembership membership,
+            string authenticationMethod)
     {
         var now = GetUtcNow();
         var sessionExpiry =
@@ -55,19 +80,20 @@ public class AuthenticationSessionService
             {
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
-                User = user,
                 OrganizationId =
                     membership.OrganizationId,
-                Organization =
-                    membership.Organization,
                 OrganizationMembershipId =
                     membership.Id,
-                OrganizationMembership =
-                    membership,
                 CreatedAtUtc = now,
                 LastActivityAtUtc = now,
                 ExpiresAtUtc = sessionExpiry,
-                SecurityStamp = user.SecurityStamp
+                SecurityStamp = user.SecurityStamp,
+                AuthenticationMethod =
+                    authenticationMethod,
+                IpAddress =
+                    _clientRequestContext.IpAddress,
+                UserAgent =
+                    _clientRequestContext.UserAgent
             };
 
         var rawRefreshToken = GenerateToken();
@@ -93,13 +119,137 @@ public class AuthenticationSessionService
 
         await _repository.SaveChanges();
 
-        return CreateTokenPair(
+        var tokenPair = CreateTokenPair(
             user,
             membership,
             session.Id,
             rawRefreshToken,
             sessionExpiry,
             now);
+
+        await _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId =
+                    membership.OrganizationId,
+                UserId = user.Id,
+                AuthenticationSessionId =
+                    session.Id,
+                EventType =
+                    AuthenticationSecurityEventTypes
+                        .SessionCreated,
+                Outcome =
+                    AuthenticationSecurityOutcomes
+                        .Succeeded,
+                Metadata = new
+                {
+                    authenticationMethod
+                }
+            });
+
+        return tokenPair;
+    }
+
+    public async Task<AuthenticationTokenPairDto>
+        SwitchOrganization(
+            User user,
+            OrganizationMembership membership,
+            Guid currentSessionId)
+    {
+        var now = GetUtcNow();
+        var sessionExpiry =
+            now.AddDays(
+                _sessionOptions.RefreshTokenDays);
+
+        var replacementSession =
+            new AuthenticationSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                OrganizationId =
+                    membership.OrganizationId,
+                OrganizationMembershipId =
+                    membership.Id,
+                CreatedAtUtc = now,
+                LastActivityAtUtc = now,
+                ExpiresAtUtc = sessionExpiry,
+                SecurityStamp = user.SecurityStamp,
+                AuthenticationMethod =
+                    AuthenticationMethods
+                        .OrganizationSwitch,
+                IpAddress =
+                    _clientRequestContext.IpAddress,
+                UserAgent =
+                    _clientRequestContext.UserAgent
+            };
+
+        var rawRefreshToken = GenerateToken();
+
+        var replacementToken =
+            new AuthenticationRefreshToken
+            {
+                Id = Guid.NewGuid(),
+                AuthenticationSessionId =
+                    replacementSession.Id,
+                AuthenticationSession =
+                    replacementSession,
+                TokenHash =
+                    HashToken(rawRefreshToken),
+                CreatedAtUtc = now,
+                ExpiresAtUtc = sessionExpiry
+            };
+
+        replacementSession.RefreshTokens.Add(
+            replacementToken);
+
+        var replaced =
+            await _repository.ReplaceSession(
+                currentSessionId,
+                user.Id,
+                replacementSession,
+                replacementToken,
+                now,
+                "Session replaced during " +
+                "organization switch.");
+
+        if (!replaced)
+        {
+            throw new UnauthorizedAccessException(
+                "The current session can no longer be " +
+                "used to switch organizations.");
+        }
+
+        var tokenPair = CreateTokenPair(
+            user,
+            membership,
+            replacementSession.Id,
+            rawRefreshToken,
+            sessionExpiry,
+            now);
+
+        await _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId =
+                    membership.OrganizationId,
+                UserId = user.Id,
+                AuthenticationSessionId =
+                    replacementSession.Id,
+                EventType =
+                    AuthenticationSecurityEventTypes
+                        .SessionCreated,
+                Outcome =
+                    AuthenticationSecurityOutcomes
+                        .Succeeded,
+                Metadata = new
+                {
+                    authenticationMethod =
+                        AuthenticationMethods
+                            .OrganizationSwitch
+                }
+            });
+
+        return tokenPair;
     }
 
     public async Task<AuthResponseDto> Refresh(
@@ -126,6 +276,10 @@ public class AuthenticationSessionService
                 session.Id,
                 now,
                 "Refresh token reuse detected.");
+
+            await RecordRefreshTokenReuse(
+                session,
+                "refresh_token_reused");
 
             throw InvalidRefreshToken();
         }
@@ -182,6 +336,10 @@ public class AuthenticationSessionService
                 "Concurrent refresh-token reuse " +
                 "detected.");
 
+            await RecordRefreshTokenReuse(
+                session,
+                "concurrent_refresh_token_reuse");
+
             throw InvalidRefreshToken();
         }
 
@@ -192,6 +350,22 @@ public class AuthenticationSessionService
             replacementRawToken,
             session.ExpiresAtUtc,
             now);
+
+        await _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId =
+                    session.OrganizationId,
+                UserId = session.UserId,
+                AuthenticationSessionId =
+                    session.Id,
+                EventType =
+                    AuthenticationSecurityEventTypes
+                        .SessionRefreshed,
+                Outcome =
+                    AuthenticationSecurityOutcomes
+                        .Succeeded
+            });
 
         return MapResponse(
             user,
@@ -253,6 +427,7 @@ public class AuthenticationSessionService
     {
         return new AuthenticationTokenPairDto
         {
+            AuthenticationSessionId = sessionId,
             AccessToken =
                 _jwtService.GenerateToken(
                     user,
@@ -265,6 +440,28 @@ public class AuthenticationSessionService
             RefreshTokenExpiresAtUtc =
                 refreshTokenExpiresAtUtc
         };
+    }
+
+    private Task RecordRefreshTokenReuse(
+        AuthenticationSession session,
+        string reasonCode)
+    {
+        return _securityEventService.Record(
+            new RecordAuthenticationSecurityEventDto
+            {
+                OrganizationId =
+                    session.OrganizationId,
+                UserId = session.UserId,
+                AuthenticationSessionId =
+                    session.Id,
+                EventType =
+                    AuthenticationSecurityEventTypes
+                        .RefreshTokenReuse,
+                Outcome =
+                    AuthenticationSecurityOutcomes
+                        .Blocked,
+                ReasonCode = reasonCode
+            });
     }
 
     private static AuthResponseDto MapResponse(
@@ -284,6 +481,8 @@ public class AuthenticationSessionService
             Role = membership.Role.Name,
             OrganizationId =
                 membership.OrganizationId,
+            OrganizationMembershipId =
+                membership.Id,
             OrganizationCode =
                 membership.Organization.Code
         };

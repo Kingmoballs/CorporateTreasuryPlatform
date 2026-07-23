@@ -19,6 +19,7 @@ using System.Globalization;
 using System.Threading.RateLimiting;
 using Treasury.Api.Models;
 using Treasury.Api.Security;
+using Microsoft.AspNetCore.DataProtection;
 
 
 // Create a builder for the web application
@@ -33,6 +34,11 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddHttpContextAccessor();
+
+builder.Services
+    .AddDataProtection()
+    .SetApplicationName(
+        "CorporateTreasuryPlatform");
 
 var authenticationSecuritySettings =
     builder.Configuration
@@ -73,6 +79,16 @@ builder.Services.AddRateLimiter(options =>
                     context,
                     authenticationSecuritySettings
                         .PasswordRecoveryRequestsPerMinute));
+
+    options.AddPolicy(
+        AuthenticationRateLimitPolicies
+            .MultiFactorAuthentication,
+        context =>
+            AuthenticationRateLimitPolicies
+                .CreateFixedWindowPartition(
+                    context,
+                    authenticationSecuritySettings
+                        .MfaVerificationRequestsPerMinute));
 
     options.OnRejected =
         async (rejectionContext, cancellationToken) =>
@@ -204,12 +220,52 @@ builder.Services.AddScoped<
     AuthenticationSessionService>();
 
 builder.Services.AddScoped<
+    IAuthenticationSessionManagementService,
+    AuthenticationSessionManagementService>();
+
+builder.Services.AddScoped<
+    IAuthenticationSecurityEventRepository,
+    AuthenticationSecurityEventRepository>();
+
+builder.Services.AddScoped<
+    IAuthenticationSecurityEventService,
+    AuthenticationSecurityEventService>();
+
+builder.Services.AddScoped<
+    IClientRequestContext,
+    ClientRequestContext>();
+
+builder.Services.AddScoped<
+    IOrganizationAccessRepository,
+    OrganizationAccessRepository>();
+
+builder.Services.AddScoped<
+    IOrganizationAccessService,
+    OrganizationAccessService>();
+
+builder.Services.AddScoped<
     IPasswordResetTokenRepository,
     PasswordResetTokenRepository>();
 
 builder.Services.AddScoped<
     IPasswordRecoveryService,
     PasswordRecoveryService>();
+
+builder.Services.AddScoped<
+    IMultiFactorRepository,
+    MultiFactorRepository>();
+
+builder.Services.AddScoped<
+    IMultiFactorAuthenticationService,
+    MultiFactorAuthenticationService>();
+
+builder.Services.AddSingleton<
+    ITotpService,
+    TotpService>();
+
+builder.Services.AddSingleton<
+    IMfaSecretProtector,
+    MfaSecretProtector>();
 
 builder.Services.AddScoped<
     IUserInvitationRepository,
@@ -225,6 +281,36 @@ builder.Services.AddScoped<
 
 builder.Services.AddSingleton(
     TimeProvider.System);
+
+builder.Services
+    .AddOptions<
+        AuthenticationSecurityEventRetentionOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            AuthenticationSecurityEventRetentionOptions
+                .SectionName))
+    .Validate(
+        options =>
+            options.RetentionDays
+                is >= 1 and <= 3650,
+        "Authentication security-event retention " +
+        "must be between 1 and 3650 days.")
+    .Validate(
+        options =>
+            options.IntervalHours
+                is >= 1 and <= 168,
+        "Authentication security-event retention " +
+        "interval must be between 1 and 168 hours.")
+    .Validate(
+        options =>
+            options.BatchSize
+                is >= 1 and <= 10000,
+        "Authentication security-event retention " +
+        "batch size must be between 1 and 10000.")
+    .ValidateOnStart();
+
+builder.Services.AddHostedService<
+    AuthenticationSecurityEventRetentionWorker>();
 
 builder.Services
     .AddOptions<AuthenticationSecurityOptions>()
@@ -253,9 +339,42 @@ builder.Services
             options.RefreshRequestsPerMinute
                 is >= 1 and <= 1000 &&
             options.PasswordRecoveryRequestsPerMinute
+                is >= 1 and <= 1000 &&
+            options.MfaVerificationRequestsPerMinute
                 is >= 1 and <= 1000,
         "Authentication rate limits must be between " +
         "1 and 1000 requests per minute.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<MultiFactorAuthenticationOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            MultiFactorAuthenticationOptions
+                .SectionName))
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(
+                options.Issuer) &&
+            options.Issuer.Length <= 100,
+        "MFA issuer is required and cannot exceed " +
+        "100 characters.")
+    .Validate(
+        options =>
+            options.EnrollmentMinutes
+                is >= 5 and <= 60 &&
+            options.ChallengeMinutes
+                is >= 1 and <= 15,
+        "MFA enrollment and challenge lifetimes are " +
+        "outside the supported range.")
+    .Validate(
+        options =>
+            options.MaximumChallengeAttempts
+                is >= 3 and <= 10 &&
+            options.RecoveryCodeCount
+                is >= 5 and <= 20,
+        "MFA attempt and recovery-code settings are " +
+        "outside the supported range.")
     .ValidateOnStart();
 
 builder.Services

@@ -12,6 +12,9 @@ public static class AuthenticationRateLimitPolicies
     public const string PasswordRecovery =
         "authentication-password-recovery";
 
+    public const string MultiFactorAuthentication =
+        "authentication-mfa";
+
     public static RateLimitPartition<string>
         CreateFixedWindowPartition(
             HttpContext context,
