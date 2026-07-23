@@ -29,4 +29,9 @@ public interface ICreditFacilityRepository
             Guid? creditFacilityId,
             DateTime asOfDateUtc,
             int maxRows);
+    
+    Task<IReadOnlyList<CreditFacility>>
+        GetDueForMaturity(
+            DateTime asOfDateUtc,
+            int maxRows);
 }

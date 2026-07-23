@@ -1055,7 +1055,7 @@ public class TreasuryDbContext : DbContext
                 "'Matched','Reconciled','Ignored','Expired'," +
                 "'Imported','LoggedIn','RoleChanged'," +
                 "'Suspended','Closed','DrawnDown','Repaid'," +
-                "'Accrued')");
+                "'Accrued','Reactivated')");
 
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
@@ -1214,7 +1214,8 @@ public class TreasuryDbContext : DbContext
                     "'InvestmentMaturityOverdue', " +
                     "'InvestmentConcentration', " +
                     "'InvestmentLimitWarning', " +
-                    "'InvestmentLimitBreach', 'System')");
+                    "'InvestmentLimitBreach', " +
+                    "'CreditFacilityDebtOverdue', 'System')");
 
                 table.HasCheckConstraint(
                     "CK_TreasuryAlerts_Currency_Length",

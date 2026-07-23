@@ -26,4 +26,5 @@ public static class AuditActionTypes
     public const string DrawnDown = "DrawnDown";
     public const string Repaid = "Repaid";
     public const string Accrued = "Accrued";
+    public const string Reactivated = "Reactivated";
 }

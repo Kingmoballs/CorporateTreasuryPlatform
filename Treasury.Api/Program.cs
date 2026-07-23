@@ -340,6 +340,10 @@ builder.Services.AddScoped<
     CreditFacilityInterestAccrualService>();
 
 builder.Services.AddScoped<
+    ICreditFacilityLifecycleService,
+    CreditFacilityLifecycleService>();
+
+builder.Services.AddScoped<
     IFxRateRepository,
     FxRateRepository>();
 

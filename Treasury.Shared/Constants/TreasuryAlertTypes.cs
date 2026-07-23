@@ -30,6 +30,9 @@ public static class TreasuryAlertTypes
 
     public const string InvestmentLimitBreach =
         "InvestmentLimitBreach";
+    
+    public const string CreditFacilityDebtOverdue =
+        "CreditFacilityDebtOverdue";
 
     public const string System = "System";
 }

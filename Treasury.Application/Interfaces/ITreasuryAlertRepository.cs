@@ -26,6 +26,12 @@ public interface ITreasuryAlertRepository
     Task<IReadOnlyList<TreasuryAlert>> GetForExport(
         TreasuryAlertQueryDto query,
         int maxRows);
+    
+    Task<TreasuryAlert?> GetOpenAlert(
+        string alertType,
+        string? sourceEntityType,
+        Guid? sourceEntityId,
+        string? sourceReference);
 
     Task SaveChanges();
 }

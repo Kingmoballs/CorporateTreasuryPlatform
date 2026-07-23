@@ -3,6 +3,7 @@ using Treasury.Application.DTOs.TreasuryAlerts;
 using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Infrastructure.Persistence;
+using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Repositories;
 
@@ -235,6 +236,27 @@ public class TreasuryAlertRepository : ITreasuryAlertRepository
                 alert.CreatedAtUtc)
             .Take(maxRows)
             .ToListAsync();
+    }
+
+    public async Task<TreasuryAlert?> GetOpenAlert(
+        string alertType,
+        string? sourceEntityType,
+        Guid? sourceEntityId,
+        string? sourceReference)
+    {
+        return await _context.TreasuryAlerts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(alert =>
+                alert.Status ==
+                    TreasuryAlertStatuses.Open &&
+                alert.AlertType ==
+                    alertType &&
+                alert.SourceEntityType ==
+                    sourceEntityType &&
+                alert.SourceEntityId ==
+                    sourceEntityId &&
+                alert.SourceReference ==
+                    sourceReference);
     }
 
     public async Task SaveChanges()

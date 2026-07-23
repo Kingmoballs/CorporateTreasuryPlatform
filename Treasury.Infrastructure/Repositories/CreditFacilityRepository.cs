@@ -225,4 +225,31 @@ public class CreditFacilityRepository
             .Take(maxRows)
             .ToListAsync();
     }
+
+    public async Task<IReadOnlyList<CreditFacility>>
+        GetDueForMaturity(
+            DateTime asOfDateUtc,
+            int maxRows)
+    {
+        var toExclusiveUtc =
+            asOfDateUtc.Date.AddDays(1);
+
+        return await _context.CreditFacilities
+            .Include(facility =>
+                facility.LenderCounterparty)
+            .Include(facility =>
+                facility.SettlementAccount)
+            .Where(facility =>
+                facility.Status ==
+                    CreditFacilityStatuses.Active ||
+                facility.Status ==
+                    CreditFacilityStatuses.Suspended)
+            .Where(facility =>
+                facility.MaturityDateUtc <
+                    toExclusiveUtc)
+            .OrderBy(facility =>
+                facility.MaturityDateUtc)
+            .Take(maxRows)
+            .ToListAsync();
+    }
 }
