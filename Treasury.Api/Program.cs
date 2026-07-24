@@ -445,6 +445,14 @@ builder.Services.AddScoped<
     IOrganizationRepository,
     OrganizationRepository>();
 
+builder.Services.AddScoped<
+    IOrganizationStructureRepository,
+    OrganizationStructureRepository>();
+
+builder.Services.AddScoped<
+    IOrganizationStructureService,
+    OrganizationStructureService>();
+
 builder.Services
     .AddOptions<JwtSettingsOptions>()
     .Bind(
