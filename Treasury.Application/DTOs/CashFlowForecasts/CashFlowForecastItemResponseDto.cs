@@ -8,6 +8,10 @@ public class CashFlowForecastItemResponseDto
 
     public string? AccountName { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string Direction { get; set; } = string.Empty;
 
     public decimal Amount { get; set; }

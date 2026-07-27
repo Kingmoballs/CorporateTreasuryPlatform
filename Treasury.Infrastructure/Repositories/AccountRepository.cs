@@ -29,6 +29,8 @@ public class AccountRepository
     {
         return await _context.Accounts
             .Include(x => x.AccountType)
+            .Include(x => x.LegalEntity)
+            .Include(x => x.BusinessUnit)
             .FirstOrDefaultAsync(
                 x => x.Id == id);
     }
@@ -38,6 +40,8 @@ public class AccountRepository
     {
         return await _context.Accounts
             .Include(x => x.AccountType)
+            .Include(x => x.LegalEntity)
+            .Include(x => x.BusinessUnit)
             .ToListAsync();
     }
 

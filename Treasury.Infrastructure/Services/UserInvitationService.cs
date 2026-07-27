@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Options;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Admin;
@@ -14,8 +12,6 @@ namespace Treasury.Infrastructure.Services;
 public class UserInvitationService
     : IUserInvitationService
 {
-    private const int TokenByteCount = 32;
-
     private readonly IUserInvitationRepository
         _invitationRepository;
 
@@ -81,6 +77,17 @@ public class UserInvitationService
         {
             throw new ResourceNotFoundException(
                 "Role not found.");
+        }
+
+        if (string.Equals(
+                role.Name,
+                Roles.PlatformAdmin,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ForbiddenOperationException(
+                "The PlatformAdmin role cannot be " +
+                "assigned through an organization " +
+                "invitation.");
         }
 
         var organization =
@@ -276,7 +283,8 @@ public class UserInvitationService
             AcceptUserInvitationDto dto)
     {
         var tokenHash =
-            HashToken(dto.Token);
+            UserInvitationTokenHelper.Hash(
+                dto.Token);
 
         var invitation =
             await _invitationRepository
@@ -453,17 +461,10 @@ public class UserInvitationService
     private string BuildAcceptanceUrl(
         string rawToken)
     {
-        var separator =
-            _options.AcceptanceUrl.Contains(
-                '?',
-                StringComparison.Ordinal)
-                ? "&"
-                : "?";
-
-        return _options.AcceptanceUrl +
-               separator +
-               "token=" +
-               Uri.EscapeDataString(rawToken);
+        return UserInvitationTokenHelper
+            .BuildAcceptanceUrl(
+                _options.AcceptanceUrl,
+                rawToken);
     }
 
     private Guid GetRequiredOrganizationId()
@@ -491,30 +492,14 @@ public class UserInvitationService
 
     private static string GenerateToken()
     {
-        var bytes =
-            RandomNumberGenerator.GetBytes(
-                TokenByteCount);
-
-        return Convert.ToBase64String(bytes)
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+        return UserInvitationTokenHelper.Generate();
     }
 
     private static string HashToken(
         string rawToken)
     {
-        if (string.IsNullOrWhiteSpace(rawToken))
-        {
-            return string.Empty;
-        }
-
-        var hash =
-            SHA256.HashData(
-                Encoding.UTF8.GetBytes(
-                    rawToken));
-
-        return Convert.ToHexString(hash);
+        return UserInvitationTokenHelper.Hash(
+            rawToken);
     }
 
     private static string NormalizeEmail(

@@ -21,22 +21,30 @@ public class TreasuryReportingController
 
     [HttpGet("balances")]
     public async Task<IActionResult>
-        GetBalanceAggregation()
+        GetBalanceAggregation(
+            [FromQuery] Guid? legalEntityId,
+            [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _reportingService
-                .GetBalanceAggregation();
+                .GetBalanceAggregation(
+                    legalEntityId,
+                    businessUnitId);
 
         return Ok(result);
     }
 
     [HttpGet("dashboard")]
     public async Task<IActionResult>
-        GetCashPositionDashboard()
+        GetCashPositionDashboard(
+            [FromQuery] Guid? legalEntityId,
+            [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _reportingService
-                .GetCashPositionDashboard();
+                .GetCashPositionDashboard(
+                    legalEntityId,
+                    businessUnitId);
 
         return Ok(result);
     }
@@ -45,13 +53,17 @@ public class TreasuryReportingController
     public async Task<IActionResult>
         GetLiquidityReport(
             [FromQuery] DateTime? fromUtc,
-            [FromQuery] DateTime? toUtc)
+            [FromQuery] DateTime? toUtc,
+            [FromQuery] Guid? legalEntityId,
+            [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _reportingService
                 .GetLiquidityReport(
                     fromUtc,
-                    toUtc);
+                    toUtc,
+                    legalEntityId,
+                    businessUnitId);
 
         return Ok(result);
     }
@@ -59,13 +71,17 @@ public class TreasuryReportingController
     [HttpGet("liquidity/export/csv")]
     public async Task<IActionResult> ExportLiquidityReportCsv(
         [FromQuery] DateTime? fromUtc,
-        [FromQuery] DateTime? toUtc)
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] Guid? legalEntityId,
+        [FromQuery] Guid? businessUnitId)
     {
         var export =
             await _reportingService
                 .ExportLiquidityReportCsv(
                     fromUtc,
-                    toUtc);
+                    toUtc,
+                    legalEntityId,
+                    businessUnitId);
 
         return File(
             export.Content,

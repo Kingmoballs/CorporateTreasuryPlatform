@@ -1,4 +1,5 @@
 using System.Text;
+using Treasury.Application.Common;
 using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Transactions;
 using Treasury.Application.Interfaces;
@@ -30,6 +31,11 @@ public class TreasuryTransactionService
         SearchTransactions(
             TransactionQueryDto query)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         ValidateQuery(query);
 
         query.FromUtc =
@@ -57,6 +63,12 @@ public class TreasuryTransactionService
 
         return new PagedTreasuryTransactionsDto
         {
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             Page = query.Page,
 
             PageSize = query.PageSize,
@@ -184,6 +196,11 @@ public class TreasuryTransactionService
         GetActivitySummary(
             TreasuryActivitySummaryQueryDto query)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         var reportToUtc =
             NormalizeDateTime(query.ToUtc)
             ?? DateTime.UtcNow;
@@ -248,6 +265,12 @@ public class TreasuryTransactionService
             ActivityToUtc =
                 reportToUtc,
 
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             TotalTransactionCount =
                 transactions.Count,
 
@@ -265,6 +288,11 @@ public class TreasuryTransactionService
     public async Task<CsvExportDto> ExportTransactionsCsv(
         TransactionQueryDto query)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         query.FromUtc =
             NormalizeDateTime(query.FromUtc);
 
@@ -295,12 +323,16 @@ public class TreasuryTransactionService
         * Audit, or Operations.
         */
         csv.AppendLine(
-            "Id,Reference,TransactionType,Status,Amount,Currency,Description,SourceAccountId,DestinationAccountId,TransferRequestId,PaymentRequestId,ReversalRequestId,ReversesTransactionId,InitiatedByUserId,CompletedByUserId,Category,CounterpartyName,ExternalReference,CreatedAtUtc,CompletedAtUtc");
+            "LegalEntityId,BusinessUnitId,Id,Reference,TransactionType,Status,Amount,Currency,Description,SourceAccountId,DestinationAccountId,TransferRequestId,PaymentRequestId,ReversalRequestId,ReversesTransactionId,InitiatedByUserId,CompletedByUserId,Category,CounterpartyName,ExternalReference,CreatedAtUtc,CompletedAtUtc");
 
         foreach (var transaction in transactions)
         {
             csv.AppendLine(string.Join(
                 ",",
+                CsvExportHelper.Escape(
+                    filter.LegalEntityId),
+                CsvExportHelper.Escape(
+                    filter.BusinessUnitId),
                 CsvExportHelper.Escape(transaction.Id),
                 CsvExportHelper.Escape(transaction.Reference),
                 CsvExportHelper.Escape(transaction.TransactionType),

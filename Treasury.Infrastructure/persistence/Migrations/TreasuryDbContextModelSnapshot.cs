@@ -38,6 +38,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Balance")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid?>("BusinessUnitId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("ConcurrencyToken")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
@@ -53,6 +56,9 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<Guid?>("LegalEntityId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -73,9 +79,17 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.HasIndex("OrganizationId", "AccountNumber")
                         .IsUnique();
 
+                    b.HasIndex("OrganizationId", "BusinessUnitId");
+
+                    b.HasIndex("OrganizationId", "LegalEntityId");
+
+                    b.HasIndex("OrganizationId", "LegalEntityId", "BusinessUnitId");
+
                     b.ToTable("Accounts", t =>
                         {
                             t.HasCheckConstraint("CK_Accounts_Balance_NonNegative", "\"Balance\" >= 0");
+
+                            t.HasCheckConstraint("CK_Accounts_BusinessUnitRequiresLegalEntity", "\"BusinessUnitId\" IS NULL OR \"LegalEntityId\" IS NOT NULL");
 
                             t.HasCheckConstraint("CK_Accounts_Currency_Length", "char_length(\"Currency\") = 3");
 
@@ -228,7 +242,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_ApprovalPolicies_Currency", "char_length(\"Currency\") = 3");
 
-                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment', 'TransactionReversal', 'InvestmentPlacement', 'InvestmentEarlyRedemption', 'InvestmentRollover')");
+                            t.HasCheckConstraint("CK_ApprovalPolicies_OperationType", "\"OperationType\" IN ('InternalTransfer', 'CashPayment', 'TransactionReversal', 'InvestmentPlacement', 'InvestmentEarlyRedemption', 'InvestmentRollover', 'CreditFacilityActivation')");
 
                             t.HasCheckConstraint("CK_ApprovalPolicies_PendingRequestExpiryHours", "\"PendingRequestExpiryHours\" BETWEEN 1 AND 168");
 
@@ -316,7 +330,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_AuditLogs_Action", "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Activated','Matured','Redeemed','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged','Suspended','Closed','DrawnDown','Repaid','Accrued','Reactivated')");
 
-                            t.HasCheckConstraint("CK_AuditLogs_EntityType", "\"EntityType\" IN ('User','Role','Organization','LegalEntity','BusinessUnit','OrganizationMembership','UserInvitation','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','InvestmentRolloverRequest','Counterparty','InvestmentLimit','CreditFacility','CreditFacilityDrawdown','CreditFacilityRepayment','CreditFacilityInterestAccrualSnapshot','System')");
+                            t.HasCheckConstraint("CK_AuditLogs_EntityType", "\"EntityType\" IN ('User','Role','Organization','OrganizationApplication','LegalEntity','BusinessUnit','OrganizationMembership','UserInvitation','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','InvestmentRolloverRequest','Counterparty','InvestmentLimit','CreditFacility','CreditFacilityDrawdown','CreditFacilityRepayment','CreditFacilityInterestAccrualSnapshot','System')");
                         });
                 });
 
@@ -718,8 +732,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrganizationId", "Code")
                         .IsUnique();
-
-                    b.HasIndex("OrganizationId", "LegalEntityId");
 
                     b.ToTable("BusinessUnits");
                 });
@@ -2837,6 +2849,140 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Treasury.Domain.Entities.OrganizationApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AdminEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("AdminFirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("AdminInvitationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AdminLastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ApplicationNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("BaseCurrency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("ContactPhoneNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<DateTime?>("DecisionAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecisionNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("NormalizedOrganizationName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("OrganizationName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ProvisionedBusinessUnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProvisionedLegalEntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProvisionedOrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("ReviewStartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("SubmissionKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SubmittedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TaxIdentificationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdminInvitationId");
+
+                    b.HasIndex("ProvisionedBusinessUnitId");
+
+                    b.HasIndex("ProvisionedLegalEntityId");
+
+                    b.HasIndex("ProvisionedOrganizationId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("SubmissionKey")
+                        .IsUnique();
+
+                    b.HasIndex("NormalizedOrganizationName", "AdminEmail")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN ('Submitted','UnderReview')");
+
+                    b.HasIndex("Status", "SubmittedAtUtc");
+
+                    b.ToTable("OrganizationApplications", t =>
+                        {
+                            t.HasCheckConstraint("CK_OrganizationApplications_BaseCurrency", "char_length(\"BaseCurrency\") = 3");
+
+                            t.HasCheckConstraint("CK_OrganizationApplications_CountryCode", "char_length(\"CountryCode\") = 2");
+
+                            t.HasCheckConstraint("CK_OrganizationApplications_DecisionState", "(\"Status\" IN ('Submitted','UnderReview') AND \"DecisionAtUtc\" IS NULL) OR (\"Status\" IN ('Approved','Rejected') AND \"DecisionAtUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_OrganizationApplications_ProvisioningState", "\"Status\" <> 'Approved' OR (\"ProvisionedOrganizationId\" IS NOT NULL AND \"ProvisionedLegalEntityId\" IS NOT NULL AND \"ProvisionedBusinessUnitId\" IS NOT NULL AND \"AdminInvitationId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_OrganizationApplications_Status", "\"Status\" IN ('Submitted','UnderReview','Approved','Rejected')");
+                        });
+                });
+
             modelBuilder.Entity("Treasury.Domain.Entities.OrganizationMembership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3600,7 +3746,23 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Treasury.Domain.Entities.LegalEntity", "LegalEntity")
+                        .WithMany("Accounts")
+                        .HasForeignKey("OrganizationId", "LegalEntityId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.BusinessUnit", "BusinessUnit")
+                        .WithMany("Accounts")
+                        .HasForeignKey("OrganizationId", "LegalEntityId", "BusinessUnitId")
+                        .HasPrincipalKey("OrganizationId", "LegalEntityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("AccountType");
+
+                    b.Navigation("BusinessUnit");
+
+                    b.Navigation("LegalEntity");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.ApprovalDecision", b =>
@@ -4471,6 +4633,44 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Treasury.Domain.Entities.OrganizationApplication", b =>
+                {
+                    b.HasOne("Treasury.Domain.Entities.UserInvitation", "AdminInvitation")
+                        .WithMany()
+                        .HasForeignKey("AdminInvitationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.BusinessUnit", "ProvisionedBusinessUnit")
+                        .WithMany()
+                        .HasForeignKey("ProvisionedBusinessUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.LegalEntity", "ProvisionedLegalEntity")
+                        .WithMany()
+                        .HasForeignKey("ProvisionedLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.Organization", "ProvisionedOrganization")
+                        .WithMany()
+                        .HasForeignKey("ProvisionedOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Treasury.Domain.Entities.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AdminInvitation");
+
+                    b.Navigation("ProvisionedBusinessUnit");
+
+                    b.Navigation("ProvisionedLegalEntity");
+
+                    b.Navigation("ProvisionedOrganization");
+
+                    b.Navigation("ReviewedByUser");
+                });
+
             modelBuilder.Entity("Treasury.Domain.Entities.OrganizationMembership", b =>
                 {
                     b.HasOne("Treasury.Domain.Entities.Organization", "Organization")
@@ -4706,6 +4906,11 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("Lines");
                 });
 
+            modelBuilder.Entity("Treasury.Domain.Entities.BusinessUnit", b =>
+                {
+                    b.Navigation("Accounts");
+                });
+
             modelBuilder.Entity("Treasury.Domain.Entities.Counterparty", b =>
                 {
                     b.Navigation("CreditFacilities");
@@ -4736,6 +4941,8 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Treasury.Domain.Entities.LegalEntity", b =>
                 {
+                    b.Navigation("Accounts");
+
                     b.Navigation("BusinessUnits");
                 });
 

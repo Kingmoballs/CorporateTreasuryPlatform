@@ -8,6 +8,10 @@ public class ConsolidatedCashPositionDto
 
     public DateTime GeneratedAtUtc { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public int AccountCount { get; set; }
 
     public decimal TotalBalanceInBaseCurrency { get; set; }

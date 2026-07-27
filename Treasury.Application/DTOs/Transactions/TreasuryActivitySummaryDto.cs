@@ -8,6 +8,10 @@ public class TreasuryActivitySummaryDto
 
     public DateTime ActivityToUtc { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public int TotalTransactionCount { get; set; }
 
     public int CompletedTransactionCount { get; set; }

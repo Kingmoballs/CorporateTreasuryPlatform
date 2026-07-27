@@ -38,6 +38,10 @@ public class TreasuryDbContext : DbContext
     public DbSet<Organization> Organizations =>
         Set<Organization>();
 
+    public DbSet<OrganizationApplication>
+        OrganizationApplications =>
+            Set<OrganizationApplication>();
+
     public DbSet<LegalEntity> LegalEntities =>
         Set<LegalEntity>();
 
@@ -176,6 +180,17 @@ public class TreasuryDbContext : DbContext
                     "A record cannot be reassigned to " +
                     "another organization.");
             }
+        }
+
+        /*
+         * Pre-tenant records, such as an organization
+         * application, may be written before an organization
+         * claim exists. This does not relax protection for
+         * any IOrganizationOwnedEntity change.
+         */
+        if (entries.Count == 0)
+        {
+            return;
         }
 
         if (IsSystemScope)
@@ -636,6 +651,190 @@ public class TreasuryDbContext : DbContext
                     "char_length(\"BaseCurrency\") = 3");
             });
 
+        var organizationApplication =
+            modelBuilder
+                .Entity<OrganizationApplication>();
+
+        organizationApplication
+            .HasIndex(application =>
+                application.SubmissionKey)
+            .IsUnique();
+
+        organizationApplication
+            .HasIndex(application => new
+            {
+                application
+                    .NormalizedOrganizationName,
+                application.AdminEmail
+            })
+            .IsUnique()
+            .HasFilter(
+                "\"Status\" IN " +
+                "('Submitted','UnderReview')");
+
+        organizationApplication
+            .HasIndex(application => new
+            {
+                application.Status,
+                application.SubmittedAtUtc
+            });
+
+        organizationApplication
+            .Property(application =>
+                application.OrganizationName)
+            .HasMaxLength(200);
+
+        organizationApplication
+            .Property(application =>
+                application
+                    .NormalizedOrganizationName)
+            .HasMaxLength(200);
+
+        organizationApplication
+            .Property(application =>
+                application.RegistrationNumber)
+            .HasMaxLength(100);
+
+        organizationApplication
+            .Property(application =>
+                application
+                    .TaxIdentificationNumber)
+            .HasMaxLength(100);
+
+        organizationApplication
+            .Property(application =>
+                application.CountryCode)
+            .HasMaxLength(2);
+
+        organizationApplication
+            .Property(application =>
+                application.BaseCurrency)
+            .HasMaxLength(3);
+
+        organizationApplication
+            .Property(application =>
+                application.AdminFirstName)
+            .HasMaxLength(100);
+
+        organizationApplication
+            .Property(application =>
+                application.AdminLastName)
+            .HasMaxLength(100);
+
+        organizationApplication
+            .Property(application =>
+                application.AdminEmail)
+            .HasMaxLength(320);
+
+        organizationApplication
+            .Property(application =>
+                application.ContactPhoneNumber)
+            .HasMaxLength(30);
+
+        organizationApplication
+            .Property(application =>
+                application.ApplicationNotes)
+            .HasMaxLength(2000);
+
+        organizationApplication
+            .Property(application =>
+                application.Status)
+            .HasMaxLength(20);
+
+        organizationApplication
+            .Property(application =>
+                application.DecisionNotes)
+            .HasMaxLength(2000);
+
+        organizationApplication
+            .Property(application =>
+                application.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        organizationApplication
+            .HasOne(application =>
+                application.ReviewedByUser)
+            .WithMany()
+            .HasForeignKey(application =>
+                application.ReviewedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationApplication
+            .HasOne(application =>
+                application
+                    .ProvisionedOrganization)
+            .WithMany()
+            .HasForeignKey(application =>
+                application
+                    .ProvisionedOrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationApplication
+            .HasOne(application =>
+                application.ProvisionedLegalEntity)
+            .WithMany()
+            .HasForeignKey(application =>
+                application
+                    .ProvisionedLegalEntityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationApplication
+            .HasOne(application =>
+                application.ProvisionedBusinessUnit)
+            .WithMany()
+            .HasForeignKey(application =>
+                application
+                    .ProvisionedBusinessUnitId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationApplication
+            .HasOne(application =>
+                application.AdminInvitation)
+            .WithMany()
+            .HasForeignKey(application =>
+                application.AdminInvitationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        organizationApplication
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_OrganizationApplications_Status",
+                    "\"Status\" IN " +
+                    "('Submitted','UnderReview'," +
+                    "'Approved','Rejected')");
+
+                table.HasCheckConstraint(
+                    "CK_OrganizationApplications_CountryCode",
+                    "char_length(\"CountryCode\") = 2");
+
+                table.HasCheckConstraint(
+                    "CK_OrganizationApplications_BaseCurrency",
+                    "char_length(\"BaseCurrency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_OrganizationApplications_DecisionState",
+                    "(\"Status\" IN ('Submitted'," +
+                    "'UnderReview') AND " +
+                    "\"DecisionAtUtc\" IS NULL) OR " +
+                    "(\"Status\" IN ('Approved'," +
+                    "'Rejected') AND " +
+                    "\"DecisionAtUtc\" IS NOT NULL)");
+
+                table.HasCheckConstraint(
+                    "CK_OrganizationApplications_ProvisioningState",
+                    "\"Status\" <> 'Approved' OR " +
+                    "(\"ProvisionedOrganizationId\" " +
+                    "IS NOT NULL AND " +
+                    "\"ProvisionedLegalEntityId\" " +
+                    "IS NOT NULL AND " +
+                    "\"ProvisionedBusinessUnitId\" " +
+                    "IS NOT NULL AND " +
+                    "\"AdminInvitationId\" IS NOT NULL)");
+            });
+
         var legalEntity =
             modelBuilder.Entity<LegalEntity>();
 
@@ -727,6 +926,14 @@ public class TreasuryDbContext : DbContext
                 item.Code
             })
             .IsUnique();
+
+        businessUnit
+            .HasAlternateKey(item => new
+            {
+                item.OrganizationId,
+                item.LegalEntityId,
+                item.Id
+            });
 
         businessUnit
             .HasOne(item =>
@@ -1373,10 +1580,59 @@ public class TreasuryDbContext : DbContext
                     "NULL)");
             });
 
-        modelBuilder.Entity<Account>()
+        var account =
+            modelBuilder.Entity<Account>();
+
+        account
             .HasOne(x => x.AccountType)
             .WithMany(x => x.Accounts)
             .HasForeignKey(x => x.AccountTypeId);
+
+        account
+            .HasOne(item => item.LegalEntity)
+            .WithMany(item => item.Accounts)
+            .HasForeignKey(item => new
+            {
+                item.OrganizationId,
+                item.LegalEntityId
+            })
+            .HasPrincipalKey(item => new
+            {
+                item.OrganizationId,
+                item.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        account
+            .HasOne(item => item.BusinessUnit)
+            .WithMany(item => item.Accounts)
+            .HasForeignKey(item => new
+            {
+                item.OrganizationId,
+                item.LegalEntityId,
+                item.BusinessUnitId
+            })
+            .HasPrincipalKey(item => new
+            {
+                item.OrganizationId,
+                item.LegalEntityId,
+                item.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        account
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.LegalEntityId
+            });
+
+        account
+            .HasIndex(item => new
+            {
+                item.OrganizationId,
+                item.BusinessUnitId
+            });
         
         modelBuilder.Entity<TransferRequest>()
             .Property(request =>
@@ -1523,6 +1779,11 @@ public class TreasuryDbContext : DbContext
                 table.HasCheckConstraint(
                     "CK_Accounts_ReservedBalance_NotAboveBalance",
                     "\"ReservedBalance\" <= \"Balance\"");
+
+                table.HasCheckConstraint(
+                    "CK_Accounts_BusinessUnitRequiresLegalEntity",
+                    "\"BusinessUnitId\" IS NULL OR " +
+                    "\"LegalEntityId\" IS NOT NULL");
             });
 
         modelBuilder.Entity<LedgerEntry>()
@@ -2218,7 +2479,8 @@ public class TreasuryDbContext : DbContext
             table.HasCheckConstraint(
                 "CK_AuditLogs_EntityType",
                 "\"EntityType\" IN " +
-                "('User','Role','Organization','LegalEntity'," +
+                "('User','Role','Organization'," +
+                "'OrganizationApplication','LegalEntity'," +
                 "'BusinessUnit','OrganizationMembership'," +
                 "'UserInvitation'," +
                 "'Account','AccountType'," +
@@ -4639,7 +4901,8 @@ public class TreasuryDbContext : DbContext
                     "'TransactionReversal', " +
                     "'InvestmentPlacement', " +
                     "'InvestmentEarlyRedemption', " +
-                    "'InvestmentRollover')");
+                    "'InvestmentRollover', " +
+                    "'CreditFacilityActivation')");
                 
                 table.HasCheckConstraint(
                     "CK_ApprovalPolicies_RequiredApprovalCount",

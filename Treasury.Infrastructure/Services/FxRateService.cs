@@ -1,3 +1,4 @@
+using Treasury.Application.Common;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Fx;
 using Treasury.Application.DTOs.Audit;
@@ -331,8 +332,15 @@ public class FxRateService
     public async Task<ConsolidatedCashPositionDto>
         GetConsolidatedCashPosition(
             string baseCurrency,
-            DateTime? asOfUtc)
+            DateTime? asOfUtc,
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
+
         var normalizedBaseCurrency =
             NormalizeCurrency(baseCurrency);
 
@@ -341,7 +349,8 @@ public class FxRateService
             ?? DateTime.UtcNow;
 
         var accounts =
-            await _accountRepository.GetAll();
+            filter.Apply(
+                await _accountRepository.GetAll());
 
         var activeAccounts =
             accounts
@@ -378,6 +387,18 @@ public class FxRateService
 
                     AccountType =
                         account.AccountType?.Name,
+
+                    LegalEntityId =
+                        account.LegalEntityId,
+
+                    LegalEntityCode =
+                        account.LegalEntity?.Code,
+
+                    BusinessUnitId =
+                        account.BusinessUnitId,
+
+                    BusinessUnitCode =
+                        account.BusinessUnit?.Code,
 
                     Currency =
                         account.Currency,
@@ -434,6 +455,12 @@ public class FxRateService
             GeneratedAtUtc =
                 DateTime.UtcNow,
 
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             AccountCount =
                 accountDtos.Count,
 
@@ -457,12 +484,16 @@ public class FxRateService
     public async Task<CurrencyExposureReportDto>
         GetCurrencyExposureReport(
             string baseCurrency,
-            DateTime? asOfUtc)
+            DateTime? asOfUtc,
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
         var consolidated =
             await GetConsolidatedCashPosition(
                 baseCurrency,
-                asOfUtc);
+                asOfUtc,
+                legalEntityId,
+                businessUnitId);
 
         var totalAvailable =
             consolidated
@@ -563,6 +594,12 @@ public class FxRateService
 
             GeneratedAtUtc =
                 DateTime.UtcNow,
+
+            LegalEntityId =
+                consolidated.LegalEntityId,
+
+            BusinessUnitId =
+                consolidated.BusinessUnitId,
 
             TotalAvailableLiquidityInBaseCurrency =
                 totalAvailable,

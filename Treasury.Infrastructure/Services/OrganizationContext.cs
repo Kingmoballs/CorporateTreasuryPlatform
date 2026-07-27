@@ -38,10 +38,30 @@ public class OrganizationContext
     }
 
     /*
-     * Only work that genuinely has no HTTP request receives
-     * system-wide access. An HTTP request with a missing or
-     * invalid organization claim sees no tenant data.
+     * Background work without an HTTP request and an
+     * authenticated PlatformAdmin may operate across
+     * organization boundaries.
      */
-    public bool IsSystemScope =>
-        _httpContextAccessor.HttpContext is null;
+    public bool IsSystemScope
+    {
+        get
+        {
+            var httpContext =
+                _httpContextAccessor.HttpContext;
+
+            return httpContext is null ||
+                   (httpContext.User.Identity?
+                        .IsAuthenticated == true &&
+                    httpContext.User.IsInRole(
+                        Roles.PlatformAdmin) &&
+                    string.Equals(
+                        httpContext.User
+                            .FindFirstValue(
+                                CustomClaimTypes
+                                    .OrganizationCode),
+                        PlatformDefaults
+                            .OrganizationCode,
+                        StringComparison.Ordinal));
+        }
+    }
 }

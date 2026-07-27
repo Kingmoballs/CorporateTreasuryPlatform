@@ -10,6 +10,14 @@ public class ConsolidatedCashPositionAccountDto
 
     public string? AccountType { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public string? LegalEntityCode { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
+    public string? BusinessUnitCode { get; set; }
+
     public string Currency { get; set; } = string.Empty;
 
     public decimal Balance { get; set; }

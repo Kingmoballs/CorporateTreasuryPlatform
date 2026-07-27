@@ -55,10 +55,15 @@ public class BankStatementRepository
     public async Task<List<BankStatementLine>> GetUnmatchedLines(
         Guid? accountId,
         DateTime? fromUtc,
-        DateTime? toUtc)
+        DateTime? toUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null)
     {
         var query =
             _context.BankStatementLines
+                .AsNoTracking()
+                .Include(line =>
+                    line.Account)
                 .AsQueryable();
 
         query =
@@ -71,6 +76,22 @@ public class BankStatementRepository
             query =
                 query.Where(line =>
                     line.AccountId == accountId.Value);
+        }
+
+        if (legalEntityId.HasValue)
+        {
+            query =
+                query.Where(line =>
+                    line.Account.LegalEntityId ==
+                    legalEntityId.Value);
+        }
+
+        if (businessUnitId.HasValue)
+        {
+            query =
+                query.Where(line =>
+                    line.Account.BusinessUnitId ==
+                    businessUnitId.Value);
         }
 
         if (fromUtc.HasValue)

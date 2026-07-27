@@ -298,16 +298,12 @@ public class BankStatementsController
 
     [HttpGet("unmatched")]
     public async Task<IActionResult> GetUnmatchedLines(
-        [FromQuery] Guid? accountId,
-        [FromQuery] DateTime? fromUtc,
-        [FromQuery] DateTime? toUtc)
+        [FromQuery]
+        UnmatchedBankStatementLinesQueryDto query)
     {
         var result =
             await _bankStatementService
-                .GetUnmatchedLines(
-                    accountId,
-                    fromUtc,
-                    toUtc);
+                .GetUnmatchedLines(query);
 
         return Ok(result);
     }

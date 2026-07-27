@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Constants;
 
@@ -8,39 +9,39 @@ public static class RoleSeeder
     public static async Task SeedRoles(
         TreasuryDbContext context)
     {
-        if (!context.Roles.Any())
+        var requiredRoleNames = new[]
         {
-            var roles = new List<Role>
+            Roles.PlatformAdmin,
+            Roles.Admin,
+            Roles.TreasuryOfficer,
+            Roles.FinanceManager,
+            Roles.CFO
+        };
+
+        var existingRoleNames =
+            await context.Roles
+                .Select(role => role.Name)
+                .ToListAsync();
+
+        var missingRoles = requiredRoleNames
+            .Except(
+                existingRoleNames,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(roleName => new Role
             {
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = Roles.Admin
-                },
+                Id = Guid.NewGuid(),
+                Name = roleName
+            })
+            .ToList();
 
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = Roles.TreasuryOfficer
-                },
-
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = Roles.FinanceManager
-                },
-
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = Roles.CFO
-                }
-            };
-
-            await context.Roles.AddRangeAsync(
-                roles);
-
-            await context.SaveChangesAsync();
+        if (missingRoles.Count == 0)
+        {
+            return;
         }
+
+        await context.Roles.AddRangeAsync(
+            missingRoles);
+
+        await context.SaveChangesAsync();
     }
 }

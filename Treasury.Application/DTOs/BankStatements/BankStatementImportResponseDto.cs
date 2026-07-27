@@ -8,6 +8,10 @@ public class BankStatementImportResponseDto
 
     public string AccountName { get; set; } = string.Empty;
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string FileName { get; set; } = string.Empty;
 
     public string? StatementReference { get; set; }

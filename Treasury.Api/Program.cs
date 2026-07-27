@@ -20,6 +20,7 @@ using System.Threading.RateLimiting;
 using Treasury.Api.Models;
 using Treasury.Api.Security;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 
 
 // Create a builder for the web application
@@ -46,6 +47,13 @@ var authenticationSecuritySettings =
             AuthenticationSecurityOptions.SectionName)
         .Get<AuthenticationSecurityOptions>() ??
     new AuthenticationSecurityOptions();
+
+var organizationOnboardingSettings =
+    builder.Configuration
+        .GetSection(
+            OrganizationOnboardingOptions.SectionName)
+        .Get<OrganizationOnboardingOptions>() ??
+    new OrganizationOnboardingOptions();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -89,6 +97,17 @@ builder.Services.AddRateLimiter(options =>
                     context,
                     authenticationSecuritySettings
                         .MfaVerificationRequestsPerMinute));
+
+    options.AddPolicy(
+        AuthenticationRateLimitPolicies
+            .OrganizationApplication,
+        context =>
+            AuthenticationRateLimitPolicies
+                .CreateFixedWindowPartition(
+                    context,
+                    organizationOnboardingSettings
+                        .ApplicationsPerHour,
+                    TimeSpan.FromHours(1)));
 
     options.OnRejected =
         async (rejectionContext, cancellationToken) =>
@@ -276,6 +295,14 @@ builder.Services.AddScoped<
     UserInvitationService>();
 
 builder.Services.AddScoped<
+    IOrganizationApplicationRepository,
+    OrganizationApplicationRepository>();
+
+builder.Services.AddScoped<
+    IOrganizationOnboardingService,
+    OrganizationOnboardingService>();
+
+builder.Services.AddScoped<
     IEmailSender,
     SmtpEmailSender>();
 
@@ -396,6 +423,32 @@ builder.Services
                 out _),
         "Invitation acceptance URL must be an " +
         "absolute URL.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<PlatformAdminBootstrapOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            PlatformAdminBootstrapOptions.SectionName))
+    .Validate(
+        options => options.IsValid(),
+        "Enabled PlatformAdmin bootstrap requires valid " +
+        "names, email and a 12-128 character password " +
+        "containing upper-case, lower-case, numeric and " +
+        "special characters.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<OrganizationOnboardingOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            OrganizationOnboardingOptions.SectionName))
+    .Validate(
+        options =>
+            options.ApplicationsPerHour
+                is >= 1 and <= 100,
+        "Organization application rate limit must " +
+        "be between 1 and 100 requests per hour.")
     .ValidateOnStart();
 
 builder.Services
@@ -870,6 +923,16 @@ using (var scope = app.Services.CreateScope())
     await RoleSeeder.SeedRoles(context);
 
     await OrganizationSeeder.Seed(context);
+
+    var platformAdminBootstrapOptions =
+        scope.ServiceProvider
+            .GetRequiredService<
+                IOptions<PlatformAdminBootstrapOptions>>()
+            .Value;
+
+    await PlatformAdminSeeder.Seed(
+        context,
+        platformAdminBootstrapOptions);
 
     await AccountTypeSeeder.SeedAccountTypes(context);
 

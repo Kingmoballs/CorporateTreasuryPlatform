@@ -56,6 +56,11 @@ public class UserAdministrationService
             await _roleRepository.GetAll();
 
         return roles
+            .Where(role =>
+                !string.Equals(
+                    role.Name,
+                    Roles.PlatformAdmin,
+                    StringComparison.OrdinalIgnoreCase))
             .Select(role => new RoleDto
             {
                 Id = role.Id,
@@ -80,6 +85,16 @@ public class UserAdministrationService
         {
             throw new ResourceNotFoundException(
                 "Role not found.");
+        }
+
+        if (string.Equals(
+                role.Name,
+                Roles.PlatformAdmin,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ForbiddenOperationException(
+                "The PlatformAdmin role cannot be assigned " +
+                "from an organization administration endpoint.");
         }
 
         var membership =

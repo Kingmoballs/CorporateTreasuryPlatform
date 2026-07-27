@@ -18,6 +18,10 @@ public class TreasuryAlertResponseDto
 
     public string? AccountName { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string? Currency { get; set; }
 
     public string? SourceModule { get; set; }

@@ -6,17 +6,25 @@ namespace Treasury.Application.Interfaces;
 public interface ITreasuryReportingService
 {
     Task<BalanceAggregationDto>
-        GetBalanceAggregation();
+        GetBalanceAggregation(
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null);
 
     Task<CashPositionDashboardDto>
-        GetCashPositionDashboard();
+        GetCashPositionDashboard(
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null);
     
     Task<LiquidityReportDto>
         GetLiquidityReport(
             DateTime? fromUtc,
-            DateTime? toUtc);
+            DateTime? toUtc,
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null);
     
     Task<CsvExportDto> ExportLiquidityReportCsv(
         DateTime? fromUtc,
-        DateTime? toUtc);
+        DateTime? toUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null);
 }

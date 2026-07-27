@@ -12,6 +12,10 @@ public class InvestmentPlacementQueryDto
 
     public Guid? SourceAccountId { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string? Currency { get; set; }
 
     public DateTime? MaturityFromUtc { get; set; }

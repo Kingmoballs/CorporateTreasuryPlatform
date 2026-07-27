@@ -2,6 +2,8 @@ namespace Treasury.Application.Interfaces;
 
 public interface IEmailSender
 {
+    bool IsConfigured { get; }
+
     void EnsureConfigured();
 
     Task SendUserInvitation(

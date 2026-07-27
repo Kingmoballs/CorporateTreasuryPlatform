@@ -25,6 +25,33 @@ public class UserInvitationServiceTests
             TimeSpan.Zero);
 
     [Fact]
+    public async Task
+        Invite_PlatformAdminRoleIsRejected()
+    {
+        var setup = CreateSetup();
+
+        setup.Role.Name = Roles.PlatformAdmin;
+
+        await Assert.ThrowsAsync<
+            ForbiddenOperationException>(
+            () => setup.Service.Invite(
+                new CreateUserInvitationDto
+                {
+                    FirstName = "Platform",
+                    LastName = "Administrator",
+                    Email =
+                        "platform@example.com",
+                    RoleId = setup.Role.Id
+                }));
+
+        setup.InvitationRepository.Verify(
+            repository =>
+                repository.Add(
+                    It.IsAny<UserInvitation>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task Invite_StoresHashAndNeverReturnsRawToken()
     {
         var setup = CreateSetup();

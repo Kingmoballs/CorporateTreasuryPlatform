@@ -129,6 +129,12 @@ public class InvestmentPlacementRepository
                     query.SourceAccountId.Value);
         }
 
+        placements =
+            ApplyOrganizationDimensionFilter(
+                placements,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(query.Currency))
         {
             placements =
@@ -192,6 +198,8 @@ public class InvestmentPlacementRepository
         var placements =
             _context.InvestmentPlacements
                 .AsNoTracking()
+                .Include(placement =>
+                    placement.SourceAccount)
                 .Where(placement =>
                     placement.Status ==
                         InvestmentPlacementStatuses.Active ||
@@ -201,6 +209,20 @@ public class InvestmentPlacementRepository
                     placement.Status ==
                         InvestmentPlacementStatuses.Redeemed))
                 .AsQueryable();
+
+        if (query.SourceAccountId.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.SourceAccountId ==
+                    query.SourceAccountId.Value);
+        }
+
+        placements =
+            ApplyOrganizationDimensionFilter(
+                placements,
+                query.LegalEntityId,
+                query.BusinessUnitId);
 
         if (!string.IsNullOrWhiteSpace(query.Currency))
         {
@@ -306,5 +328,30 @@ public class InvestmentPlacementRepository
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();
+    }
+
+    private static IQueryable<InvestmentPlacement>
+        ApplyOrganizationDimensionFilter(
+            IQueryable<InvestmentPlacement> placements,
+            Guid? legalEntityId,
+            Guid? businessUnitId)
+    {
+        if (legalEntityId.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.SourceAccount.LegalEntityId ==
+                    legalEntityId.Value);
+        }
+
+        if (businessUnitId.HasValue)
+        {
+            placements =
+                placements.Where(placement =>
+                    placement.SourceAccount.BusinessUnitId ==
+                    businessUnitId.Value);
+        }
+
+        return placements;
     }
 }

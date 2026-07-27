@@ -2,6 +2,10 @@ namespace Treasury.Application.DTOs.Transactions;
 
 public class PagedTreasuryTransactionsDto
 {
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public int Page { get; set; }
 
     public int PageSize { get; set; }

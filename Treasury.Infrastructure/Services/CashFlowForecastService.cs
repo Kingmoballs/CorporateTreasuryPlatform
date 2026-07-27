@@ -1,4 +1,5 @@
 using System.Text;
+using Treasury.Application.Common;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Audit;
@@ -194,8 +195,15 @@ public class CashFlowForecastService
             Guid? accountId,
             string? currency,
             DateTime fromUtc,
-            DateTime toUtc)
+            DateTime toUtc,
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
+
         var normalizedPeriod =
             NormalizeForecastPeriod(
                 fromUtc,
@@ -212,6 +220,16 @@ public class CashFlowForecastService
                 normalizedCurrency,
                 normalizedPeriod.FromUtc,
                 normalizedPeriod.ToUtc);
+
+        if (filter.IsScoped)
+        {
+            var scopedAccountIds =
+                await GetScopedAccountIds(filter);
+
+            items = ApplyForecastScope(
+                items,
+                scopedAccountIds);
+        }
 
         return items
             .Select(MapItem)
@@ -369,8 +387,15 @@ public class CashFlowForecastService
             string? currency,
             DateTime fromUtc,
             DateTime toUtc,
-            decimal minimumLiquidityThreshold)
+            decimal minimumLiquidityThreshold,
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
+
         if (minimumLiquidityThreshold < 0)
         {
             throw new BusinessRuleException(
@@ -389,6 +414,9 @@ public class CashFlowForecastService
 
         decimal openingAvailableBalance;
 
+        HashSet<Guid>? scopedAccountIds =
+            null;
+
         if (accountId.HasValue)
         {
             account =
@@ -399,6 +427,16 @@ public class CashFlowForecastService
             {
                 throw new ResourceNotFoundException(
                     "Account not found.");
+            }
+
+            EnsureAccountMatchesScope(
+                account,
+                filter);
+
+            if (filter.IsScoped)
+            {
+                scopedAccountIds =
+                    [account.Id];
             }
 
             normalizedCurrency =
@@ -419,7 +457,16 @@ public class CashFlowForecastService
                 NormalizeCurrency(currency);
 
             var accounts =
-                await _accountRepository.GetAll();
+                filter.Apply(
+                    await _accountRepository.GetAll());
+
+            if (filter.IsScoped)
+            {
+                scopedAccountIds =
+                    accounts
+                        .Select(item => item.Id)
+                        .ToHashSet();
+            }
 
             openingAvailableBalance =
                 accounts
@@ -440,6 +487,13 @@ public class CashFlowForecastService
                 normalizedPeriod.FromUtc,
                 normalizedPeriod.ToUtc);
 
+        if (scopedAccountIds is not null)
+        {
+            items = ApplyForecastScope(
+                items,
+                scopedAccountIds);
+        }
+
         var dailyForecasts =
             BuildDailyForecasts(
                 items,
@@ -458,6 +512,12 @@ public class CashFlowForecastService
 
             AccountName =
                 account?.Name,
+
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
 
             Currency =
                 normalizedCurrency,
@@ -510,6 +570,11 @@ public class CashFlowForecastService
         GetVarianceReport(
             CashFlowForecastVarianceQueryDto query)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         var normalizedPeriod =
             NormalizeForecastPeriod(
                 query.FromUtc,
@@ -519,6 +584,9 @@ public class CashFlowForecastService
             null;
 
         string normalizedCurrency;
+
+        HashSet<Guid>? scopedAccountIds =
+            null;
 
         if (query.AccountId.HasValue)
         {
@@ -530,6 +598,16 @@ public class CashFlowForecastService
             {
                 throw new ResourceNotFoundException(
                     "Account not found.");
+            }
+
+            EnsureAccountMatchesScope(
+                account,
+                filter);
+
+            if (filter.IsScoped)
+            {
+                scopedAccountIds =
+                    [account.Id];
             }
 
             normalizedCurrency =
@@ -555,6 +633,13 @@ public class CashFlowForecastService
 
             normalizedCurrency =
                 NormalizeCurrency(query.Currency);
+
+            if (filter.IsScoped)
+            {
+                scopedAccountIds =
+                    await GetScopedAccountIds(
+                        filter);
+            }
         }
 
         var forecastItems =
@@ -564,6 +649,14 @@ public class CashFlowForecastService
                 normalizedPeriod.FromUtc,
                 normalizedPeriod.ToUtc);
 
+        if (scopedAccountIds is not null)
+        {
+            forecastItems =
+                ApplyForecastScope(
+                    forecastItems,
+                    scopedAccountIds);
+        }
+
         var actualTransactions =
             await _transactionRepository
                 .GetCompletedCashFlowTransactionsForVariance(
@@ -571,6 +664,17 @@ public class CashFlowForecastService
                     normalizedCurrency,
                     normalizedPeriod.FromUtc,
                     normalizedPeriod.ToUtc);
+
+        if (scopedAccountIds is not null)
+        {
+            actualTransactions =
+                actualTransactions
+                    .Where(transaction =>
+                        TransactionMatchesScope(
+                            transaction,
+                            scopedAccountIds))
+                    .ToList();
+        }
 
         var actualMovements =
             actualTransactions
@@ -647,6 +751,12 @@ public class CashFlowForecastService
             AccountName =
                 account?.Name,
 
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             Currency =
                 normalizedCurrency,
 
@@ -712,7 +822,7 @@ public class CashFlowForecastService
         * Section 1: report-level summary.
         */
         csv.AppendLine(
-            "ReportType,GeneratedAtUtc,AccountId,AccountName,Currency,FromUtc,ToUtc,ForecastItemCount,ActualTransactionCount,TotalForecastedInflow,TotalActualInflow,TotalInflowVariance,TotalForecastedOutflow,TotalActualOutflow,TotalOutflowVariance,ForecastedNetMovement,ActualNetMovement,NetVariance,NetVariancePercentage");
+            "ReportType,GeneratedAtUtc,AccountId,AccountName,LegalEntityId,BusinessUnitId,Currency,FromUtc,ToUtc,ForecastItemCount,ActualTransactionCount,TotalForecastedInflow,TotalActualInflow,TotalInflowVariance,TotalForecastedOutflow,TotalActualOutflow,TotalOutflowVariance,ForecastedNetMovement,ActualNetMovement,NetVariance,NetVariancePercentage");
 
         csv.AppendLine(string.Join(
             ",",
@@ -720,6 +830,8 @@ public class CashFlowForecastService
             CsvExportHelper.Escape(report.GeneratedAtUtc),
             CsvExportHelper.Escape(report.AccountId),
             CsvExportHelper.Escape(report.AccountName),
+            CsvExportHelper.Escape(report.LegalEntityId),
+            CsvExportHelper.Escape(report.BusinessUnitId),
             CsvExportHelper.Escape(report.Currency),
             CsvExportHelper.Escape(report.FromUtc),
             CsvExportHelper.Escape(report.ToUtc),
@@ -779,6 +891,57 @@ public class CashFlowForecastService
                 CsvExportHelper.ToUtf8Bytes(
                     csv.ToString())
         };
+    }
+
+    private async Task<HashSet<Guid>>
+        GetScopedAccountIds(
+            OrganizationDimensionFilter filter)
+    {
+        return filter
+            .Apply(
+                await _accountRepository.GetAll())
+            .Select(account => account.Id)
+            .ToHashSet();
+    }
+
+    private static void EnsureAccountMatchesScope(
+        Account account,
+        OrganizationDimensionFilter filter)
+    {
+        if (filter.IsScoped &&
+            !filter.Matches(account))
+        {
+            throw new BusinessRuleException(
+                "The selected account does not belong " +
+                "to the requested legal entity or " +
+                "business unit.");
+        }
+    }
+
+    private static List<CashFlowForecastItem>
+        ApplyForecastScope(
+            IEnumerable<CashFlowForecastItem> items,
+            IReadOnlySet<Guid> scopedAccountIds)
+    {
+        return items
+            .Where(item =>
+                item.AccountId.HasValue &&
+                scopedAccountIds.Contains(
+                    item.AccountId.Value))
+            .ToList();
+    }
+
+    private static bool TransactionMatchesScope(
+        TreasuryTransaction transaction,
+        IReadOnlySet<Guid> scopedAccountIds)
+    {
+        return
+            (transaction.SourceAccountId.HasValue &&
+             scopedAccountIds.Contains(
+                 transaction.SourceAccountId.Value)) ||
+            (transaction.DestinationAccountId.HasValue &&
+             scopedAccountIds.Contains(
+                 transaction.DestinationAccountId.Value));
     }
 
     private static List<CashFlowForecastDailyBucketDto>
@@ -1415,6 +1578,12 @@ public class CashFlowForecastService
 
             AccountName =
                 item.Account?.Name,
+
+            LegalEntityId =
+                item.Account?.LegalEntityId,
+
+            BusinessUnitId =
+                item.Account?.BusinessUnitId,
 
             Direction =
                 item.Direction,

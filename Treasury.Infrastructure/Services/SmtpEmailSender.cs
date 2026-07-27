@@ -17,13 +17,16 @@ public class SmtpEmailSender : IEmailSender
         _options = options.Value;
     }
 
+    public bool IsConfigured =>
+        _options.Enabled &&
+        !string.IsNullOrWhiteSpace(
+            _options.Host) &&
+        !string.IsNullOrWhiteSpace(
+            _options.FromAddress);
+
     public void EnsureConfigured()
     {
-        if (!_options.Enabled ||
-            string.IsNullOrWhiteSpace(
-                _options.Host) ||
-            string.IsNullOrWhiteSpace(
-                _options.FromAddress))
+        if (!IsConfigured)
         {
             throw new BusinessRuleException(
                 "Email delivery is not configured. " +

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 using Treasury.Shared.Common;
+using Treasury.Application.Common;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Audit;
@@ -440,6 +441,13 @@ public class InvestmentPlacementService
     public async Task<PagedInvestmentPlacementResponseDto>
         Search(InvestmentPlacementQueryDto query)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         query.Page =
             query.Page < 1 ? 1 : query.Page;
 
@@ -498,11 +506,23 @@ public class InvestmentPlacementService
                 "Counterparty ID is invalid.");
         }
 
+        if (query.SourceAccountId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Source account ID is invalid.");
+        }
+
         var result =
             await _placementRepository.Search(query);
 
         return new PagedInvestmentPlacementResponseDto
         {
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             Items =
                 result.Items
                     .Select(Map)
@@ -1185,6 +1205,15 @@ public class InvestmentPlacementService
             GeneratedAtUtc =
                 generatedAtUtc,
 
+            SourceAccountId =
+                normalizedQuery.SourceAccountId,
+
+            LegalEntityId =
+                normalizedQuery.LegalEntityId,
+
+            BusinessUnitId =
+                normalizedQuery.BusinessUnitId,
+
             CurrencyFilter =
                 normalizedQuery.Currency,
 
@@ -1292,6 +1321,21 @@ public class InvestmentPlacementService
                         InstitutionName =
                             placement.InstitutionName,
 
+                        SourceAccountId =
+                            placement.SourceAccountId,
+
+                        SourceAccountName =
+                            placement.SourceAccount?.Name
+                            ?? string.Empty,
+
+                        LegalEntityId =
+                            placement.SourceAccount?
+                                .LegalEntityId,
+
+                        BusinessUnitId =
+                            placement.SourceAccount?
+                                .BusinessUnitId,
+
                         Currency =
                             placement.Currency,
 
@@ -1339,6 +1383,15 @@ public class InvestmentPlacementService
             GeneratedAtUtc =
                 generatedAtUtc,
 
+            SourceAccountId =
+                normalizedQuery.SourceAccountId,
+
+            LegalEntityId =
+                normalizedQuery.LegalEntityId,
+
+            BusinessUnitId =
+                normalizedQuery.BusinessUnitId,
+
             PlacementCount =
                 items.Count,
 
@@ -1374,7 +1427,7 @@ public class InvestmentPlacementService
 
         // Section 1: overall portfolio summary.
         csv.AppendLine(
-            "ReportType,GeneratedAtUtc,PlacementCount,ActiveCount,MaturedCount,RedeemedCount,OverdueUnredeemedCount,OutstandingPrincipal,OutstandingExpectedInterest,OutstandingExpectedMaturityAmount,RedeemedPrincipal,ActualInterestEarned,WithholdingTaxAmount,ActualRedeemedProceeds,WeightedAverageInterestRate,NextMaturityDateUtc");
+            "ReportType,GeneratedAtUtc,SourceAccountId,LegalEntityId,BusinessUnitId,PlacementCount,ActiveCount,MaturedCount,RedeemedCount,OverdueUnredeemedCount,OutstandingPrincipal,OutstandingExpectedInterest,OutstandingExpectedMaturityAmount,RedeemedPrincipal,ActualInterestEarned,WithholdingTaxAmount,ActualRedeemedProceeds,WeightedAverageInterestRate,NextMaturityDateUtc");
 
         csv.AppendLine(string.Join(
             ",",
@@ -1382,6 +1435,12 @@ public class InvestmentPlacementService
                 "InvestmentPortfolioSummary"),
             CsvExportHelper.Escape(
                 report.GeneratedAtUtc),
+            CsvExportHelper.Escape(
+                report.SourceAccountId),
+            CsvExportHelper.Escape(
+                report.LegalEntityId),
+            CsvExportHelper.Escape(
+                report.BusinessUnitId),
             CsvExportHelper.Escape(
                 report.PlacementCount),
             CsvExportHelper.Escape(
@@ -1453,7 +1512,7 @@ public class InvestmentPlacementService
 
         // Section 3: placement-level maturity schedule.
         csv.AppendLine(
-            "PlacementId,Reference,InstitutionName,Currency,PrincipalAmount,AnnualInterestRate,ExpectedInterestAmount,ExpectedMaturityAmount,StartDateUtc,MaturityDateUtc,DaysToMaturity,Status,IsOverdue,ActualMaturityAmount,RedeemedAtUtc");
+            "PlacementId,Reference,InstitutionName,SourceAccountId,SourceAccountName,LegalEntityId,BusinessUnitId,Currency,PrincipalAmount,AnnualInterestRate,ExpectedInterestAmount,ExpectedMaturityAmount,StartDateUtc,MaturityDateUtc,DaysToMaturity,Status,IsOverdue,ActualMaturityAmount,RedeemedAtUtc");
 
         foreach (var item in schedule.Items)
         {
@@ -1465,6 +1524,14 @@ public class InvestmentPlacementService
                     item.Reference),
                 CsvExportHelper.Escape(
                     item.InstitutionName),
+                CsvExportHelper.Escape(
+                    item.SourceAccountId),
+                CsvExportHelper.Escape(
+                    item.SourceAccountName),
+                CsvExportHelper.Escape(
+                    item.LegalEntityId),
+                CsvExportHelper.Escape(
+                    item.BusinessUnitId),
                 CsvExportHelper.Escape(
                     item.Currency),
                 CsvExportHelper.Escape(
@@ -2615,6 +2682,13 @@ public class InvestmentPlacementService
         NormalizePortfolioQuery(
             InvestmentPortfolioQueryDto query)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         DateTime? maturityFromUtc =
             query.MaturityFromUtc.HasValue
                 ? NormalizeUtc(
@@ -2647,8 +2721,23 @@ public class InvestmentPlacementService
                 "Counterparty ID is invalid.");
         }
 
+        if (query.SourceAccountId == Guid.Empty)
+        {
+            throw new BusinessRuleException(
+                "Source account ID is invalid.");
+        }
+
         return new InvestmentPortfolioQueryDto
         {
+            SourceAccountId =
+                query.SourceAccountId,
+
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             Currency =
                 string.IsNullOrWhiteSpace(
                     query.Currency)
@@ -2883,6 +2972,12 @@ public class InvestmentPlacementService
             SourceAccountName =
                 placement.SourceAccount?.Name ??
                 string.Empty,
+
+            LegalEntityId =
+                placement.SourceAccount?.LegalEntityId,
+
+            BusinessUnitId =
+                placement.SourceAccount?.BusinessUnitId,
 
             PrincipalAmount =
                 placement.PrincipalAmount,

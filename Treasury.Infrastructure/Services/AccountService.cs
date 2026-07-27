@@ -5,6 +5,7 @@ using Treasury.Application.Interfaces;
 using Treasury.Domain.Entities;
 using Treasury.Shared.Common;
 using Treasury.Shared.Constants;
+using Treasury.Application.Common;
 using Treasury.Application.Common.Exceptions;
 
 namespace Treasury.Infrastructure.Services;
@@ -15,6 +16,9 @@ public class AccountService : IAccountService
 
     private readonly IAccountTypeRepository
         _accountTypeRepository;
+
+    private readonly IOrganizationStructureRepository
+        _organizationStructureRepository;
     
     private readonly ILedgerRepository
     _ledgerRepository;
@@ -31,6 +35,8 @@ public class AccountService : IAccountService
     public AccountService(
         IAccountRepository accountRepository,
         IAccountTypeRepository accountTypeRepository,
+        IOrganizationStructureRepository
+            organizationStructureRepository,
         ILedgerRepository ledgerRepository,
         ITreasuryTransactionRepository transactionRepository,
         ICurrentUserService currentUserService,
@@ -41,6 +47,9 @@ public class AccountService : IAccountService
 
         _accountTypeRepository =
             accountTypeRepository;
+
+        _organizationStructureRepository =
+            organizationStructureRepository;
 
         _ledgerRepository =
             ledgerRepository;
@@ -75,6 +84,19 @@ public class AccountService : IAccountService
         {
             throw new ArgumentException(
                 "Opening balance cannot be negative.");
+        }
+
+        if (dto.LegalEntityId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Legal entity is required.");
+        }
+
+        if (dto.BusinessUnitId.HasValue &&
+            dto.BusinessUnitId.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Business unit is invalid.");
         }
 
         var currency =
@@ -113,6 +135,55 @@ public class AccountService : IAccountService
                 "Account type not found.");
         }
 
+        var legalEntity =
+            await _organizationStructureRepository
+                .GetLegalEntity(
+                    dto.LegalEntityId);
+
+        if (legalEntity is null)
+        {
+            throw new ResourceNotFoundException(
+                "Legal entity not found.");
+        }
+
+        if (!legalEntity.IsActive)
+        {
+            throw new BusinessRuleException(
+                "Accounts can only be assigned to an " +
+                "active legal entity.");
+        }
+
+        BusinessUnit? businessUnit = null;
+
+        if (dto.BusinessUnitId.HasValue)
+        {
+            businessUnit =
+                await _organizationStructureRepository
+                    .GetBusinessUnit(
+                        dto.BusinessUnitId.Value);
+
+            if (businessUnit is null)
+            {
+                throw new ResourceNotFoundException(
+                    "Business unit not found.");
+            }
+
+            if (!businessUnit.IsActive)
+            {
+                throw new BusinessRuleException(
+                    "Accounts can only be assigned to " +
+                    "an active business unit.");
+            }
+
+            if (businessUnit.LegalEntityId !=
+                legalEntity.Id)
+            {
+                throw new BusinessRuleException(
+                    "The business unit does not belong " +
+                    "to the selected legal entity.");
+            }
+        }
+
         var accountExists =
             await _accountRepository
                 .AccountNumberExists(
@@ -135,6 +206,21 @@ public class AccountService : IAccountService
             var account = new Account
             {
                 Id = Guid.NewGuid(),
+
+                OrganizationId =
+                    RequireOrganizationId(),
+
+                LegalEntityId =
+                    legalEntity.Id,
+
+                LegalEntity =
+                    legalEntity,
+
+                BusinessUnitId =
+                    businessUnit?.Id,
+
+                BusinessUnit =
+                    businessUnit,
 
                 Name = dto.Name.Trim(),
 
@@ -266,6 +352,24 @@ public class AccountService : IAccountService
                     AccountType =
                         accountType.Name,
 
+                    LegalEntityId =
+                        account.LegalEntityId,
+
+                    LegalEntityCode =
+                        legalEntity.Code,
+
+                    LegalEntityName =
+                        legalEntity.Name,
+
+                    BusinessUnitId =
+                        account.BusinessUnitId,
+
+                    BusinessUnitCode =
+                        businessUnit?.Code,
+
+                    BusinessUnitName =
+                        businessUnit?.Name,
+
                     Balance =
                         account.Balance,
 
@@ -355,6 +459,12 @@ public class AccountService : IAccountService
             account.AccountNumber,
             AccountType = accountTypeName,
             account.AccountTypeId,
+            account.LegalEntityId,
+            LegalEntityCode =
+                account.LegalEntity?.Code,
+            account.BusinessUnitId,
+            BusinessUnitCode =
+                account.BusinessUnit?.Code,
             account.Balance,
             account.ReservedBalance,
             account.AvailableBalance,
@@ -367,11 +477,19 @@ public class AccountService : IAccountService
     }
 
     public async Task<List<AccountResponseDto>>
-        GetAccounts()
+        GetAccounts(
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
+
         var accounts =
-            await _accountRepository
-                .GetAll();
+            filter.Apply(
+                await _accountRepository
+                    .GetAll());
 
         return accounts
             .Select(account =>
@@ -387,6 +505,24 @@ public class AccountService : IAccountService
                     AccountType =
                         account.AccountType.Name,
 
+                    LegalEntityId =
+                        account.LegalEntityId,
+
+                    LegalEntityCode =
+                        account.LegalEntity?.Code,
+
+                    LegalEntityName =
+                        account.LegalEntity?.Name,
+
+                    BusinessUnitId =
+                        account.BusinessUnitId,
+
+                    BusinessUnitCode =
+                        account.BusinessUnit?.Code,
+
+                    BusinessUnitName =
+                        account.BusinessUnit?.Name,
+
                     Balance =
                         account.Balance,
 
@@ -400,6 +536,22 @@ public class AccountService : IAccountService
                         account.Currency
                 })
             .ToList();
+    }
+
+    private Guid RequireOrganizationId()
+    {
+        var organizationId =
+            _currentUserService.OrganizationId;
+
+        if (!organizationId.HasValue ||
+            organizationId.Value == Guid.Empty)
+        {
+            throw new UnauthorizedAccessException(
+                "A valid organization context is " +
+                "required.");
+        }
+
+        return organizationId.Value;
     }
 
     public async Task<List<LedgerEntryDto>>

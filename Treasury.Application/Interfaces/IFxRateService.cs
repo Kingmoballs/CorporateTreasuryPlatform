@@ -33,9 +33,13 @@ public interface IFxRateService
 
     Task<ConsolidatedCashPositionDto> GetConsolidatedCashPosition(
         string baseCurrency,
-        DateTime? asOfUtc);
+        DateTime? asOfUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null);
 
     Task<CurrencyExposureReportDto> GetCurrencyExposureReport(
         string baseCurrency,
-        DateTime? asOfUtc);
+        DateTime? asOfUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null);
 }

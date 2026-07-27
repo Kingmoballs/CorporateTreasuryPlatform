@@ -53,14 +53,18 @@ public class CashFlowForecastsController
         [FromQuery] Guid? accountId,
         [FromQuery] string? currency,
         [FromQuery] DateTime fromUtc,
-        [FromQuery] DateTime toUtc)
+        [FromQuery] DateTime toUtc,
+        [FromQuery] Guid? legalEntityId,
+        [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _forecastService.GetActive(
                 accountId,
                 currency,
                 fromUtc,
-                toUtc);
+                toUtc,
+                legalEntityId,
+                businessUnitId);
 
         return Ok(result);
     }
@@ -94,6 +98,8 @@ public class CashFlowForecastsController
         [FromQuery] string? currency,
         [FromQuery] DateTime fromUtc,
         [FromQuery] DateTime toUtc,
+        [FromQuery] Guid? legalEntityId,
+        [FromQuery] Guid? businessUnitId,
         [FromQuery] decimal minimumLiquidityThreshold = 0)
     {
         var result =
@@ -102,7 +108,9 @@ public class CashFlowForecastsController
                 currency,
                 fromUtc,
                 toUtc,
-                minimumLiquidityThreshold);
+                minimumLiquidityThreshold,
+                legalEntityId,
+                businessUnitId);
 
         return Ok(result);
     }

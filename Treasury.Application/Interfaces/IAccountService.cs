@@ -8,7 +8,9 @@ public interface IAccountService
             CreateAccountDto dto);
 
     Task<List<AccountResponseDto>>
-        GetAccounts();
+        GetAccounts(
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null);
 
     Task<List<LedgerEntryDto>>
     GetAccountLedger(Guid accountId);

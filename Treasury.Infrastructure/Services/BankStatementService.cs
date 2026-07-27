@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using Treasury.Application.Common;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.BankStatements;
@@ -445,6 +446,12 @@ public class BankStatementService
                 statementImport.Account?.Name
                 ?? string.Empty,
 
+            LegalEntityId =
+                statementImport.Account?.LegalEntityId,
+
+            BusinessUnitId =
+                statementImport.Account?.BusinessUnitId,
+
             FileName =
                 statementImport.FileName,
 
@@ -561,6 +568,12 @@ public class BankStatementService
                 statementImport.Account?.Name
                 ?? string.Empty,
 
+            LegalEntityId =
+                statementImport.Account?.LegalEntityId,
+
+            BusinessUnitId =
+                statementImport.Account?.BusinessUnitId,
+
             FileName =
                 statementImport.FileName,
 
@@ -584,7 +597,10 @@ public class BankStatementService
 
             Lines =
                 actionRequiredLines
-                    .Select(MapLine)
+                    .Select(line =>
+                        MapLine(
+                            line,
+                            statementImport.Account))
                     .ToList()
         };
     }
@@ -644,6 +660,12 @@ public class BankStatementService
                 statementImport.Account?.Name
                 ?? string.Empty,
 
+            LegalEntityId =
+                statementImport.Account?.LegalEntityId,
+
+            BusinessUnitId =
+                statementImport.Account?.BusinessUnitId,
+
             FileName =
                 statementImport.FileName,
 
@@ -692,7 +714,7 @@ public class BankStatementService
         * Section 1: summary of bank-side exceptions.
         */
         csv.AppendLine(
-            "ReportType,ImportId,AccountId,AccountName,FileName,StatementReference,Currency,GeneratedAtUtc,ActionRequiredLineCount,UnmatchedLineCount,MatchedPendingReconciliationCount");
+            "ReportType,ImportId,AccountId,AccountName,LegalEntityId,BusinessUnitId,FileName,StatementReference,Currency,GeneratedAtUtc,ActionRequiredLineCount,UnmatchedLineCount,MatchedPendingReconciliationCount");
 
         csv.AppendLine(string.Join(
             ",",
@@ -700,6 +722,8 @@ public class BankStatementService
             CsvExportHelper.Escape(report.ImportId),
             CsvExportHelper.Escape(report.AccountId),
             CsvExportHelper.Escape(report.AccountName),
+            CsvExportHelper.Escape(report.LegalEntityId),
+            CsvExportHelper.Escape(report.BusinessUnitId),
             CsvExportHelper.Escape(report.FileName),
             CsvExportHelper.Escape(report.StatementReference),
             CsvExportHelper.Escape(report.Currency),
@@ -714,7 +738,7 @@ public class BankStatementService
         * Section 2: detailed bank statement lines requiring attention.
         */
         csv.AppendLine(
-            "LineId,BankStatementImportId,AccountId,LineNumber,TransactionDateUtc,ValueDateUtc,Description,BankReference,CounterpartyName,Amount,Currency,BalanceAfterTransaction,ReconciliationStatus,MatchedTreasuryTransactionId,MatchedTreasuryTransactionReference,MatchedAtUtc,ReconciledByUserId,ReconciledAtUtc,CreatedAtUtc");
+            "LineId,BankStatementImportId,AccountId,LegalEntityId,BusinessUnitId,LineNumber,TransactionDateUtc,ValueDateUtc,Description,BankReference,CounterpartyName,Amount,Currency,BalanceAfterTransaction,ReconciliationStatus,MatchedTreasuryTransactionId,MatchedTreasuryTransactionReference,MatchedAtUtc,ReconciledByUserId,ReconciledAtUtc,CreatedAtUtc");
 
         foreach (var line in report.Lines)
         {
@@ -723,6 +747,8 @@ public class BankStatementService
                 CsvExportHelper.Escape(line.Id),
                 CsvExportHelper.Escape(line.BankStatementImportId),
                 CsvExportHelper.Escape(line.AccountId),
+                CsvExportHelper.Escape(line.LegalEntityId),
+                CsvExportHelper.Escape(line.BusinessUnitId),
                 CsvExportHelper.Escape(line.LineNumber),
                 CsvExportHelper.Escape(line.TransactionDateUtc),
                 CsvExportHelper.Escape(line.ValueDateUtc),
@@ -770,7 +796,7 @@ public class BankStatementService
         * Section 1: summary of book-side exceptions.
         */
         csv.AppendLine(
-            "ReportType,ImportId,AccountId,AccountName,FileName,StatementReference,Currency,StatementFromUtc,StatementToUtc,GeneratedAtUtc,UnmatchedTransactionCount,NetUnmatchedAmount,TotalUnmatchedInflowAmount,TotalUnmatchedOutflowAmount");
+            "ReportType,ImportId,AccountId,AccountName,LegalEntityId,BusinessUnitId,FileName,StatementReference,Currency,StatementFromUtc,StatementToUtc,GeneratedAtUtc,UnmatchedTransactionCount,NetUnmatchedAmount,TotalUnmatchedInflowAmount,TotalUnmatchedOutflowAmount");
 
         csv.AppendLine(string.Join(
             ",",
@@ -778,6 +804,8 @@ public class BankStatementService
             CsvExportHelper.Escape(report.ImportId),
             CsvExportHelper.Escape(report.AccountId),
             CsvExportHelper.Escape(report.AccountName),
+            CsvExportHelper.Escape(report.LegalEntityId),
+            CsvExportHelper.Escape(report.BusinessUnitId),
             CsvExportHelper.Escape(report.FileName),
             CsvExportHelper.Escape(report.StatementReference),
             CsvExportHelper.Escape(report.Currency),
@@ -839,13 +867,25 @@ public class BankStatementService
 
     public async Task<List<BankStatementLineResponseDto>>
         GetUnmatchedLines(
-            Guid? accountId,
-            DateTime? fromUtc,
-            DateTime? toUtc)
+            UnmatchedBankStatementLinesQueryDto query)
     {
-        if (fromUtc.HasValue &&
-            toUtc.HasValue &&
-            fromUtc.Value > toUtc.Value)
+        ArgumentNullException.ThrowIfNull(query);
+
+        if (query.AccountId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Account ID cannot be empty.",
+                nameof(query.AccountId));
+        }
+
+        var filter =
+            OrganizationDimensionFilter.Create(
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
+        if (query.FromUtc.HasValue &&
+            query.ToUtc.HasValue &&
+            query.FromUtc.Value > query.ToUtc.Value)
         {
             throw new BusinessRuleException(
                 "The start date cannot be later " +
@@ -855,12 +895,15 @@ public class BankStatementService
         var lines =
             await _bankStatementRepository
                 .GetUnmatchedLines(
-                    accountId,
-                    NormalizeNullableUtc(fromUtc),
-                    NormalizeNullableUtc(toUtc));
+                    query.AccountId,
+                    NormalizeNullableUtc(query.FromUtc),
+                    NormalizeNullableUtc(query.ToUtc),
+                    filter.LegalEntityId,
+                    filter.BusinessUnitId);
 
         return lines
-            .Select(MapLine)
+            .Select(line =>
+                MapLine(line))
             .ToList();
     }
 
@@ -899,6 +942,15 @@ public class BankStatementService
             {
                 ImportId =
                     statementImport.Id,
+
+                AccountId =
+                    statementImport.AccountId,
+
+                LegalEntityId =
+                    statementImport.Account?.LegalEntityId,
+
+                BusinessUnitId =
+                    statementImport.Account?.BusinessUnitId,
 
                 ProcessedAtUtc =
                     processedAtUtc,
@@ -2252,6 +2304,12 @@ public class BankStatementService
                 statementImport.Account?.Name
                 ?? string.Empty,
 
+            LegalEntityId =
+                statementImport.Account?.LegalEntityId,
+
+            BusinessUnitId =
+                statementImport.Account?.BusinessUnitId,
+
             FileName =
                 statementImport.FileName,
 
@@ -2286,14 +2344,20 @@ public class BankStatementService
                 statementImport.Lines
                     .OrderBy(line =>
                         line.LineNumber)
-                    .Select(MapLine)
+                    .Select(line =>
+                        MapLine(
+                            line,
+                            statementImport.Account))
                     .ToList()
         };
     }
 
     private static BankStatementLineResponseDto MapLine(
-        BankStatementLine line)
+        BankStatementLine line,
+        Account? account = null)
     {
+        account ??= line.Account;
+
         return new BankStatementLineResponseDto
         {
             Id =
@@ -2304,6 +2368,12 @@ public class BankStatementService
 
             AccountId =
                 line.AccountId,
+
+            LegalEntityId =
+                account?.LegalEntityId,
+
+            BusinessUnitId =
+                account?.BusinessUnitId,
 
             LineNumber =
                 line.LineNumber,

@@ -53,6 +53,12 @@ public class TreasuryTransactionRepository
                 .AsNoTracking()
                 .AsQueryable();
 
+        transactions =
+            ApplyOrganizationDimensionFilter(
+                transactions,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(
             query.Currency))
         {
@@ -132,6 +138,12 @@ public class TreasuryTransactionRepository
                 .AsNoTracking()
                 .AsQueryable();
 
+        transactions =
+            ApplyOrganizationDimensionFilter(
+                transactions,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(
             query.Currency))
         {
@@ -206,6 +218,12 @@ public class TreasuryTransactionRepository
                     transaction.ReversesTransaction)
                 .AsQueryable();
 
+        transactions =
+            ApplyOrganizationDimensionFilter(
+                transactions,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(
             query.Currency))
         {
@@ -244,6 +262,45 @@ public class TreasuryTransactionRepository
             .OrderByDescending(transaction =>
                 transaction.CreatedAtUtc)
             .ToListAsync();
+    }
+
+    private IQueryable<TreasuryTransaction>
+        ApplyOrganizationDimensionFilter(
+            IQueryable<TreasuryTransaction>
+                transactions,
+            Guid? legalEntityId,
+            Guid? businessUnitId)
+    {
+        if (!legalEntityId.HasValue &&
+            !businessUnitId.HasValue)
+        {
+            return transactions;
+        }
+
+        var accountIds =
+            _context.Accounts
+                .AsNoTracking()
+                .Where(account =>
+                    !legalEntityId.HasValue ||
+                    account.LegalEntityId ==
+                        legalEntityId.Value)
+                .Where(account =>
+                    !businessUnitId.HasValue ||
+                    account.BusinessUnitId ==
+                        businessUnitId.Value)
+                .Select(account => account.Id);
+
+        return transactions
+            .Where(transaction =>
+                (transaction.SourceAccountId.HasValue &&
+                 accountIds.Contains(
+                     transaction
+                         .SourceAccountId.Value)) ||
+                (transaction
+                    .DestinationAccountId.HasValue &&
+                 accountIds.Contains(
+                     transaction
+                         .DestinationAccountId.Value)));
     }
 
     public async Task<IReadOnlyList<TreasuryTransaction>>

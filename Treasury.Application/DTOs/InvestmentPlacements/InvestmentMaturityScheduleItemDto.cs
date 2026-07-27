@@ -9,6 +9,15 @@ public class InvestmentMaturityScheduleItemDto
     public string InstitutionName { get; set; } =
         string.Empty;
 
+    public Guid SourceAccountId { get; set; }
+
+    public string SourceAccountName { get; set; } =
+        string.Empty;
+
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string Currency { get; set; } = string.Empty;
 
     public decimal PrincipalAmount { get; set; }

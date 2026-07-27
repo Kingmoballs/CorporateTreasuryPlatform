@@ -9,6 +9,14 @@ public class Account : IOrganizationOwnedEntity
 
     public Guid OrganizationId { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public LegalEntity? LegalEntity { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
+    public BusinessUnit? BusinessUnit { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public string AccountNumber { get; set; } = string.Empty;

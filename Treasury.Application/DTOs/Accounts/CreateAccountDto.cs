@@ -10,6 +10,10 @@ public class CreateAccountDto
 
     public Guid AccountTypeId { get; set; }
 
+    public Guid LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string Currency { get; set; }
         = "NGN";
 

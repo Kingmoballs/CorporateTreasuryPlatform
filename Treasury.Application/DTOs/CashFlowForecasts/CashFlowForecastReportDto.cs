@@ -8,6 +8,10 @@ public class CashFlowForecastReportDto
 
     public string? AccountName { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public string Currency { get; set; } = string.Empty;
 
     public DateTime FromUtc { get; set; }

@@ -4,6 +4,12 @@ public class BankStatementReconciliationResultDto
 {
     public Guid ImportId { get; set; }
 
+    public Guid AccountId { get; set; }
+
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public DateTime ProcessedAtUtc { get; set; }
 
     public int CandidateLineCount { get; set; }

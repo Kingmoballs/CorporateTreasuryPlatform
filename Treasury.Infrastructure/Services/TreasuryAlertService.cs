@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Treasury.Application.Common;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.DTOs.Audit;
 using Treasury.Application.DTOs.TreasuryAlerts;
@@ -162,6 +163,14 @@ public class TreasuryAlertService : ITreasuryAlertService
     public async Task<PagedTreasuryAlertResponseDto> Search(
         TreasuryAlertQueryDto query)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var filter =
+            ValidateOrganizationScope(
+                query.AccountId,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (query.FromUtc.HasValue &&
             query.ToUtc.HasValue &&
             query.FromUtc.Value > query.ToUtc.Value)
@@ -210,6 +219,12 @@ public class TreasuryAlertService : ITreasuryAlertService
 
         return new PagedTreasuryAlertResponseDto
         {
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             Items =
                 result.Items
                     .Select(Map)
@@ -234,6 +249,14 @@ public class TreasuryAlertService : ITreasuryAlertService
     public async Task<TreasuryAlertSummaryDto> GetSummary(
         TreasuryAlertSummaryQueryDto query)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var filter =
+            ValidateOrganizationScope(
+                query.AccountId,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (query.FromUtc.HasValue &&
             query.ToUtc.HasValue &&
             query.FromUtc.Value > query.ToUtc.Value)
@@ -266,6 +289,12 @@ public class TreasuryAlertService : ITreasuryAlertService
 
             AccountId =
                 query.AccountId,
+
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
 
             Currency =
                 query.Currency,
@@ -340,6 +369,13 @@ public class TreasuryAlertService : ITreasuryAlertService
         TreasuryAlertQueryDto query,
         int maxRows = 5000)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
+        ValidateOrganizationScope(
+            query.AccountId,
+            query.LegalEntityId,
+            query.BusinessUnitId);
+
         if (query.FromUtc.HasValue &&
             query.ToUtc.HasValue &&
             query.FromUtc.Value > query.ToUtc.Value)
@@ -392,7 +428,7 @@ public class TreasuryAlertService : ITreasuryAlertService
             new StringBuilder();
 
         builder.AppendLine(
-            "CreatedAtUtc,AlertType,Severity,Status,Title,Message,AccountId,AccountName,Currency,SourceModule,SourceEntityType,SourceEntityId,SourceReference,CreatedByUserId,ClosedByUserId,ClosedAtUtc,ClosureNote,MetadataJson");
+            "CreatedAtUtc,AlertType,Severity,Status,Title,Message,AccountId,AccountName,LegalEntityId,BusinessUnitId,Currency,SourceModule,SourceEntityType,SourceEntityId,SourceReference,CreatedByUserId,ClosedByUserId,ClosedAtUtc,ClosureNote,MetadataJson");
 
         foreach (var alert in alerts)
         {
@@ -409,6 +445,10 @@ public class TreasuryAlertService : ITreasuryAlertService
                         CsvExportHelper.Escape(alert.Message),
                         CsvExportHelper.Escape(alert.AccountId),
                         CsvExportHelper.Escape(alert.Account?.Name),
+                        CsvExportHelper.Escape(
+                            alert.Account?.LegalEntityId),
+                        CsvExportHelper.Escape(
+                            alert.Account?.BusinessUnitId),
                         CsvExportHelper.Escape(alert.Currency),
                         CsvExportHelper.Escape(alert.SourceModule),
                         CsvExportHelper.Escape(alert.SourceEntityType),
@@ -641,6 +681,12 @@ public class TreasuryAlertService : ITreasuryAlertService
             AccountName =
                 alert.Account?.Name,
 
+            LegalEntityId =
+                alert.Account?.LegalEntityId,
+
+            BusinessUnitId =
+                alert.Account?.BusinessUnitId,
+
             Currency =
                 alert.Currency,
 
@@ -689,6 +735,10 @@ public class TreasuryAlertService : ITreasuryAlertService
             alert.Message,
             alert.AccountId,
             AccountName = alert.Account?.Name,
+            LegalEntityId =
+                alert.Account?.LegalEntityId,
+            BusinessUnitId =
+                alert.Account?.BusinessUnitId,
             alert.Currency,
             alert.SourceModule,
             alert.SourceEntityType,
@@ -729,6 +779,24 @@ public class TreasuryAlertService : ITreasuryAlertService
             throw new BusinessRuleException(
                 "Alert message is required.");
         }
+    }
+
+    private static OrganizationDimensionFilter
+        ValidateOrganizationScope(
+            Guid? accountId,
+            Guid? legalEntityId,
+            Guid? businessUnitId)
+    {
+        if (accountId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Account ID cannot be empty.",
+                nameof(accountId));
+        }
+
+        return OrganizationDimensionFilter.Create(
+            legalEntityId,
+            businessUnitId);
     }
 
     private static string NormalizeAllowedValue(

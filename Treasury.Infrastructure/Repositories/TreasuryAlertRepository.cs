@@ -71,6 +71,12 @@ public class TreasuryAlertRepository : ITreasuryAlertRepository
                     alert.AccountId == query.AccountId.Value);
         }
 
+        alerts =
+            ApplyOrganizationDimensionFilter(
+                alerts,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(query.Currency))
         {
             alerts =
@@ -144,6 +150,12 @@ public class TreasuryAlertRepository : ITreasuryAlertRepository
                     alert.AccountId == query.AccountId.Value);
         }
 
+        alerts =
+            ApplyOrganizationDimensionFilter(
+                alerts,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(query.Currency))
         {
             alerts =
@@ -210,6 +222,12 @@ public class TreasuryAlertRepository : ITreasuryAlertRepository
                     alert.AccountId == query.AccountId.Value);
         }
 
+        alerts =
+            ApplyOrganizationDimensionFilter(
+                alerts,
+                query.LegalEntityId,
+                query.BusinessUnitId);
+
         if (!string.IsNullOrWhiteSpace(query.Currency))
         {
             alerts =
@@ -262,5 +280,32 @@ public class TreasuryAlertRepository : ITreasuryAlertRepository
     public async Task SaveChanges()
     {
         await _context.SaveChangesAsync();
+    }
+
+    private static IQueryable<TreasuryAlert>
+        ApplyOrganizationDimensionFilter(
+            IQueryable<TreasuryAlert> alerts,
+            Guid? legalEntityId,
+            Guid? businessUnitId)
+    {
+        if (legalEntityId.HasValue)
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.Account != null &&
+                    alert.Account.LegalEntityId ==
+                    legalEntityId.Value);
+        }
+
+        if (businessUnitId.HasValue)
+        {
+            alerts =
+                alerts.Where(alert =>
+                    alert.Account != null &&
+                    alert.Account.BusinessUnitId ==
+                    businessUnitId.Value);
+        }
+
+        return alerts;
     }
 }

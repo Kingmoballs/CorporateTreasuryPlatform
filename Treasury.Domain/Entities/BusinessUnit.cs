@@ -34,4 +34,7 @@ public class BusinessUnit
 
     public Guid ConcurrencyToken { get; set; } =
         Guid.NewGuid();
+
+    public ICollection<Account> Accounts
+        { get; set; } = new List<Account>();
 }

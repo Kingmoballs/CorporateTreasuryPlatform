@@ -15,7 +15,9 @@ public interface ICashFlowForecastService
         Guid? accountId,
         string? currency,
         DateTime fromUtc,
-        DateTime toUtc);
+        DateTime toUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null);
 
     Task<CashFlowForecastItemResponseDto> Cancel(
         Guid id);
@@ -25,7 +27,9 @@ public interface ICashFlowForecastService
         string? currency,
         DateTime fromUtc,
         DateTime toUtc,
-        decimal minimumLiquidityThreshold);
+        decimal minimumLiquidityThreshold,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null);
 
     Task<CashFlowForecastVarianceReportDto> GetVarianceReport(
         CashFlowForecastVarianceQueryDto query);

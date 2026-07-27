@@ -13,6 +13,14 @@ public class CashPositionAccountDto
     public string AccountType { get; set; }
         = string.Empty;
 
+    public Guid? LegalEntityId { get; set; }
+
+    public string? LegalEntityCode { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
+    public string? BusinessUnitCode { get; set; }
+
     public decimal Balance { get; set; }
 
     public decimal ReservedBalance { get; set; }

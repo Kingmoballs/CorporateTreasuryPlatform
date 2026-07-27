@@ -13,7 +13,9 @@ public interface IBankStatementRepository
     Task<List<BankStatementLine>> GetUnmatchedLines(
         Guid? accountId,
         DateTime? fromUtc,
-        DateTime? toUtc);
+        DateTime? toUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null);
 
     void UpdateLine(BankStatementLine line);
 

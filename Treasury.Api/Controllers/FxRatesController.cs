@@ -111,13 +111,17 @@ public class FxRatesController
     [HttpGet("cash-position")]
     public async Task<IActionResult> GetConsolidatedCashPosition(
         [FromQuery] string baseCurrency,
-        [FromQuery] DateTime? asOfUtc)
+        [FromQuery] DateTime? asOfUtc,
+        [FromQuery] Guid? legalEntityId,
+        [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _fxRateService
                 .GetConsolidatedCashPosition(
                     baseCurrency,
-                    asOfUtc);
+                    asOfUtc,
+                    legalEntityId,
+                    businessUnitId);
 
         return Ok(result);
     }
@@ -125,13 +129,17 @@ public class FxRatesController
     [HttpGet("currency-exposure")]
     public async Task<IActionResult> GetCurrencyExposureReport(
         [FromQuery] string baseCurrency,
-        [FromQuery] DateTime? asOfUtc)
+        [FromQuery] DateTime? asOfUtc,
+        [FromQuery] Guid? legalEntityId,
+        [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _fxRateService
                 .GetCurrencyExposureReport(
                     baseCurrency,
-                    asOfUtc);
+                    asOfUtc,
+                    legalEntityId,
+                    businessUnitId);
 
         return Ok(result);
     }

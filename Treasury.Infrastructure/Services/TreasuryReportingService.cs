@@ -1,4 +1,5 @@
 using System.Text;
+using Treasury.Application.Common;
 using Treasury.Application.DTOs.Exports;
 using Treasury.Application.DTOs.Reporting;
 using Treasury.Application.Interfaces;
@@ -39,10 +40,18 @@ public class TreasuryReportingService
     }
 
     public async Task<BalanceAggregationDto>
-        GetBalanceAggregation()
+        GetBalanceAggregation(
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
+
         var accounts =
-            await _accountRepository.GetAll();
+            filter.Apply(
+                await _accountRepository.GetAll());
 
         var activeAccounts = accounts
             .Where(account => account.IsActive)
@@ -108,19 +117,25 @@ public class TreasuryReportingService
         return new BalanceAggregationDto
         {
             GeneratedAtUtc = DateTime.UtcNow,
+            LegalEntityId = filter.LegalEntityId,
+            BusinessUnitId = filter.BusinessUnitId,
             Currencies = currencies
         };
     }
 
     public async Task<CashPositionDashboardDto>
-        GetCashPositionDashboard()
+        GetCashPositionDashboard(
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
-        var accounts =
-            await _accountRepository.GetAll();
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
 
-        var pendingTransfers =
-            await _transferRequestRepository
-                .GetPending();
+        var accounts =
+            filter.Apply(
+                await _accountRepository.GetAll());
 
         var activeAccounts = accounts
             .Where(account => account.IsActive)
@@ -128,6 +143,14 @@ public class TreasuryReportingService
 
         var accountsById = accounts
             .ToDictionary(account => account.Id);
+
+        var pendingTransfers =
+            (await _transferRequestRepository
+                .GetPending())
+            .Where(request =>
+                accountsById.ContainsKey(
+                    request.FromAccountId))
+            .ToList();
 
         /*
          * Pending transfers are grouped using the
@@ -174,6 +197,12 @@ public class TreasuryReportingService
         return new CashPositionDashboardDto
         {
             GeneratedAtUtc = DateTime.UtcNow,
+
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
 
             ActiveAccountCount =
                 activeAccounts.Count,
@@ -246,6 +275,18 @@ public class TreasuryReportingService
 
                         AccountType =
                             account.AccountType.Name,
+
+                        LegalEntityId =
+                            account.LegalEntityId,
+
+                        LegalEntityCode =
+                            account.LegalEntity?.Code,
+
+                        BusinessUnitId =
+                            account.BusinessUnitId,
+
+                        BusinessUnitCode =
+                            account.BusinessUnit?.Code,
 
                         Balance =
                             account.Balance,
@@ -412,8 +453,15 @@ public class TreasuryReportingService
     public async Task<LiquidityReportDto>
         GetLiquidityReport(
             DateTime? fromUtc,
-            DateTime? toUtc)
+            DateTime? toUtc,
+            Guid? legalEntityId = null,
+            Guid? businessUnitId = null)
     {
+        var filter =
+            OrganizationDimensionFilter.Create(
+                legalEntityId,
+                businessUnitId);
+
         var reportToUtc =
             NormalizeDateTime(
                 toUtc ?? DateTime.UtcNow);
@@ -429,17 +477,31 @@ public class TreasuryReportingService
             reportToUtc);
 
         var accounts =
-            await _accountRepository.GetAll();
+            filter.Apply(
+                await _accountRepository.GetAll());
+
+        var scopedAccountIds =
+            accounts
+                .Select(account => account.Id)
+                .ToHashSet();
 
         var ledgerEntries =
-            await _ledgerRepository
+            (await _ledgerRepository
                 .GetByDateRange(
                     reportFromUtc,
-                    reportToUtc);
+                    reportToUtc))
+            .Where(entry =>
+                scopedAccountIds.Contains(
+                    entry.AccountId))
+            .ToList();
 
         var pendingTransfers =
-            await _transferRequestRepository
-                .GetPending();
+            (await _transferRequestRepository
+                .GetPending())
+            .Where(request =>
+                scopedAccountIds.Contains(
+                    request.FromAccountId))
+            .ToList();
 
         var activeAccounts = accounts
             .Where(account => account.IsActive)
@@ -634,6 +696,9 @@ public class TreasuryReportingService
 
                     OtherBalance =
                         balances.OtherBalance,
+
+                    ReservedCash =
+                        balances.ReservedCash,
                     
                     ExternalReceiptCount =
                         currencyReceipts.Count,
@@ -707,18 +772,28 @@ public class TreasuryReportingService
             CashPositionAsOfUtc =
                 DateTime.UtcNow,
 
+            LegalEntityId =
+                filter.LegalEntityId,
+
+            BusinessUnitId =
+                filter.BusinessUnitId,
+
             Currencies = currencyReports
         };
     }
 
     public async Task<CsvExportDto> ExportLiquidityReportCsv(
         DateTime? fromUtc,
-        DateTime? toUtc)
+        DateTime? toUtc,
+        Guid? legalEntityId = null,
+        Guid? businessUnitId = null)
     {
         var report =
             await GetLiquidityReport(
                 fromUtc,
-                toUtc);
+                toUtc,
+                legalEntityId,
+                businessUnitId);
 
         var csv = new StringBuilder();
 
@@ -727,7 +802,7 @@ public class TreasuryReportingService
         * Excel-friendly liquidity report by currency.
         */
         csv.AppendLine(
-            "ActivityFromUtc,ActivityToUtc,CashPositionAsOfUtc,Currency,CurrentTotalCash,ReservedCash,AvailableLiquidity,CommittedCash,InvestmentBalance,OtherBalance,AvailableLiquidityRatio,ExternalReceiptCount,ExternalReceiptAmount,ExternalPaymentCount,ExternalPaymentAmount,NetExternalCashFlow,CompletedInternalTransferCount,CompletedInternalTransferVolume,PendingInternalTransferCount,PendingInternalTransferAmount,ReversedReceiptCount,ReversedReceiptAmount,ReversedPaymentCount,ReversedPaymentAmount");
+            "ActivityFromUtc,ActivityToUtc,CashPositionAsOfUtc,LegalEntityId,BusinessUnitId,Currency,CurrentTotalCash,ReservedCash,AvailableLiquidity,CommittedCash,InvestmentBalance,OtherBalance,AvailableLiquidityRatio,ExternalReceiptCount,ExternalReceiptAmount,ExternalPaymentCount,ExternalPaymentAmount,NetExternalCashFlow,CompletedInternalTransferCount,CompletedInternalTransferVolume,PendingInternalTransferCount,PendingInternalTransferAmount,ReversedReceiptCount,ReversedReceiptAmount,ReversedPaymentCount,ReversedPaymentAmount");
 
         foreach (var currency in report.Currencies)
         {
@@ -736,6 +811,8 @@ public class TreasuryReportingService
                 CsvExportHelper.Escape(report.ActivityFromUtc),
                 CsvExportHelper.Escape(report.ActivityToUtc),
                 CsvExportHelper.Escape(report.CashPositionAsOfUtc),
+                CsvExportHelper.Escape(report.LegalEntityId),
+                CsvExportHelper.Escape(report.BusinessUnitId),
                 CsvExportHelper.Escape(currency.Currency),
                 CsvExportHelper.Escape(currency.CurrentTotalCash),
                 CsvExportHelper.Escape(currency.ReservedCash),

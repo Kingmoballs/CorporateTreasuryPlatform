@@ -41,4 +41,7 @@ public class LegalEntity
 
     public ICollection<BusinessUnit> BusinessUnits
         { get; set; } = new List<BusinessUnit>();
+
+    public ICollection<Account> Accounts
+        { get; set; } = new List<Account>();
 }

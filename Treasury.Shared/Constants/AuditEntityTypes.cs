@@ -6,6 +6,8 @@ public static class AuditEntityTypes
     public const string Role = "Role";
     public const string Organization =
         "Organization";
+    public const string OrganizationApplication =
+        "OrganizationApplication";
     public const string LegalEntity =
         "LegalEntity";
     public const string BusinessUnit =

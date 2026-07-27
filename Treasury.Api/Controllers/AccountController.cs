@@ -38,11 +38,15 @@ public class AccountsController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult>
-        GetAccounts()
+        GetAccounts(
+            [FromQuery] Guid? legalEntityId,
+            [FromQuery] Guid? businessUnitId)
     {
         var result =
             await _accountService
-                .GetAccounts();
+                .GetAccounts(
+                    legalEntityId,
+                    businessUnitId);
 
         return Ok(result);
     }

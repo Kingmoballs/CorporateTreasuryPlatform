@@ -8,6 +8,10 @@ public class LiquidityReportDto
 
     public DateTime CashPositionAsOfUtc { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public IReadOnlyList<CurrencyLiquidityDto>
         Currencies { get; set; }
         = Array.Empty<CurrencyLiquidityDto>();

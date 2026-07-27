@@ -8,6 +8,10 @@ public class CurrencyExposureReportDto
 
     public DateTime GeneratedAtUtc { get; set; }
 
+    public Guid? LegalEntityId { get; set; }
+
+    public Guid? BusinessUnitId { get; set; }
+
     public decimal TotalAvailableLiquidityInBaseCurrency { get; set; }
 
     public List<CurrencyExposureDto> Exposures { get; set; }

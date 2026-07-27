@@ -12,9 +12,7 @@ public interface IBankStatementService
         Guid importId);
 
     Task<List<BankStatementLineResponseDto>> GetUnmatchedLines(
-        Guid? accountId,
-        DateTime? fromUtc,
-        DateTime? toUtc);
+        UnmatchedBankStatementLinesQueryDto query);
 
     Task<BankStatementReconciliationResultDto> AutoMatchImport(
         Guid importId,
