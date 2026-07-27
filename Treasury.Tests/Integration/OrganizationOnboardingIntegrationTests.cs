@@ -37,8 +37,7 @@ public class OrganizationOnboardingIntegrationTests
 
         var seeded =
             await SeedPlatformAdmin(
-                context,
-                now.UtcDateTime);
+                context);
 
         var currentUser =
             CreateCurrentUser(seeded);
@@ -352,122 +351,50 @@ public class OrganizationOnboardingIntegrationTests
     private static async Task<SeededPlatformAdmin>
         SeedPlatformAdmin(
             Treasury.Infrastructure.Persistence
-                .TreasuryDbContext context,
-            DateTime now)
+                .TreasuryDbContext context)
     {
-        var platformAdminRole =
-            await context.Roles
-                .FirstOrDefaultAsync(role =>
-                    role.Name ==
-                        Roles.PlatformAdmin);
+        const string password =
+            "StrongPassword!123";
 
-        if (platformAdminRole is null)
-        {
-            platformAdminRole = new Role
-            {
-                Id = Guid.NewGuid(),
-                Name = Roles.PlatformAdmin
-            };
+        await Treasury.Infrastructure.Persistence
+            .RoleSeeder.SeedRoles(context);
 
-            await context.Roles.AddAsync(
-                platformAdminRole);
-        }
-
-        var adminRole =
-            await context.Roles
-                .FirstOrDefaultAsync(role =>
-                    role.Name == Roles.Admin);
-
-        if (adminRole is null)
-        {
-            adminRole = new Role
-            {
-                Id = Guid.NewGuid(),
-                Name = Roles.Admin
-            };
-
-            await context.Roles.AddAsync(
-                adminRole);
-        }
-
-        var platformOrganization =
-            await context.Organizations
-                .FirstOrDefaultAsync(organization =>
-                    organization.Code ==
-                        PlatformDefaults
-                            .OrganizationCode);
-
-        if (platformOrganization is null)
-        {
-            platformOrganization =
-                new Organization
+        await Treasury.Infrastructure.Persistence
+            .PlatformAdminSeeder.Seed(
+                context,
+                new Treasury.Infrastructure.Persistence
+                    .PlatformAdminBootstrapOptions
                 {
-                    Id = Guid.NewGuid(),
-                    Code =
-                        PlatformDefaults
-                            .OrganizationCode,
-                    Name =
-                        PlatformDefaults
-                            .OrganizationName,
-                    Slug =
-                        PlatformDefaults
-                            .OrganizationSlug,
-                    CountryCode =
-                        PlatformDefaults.CountryCode,
-                    BaseCurrency =
-                        PlatformDefaults.BaseCurrency,
-                    IsActive = true,
-                    CreatedAtUtc = now,
-                    UpdatedAtUtc = now
-                };
-
-            await context.Organizations.AddAsync(
-                platformOrganization);
-        }
-
-        var user = new User
-        {
-            Id = Guid.NewGuid(),
-            FirstName = "Platform",
-            LastName = "Administrator",
-            Email = "platform@example.com",
-            PasswordHash =
-                BCrypt.Net.BCrypt.HashPassword(
-                    "StrongPassword!123"),
-            EmailVerifiedAtUtc = now,
-            IsActive = true,
-            RoleId = platformAdminRole.Id,
-            Role = platformAdminRole,
-            CreatedAt = now
-        };
+                    Enabled = true,
+                    FirstName = "Platform",
+                    LastName = "Administrator",
+                    Email = "platform@example.com",
+                    Password = password
+                });
 
         var membership =
-            new OrganizationMembership
-            {
-                Id = Guid.NewGuid(),
-                OrganizationId =
-                    platformOrganization.Id,
-                Organization =
-                    platformOrganization,
-                UserId = user.Id,
-                User = user,
-                RoleId = platformAdminRole.Id,
-                Role = platformAdminRole,
-                IsActive = true,
-                IsDefault = true,
-                JoinedAtUtc = now
-            };
+            await context.OrganizationMemberships
+                .AsNoTracking()
+                .Include(item => item.User)
+                .Include(item =>
+                    item.Organization)
+                .Include(item => item.Role)
+                .SingleAsync(item =>
+                    item.Organization.Code ==
+                        PlatformDefaults
+                            .OrganizationCode &&
+                    item.Role.Name ==
+                        Roles.PlatformAdmin);
 
-        user.OrganizationMemberships.Add(
-            membership);
-
-        await context.Users.AddAsync(user);
-        await context.SaveChangesAsync();
+        Assert.True(
+            BCrypt.Net.BCrypt.Verify(
+                password,
+                membership.User.PasswordHash));
 
         return new SeededPlatformAdmin(
-            user.Id,
-            user.Email,
-            platformOrganization.Id);
+            membership.UserId,
+            membership.User.Email,
+            membership.OrganizationId);
     }
 
     private static Mock<ICurrentUserService>

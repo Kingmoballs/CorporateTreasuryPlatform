@@ -26,6 +26,10 @@ using Microsoft.Extensions.Options;
 // Create a builder for the web application
 var builder = WebApplication.CreateBuilder(args);
 
+var bootstrapPlatformAdminOnly =
+    builder.Configuration.GetValue<bool>(
+        "BootstrapPlatformAdminOnly");
+
 // Add services to the container.
 builder.Services
     .AddFluentValidationAutoValidation();
@@ -452,6 +456,25 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services
+    .AddOptions<HistoricalImportOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            HistoricalImportOptions.SectionName))
+    .Validate(
+        options =>
+            options.MaximumFileSizeBytes
+                is >= 1024 and <= 25 * 1024 * 1024,
+        "Historical import file size must be " +
+        "between 1 KB and 25 MB.")
+    .Validate(
+        options =>
+            options.MaximumRowCount
+                is >= 1 and <= 100_000,
+        "Historical import row limit must be " +
+        "between 1 and 100,000.")
+    .ValidateOnStart();
+
+builder.Services
     .AddOptions<PasswordRecoveryOptions>()
     .Bind(
         builder.Configuration.GetSection(
@@ -638,6 +661,14 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IBankStatementService,
     BankStatementService>();
+
+builder.Services.AddScoped<
+    IHistoricalTransactionImportRepository,
+    HistoricalTransactionImportRepository>();
+
+builder.Services.AddScoped<
+    IHistoricalTransactionImportService,
+    HistoricalTransactionImportService>();
 
 builder.Services.AddScoped<
     ICashFlowForecastRepository,
@@ -930,6 +961,14 @@ using (var scope = app.Services.CreateScope())
                 IOptions<PlatformAdminBootstrapOptions>>()
             .Value;
 
+    if (bootstrapPlatformAdminOnly &&
+        !platformAdminBootstrapOptions.Enabled)
+    {
+        throw new InvalidOperationException(
+            "BootstrapPlatformAdminOnly requires " +
+            "PlatformAdminBootstrap:Enabled=true.");
+    }
+
     await PlatformAdminSeeder.Seed(
         context,
         platformAdminBootstrapOptions);
@@ -937,6 +976,20 @@ using (var scope = app.Services.CreateScope())
     await AccountTypeSeeder.SeedAccountTypes(context);
 
     await ApprovalPolicySeeder.Seed(context);
+
+    if (bootstrapPlatformAdminOnly)
+    {
+        app.Logger.LogInformation(
+            "PlatformAdmin bootstrap completed for " +
+            "{Email}. Bootstrap configuration was held " +
+            "only for this process.",
+            platformAdminBootstrapOptions.Email);
+    }
+}
+
+if (bootstrapPlatformAdminOnly)
+{
+    return;
 }
 
 app.Run();

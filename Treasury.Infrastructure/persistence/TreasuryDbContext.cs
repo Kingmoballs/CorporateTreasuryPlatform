@@ -102,6 +102,22 @@ public class TreasuryDbContext : DbContext
 
     public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
 
+    public DbSet<HistoricalTransactionImportBatch>
+        HistoricalTransactionImportBatches =>
+            Set<HistoricalTransactionImportBatch>();
+
+    public DbSet<HistoricalTransactionImportRow>
+        HistoricalTransactionImportRows =>
+            Set<HistoricalTransactionImportRow>();
+
+    public DbSet<HistoricalTransactionImportDecision>
+        HistoricalTransactionImportDecisions =>
+            Set<HistoricalTransactionImportDecision>();
+
+    public DbSet<HistoricalTransactionRecord>
+        HistoricalTransactionRecords =>
+            Set<HistoricalTransactionRecord>();
+
     public DbSet<CashFlowForecastItem> CashFlowForecastItems => Set<CashFlowForecastItem>();
 
     public DbSet<FxRate> FxRates => Set<FxRate>();
@@ -330,6 +346,37 @@ public class TreasuryDbContext : DbContext
                 "Approval decisions are immutable.");
         }
 
+        var changedHistoricalImportDecisions =
+            ChangeTracker
+                .Entries<
+                    HistoricalTransactionImportDecision>()
+                .Any(entry =>
+                    entry.State is
+                        EntityState.Modified or
+                        EntityState.Deleted);
+
+        if (changedHistoricalImportDecisions)
+        {
+            throw new InvalidOperationException(
+                "Historical import approval decisions " +
+                "are immutable.");
+        }
+
+        var changedHistoricalRecords =
+            ChangeTracker
+                .Entries<HistoricalTransactionRecord>()
+                .Any(entry =>
+                    entry.State is
+                        EntityState.Modified or
+                        EntityState.Deleted);
+
+        if (changedHistoricalRecords)
+        {
+            throw new InvalidOperationException(
+                "Committed historical transaction " +
+                "records are immutable.");
+        }
+
         var changedAccrualSnapshots =
             ChangeTracker
                 .Entries<InvestmentAccrualSnapshot>()
@@ -448,6 +495,22 @@ public class TreasuryDbContext : DbContext
 
         ConfigureOrganizationOwnedEntity<
             BankStatementLine>(modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            HistoricalTransactionImportBatch>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            HistoricalTransactionImportRow>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            HistoricalTransactionImportDecision>(
+                modelBuilder);
+
+        ConfigureOrganizationOwnedEntity<
+            HistoricalTransactionRecord>(
+                modelBuilder);
 
         ConfigureOrganizationOwnedEntity<
             CashFlowForecastItem>(modelBuilder);
@@ -1633,6 +1696,13 @@ public class TreasuryDbContext : DbContext
                 item.OrganizationId,
                 item.BusinessUnitId
             });
+
+        account
+            .HasAlternateKey(item => new
+            {
+                item.OrganizationId,
+                item.Id
+            });
         
         modelBuilder.Entity<TransferRequest>()
             .Property(request =>
@@ -2174,6 +2244,569 @@ public class TreasuryDbContext : DbContext
                     "('Unmatched', 'Matched', 'Reconciled', 'Ignored')");
             });
 
+        var historicalImportBatch =
+            modelBuilder.Entity<
+                HistoricalTransactionImportBatch>();
+
+        historicalImportBatch
+            .Property(batch =>
+                batch.ConcurrencyToken)
+            .IsConcurrencyToken()
+            .HasDefaultValueSql(
+                "gen_random_uuid()");
+
+        historicalImportBatch
+            .HasAlternateKey(batch => new
+            {
+                batch.OrganizationId,
+                batch.Id
+            });
+
+        historicalImportBatch
+            .HasOne(batch =>
+                batch.UploadedByUser)
+            .WithMany()
+            .HasForeignKey(batch =>
+                batch.UploadedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportBatch
+            .HasOne(batch =>
+                batch.SubmittedByUser)
+            .WithMany()
+            .HasForeignKey(batch =>
+                batch.SubmittedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportBatch
+            .HasOne(batch =>
+                batch.RejectedByUser)
+            .WithMany()
+            .HasForeignKey(batch =>
+                batch.RejectedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportBatch
+            .HasOne(batch =>
+                batch.CommittedByUser)
+            .WithMany()
+            .HasForeignKey(batch =>
+                batch.CommittedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportBatch
+            .HasIndex(batch => new
+            {
+                batch.OrganizationId,
+                batch.ImportKey
+            })
+            .IsUnique();
+
+        historicalImportBatch
+            .HasIndex(batch => new
+            {
+                batch.OrganizationId,
+                batch.Mode,
+                batch.FileHash
+            })
+            .IsUnique();
+
+        historicalImportBatch
+            .HasIndex(batch => new
+            {
+                batch.OrganizationId,
+                batch.Status,
+                batch.UploadedAtUtc
+            });
+
+        historicalImportBatch
+            .Property(batch => batch.Mode)
+            .HasMaxLength(50);
+
+        historicalImportBatch
+            .Property(batch => batch.Status)
+            .HasMaxLength(50);
+
+        historicalImportBatch
+            .Property(batch => batch.FileName)
+            .HasMaxLength(255);
+
+        historicalImportBatch
+            .Property(batch => batch.FileHash)
+            .HasMaxLength(64);
+
+        historicalImportBatch
+            .Property(batch =>
+                batch.RejectionReason)
+            .HasMaxLength(500);
+
+        historicalImportBatch
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_Mode",
+                    "\"Mode\" IN " +
+                    "('HistoricalTransactions'," +
+                    "'CutoverOpeningBalances')");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_Status",
+                    "\"Status\" IN " +
+                    "('Validated','ValidationFailed'," +
+                    "'PendingApproval','Approved'," +
+                    "'Rejected','Committed')");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_Counts",
+                    "\"TotalRowCount\" > 0 AND " +
+                    "\"ValidRowCount\" >= 0 AND " +
+                    "\"InvalidRowCount\" >= 0 AND " +
+                    "\"ValidRowCount\" + " +
+                    "\"InvalidRowCount\" = " +
+                    "\"TotalRowCount\"");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_Hash",
+                    "char_length(\"FileHash\") = 64");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_ApprovalCounts",
+                    "\"RequiredApprovalCount\" >= 0 AND " +
+                    "\"ApprovalCount\" >= 0 AND " +
+                    "\"ApprovalCount\" <= " +
+                    "\"RequiredApprovalCount\"");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_ReviewState",
+                    "(\"Status\" IN ('Validated'," +
+                    "'ValidationFailed') AND " +
+                    "\"SubmittedByUserId\" IS NULL AND " +
+                    "\"SubmittedAtUtc\" IS NULL) OR " +
+                    "(\"Status\" IN ('PendingApproval'," +
+                    "'Approved','Rejected','Committed') " +
+                    "AND \"SubmittedByUserId\" IS NOT " +
+                    "NULL AND \"SubmittedAtUtc\" IS NOT " +
+                    "NULL AND \"RequiredApprovalCount\" " +
+                    "> 0)");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportBatches_FinalState",
+                    "(\"Status\" NOT IN ('Approved'," +
+                    "'Committed') OR " +
+                    "\"ApprovedAtUtc\" IS NOT NULL) AND " +
+                    "(\"Status\" <> 'Rejected' OR " +
+                    "(\"RejectedByUserId\" IS NOT NULL " +
+                    "AND \"RejectedAtUtc\" IS NOT NULL " +
+                    "AND \"RejectionReason\" IS NOT " +
+                    "NULL)) AND " +
+                    "(\"Status\" <> 'Committed' OR " +
+                    "(\"CommittedByUserId\" IS NOT NULL " +
+                    "AND \"CommittedAtUtc\" IS NOT NULL))");
+            });
+
+        var historicalImportRow =
+            modelBuilder.Entity<
+                HistoricalTransactionImportRow>();
+
+        historicalImportRow
+            .HasAlternateKey(row => new
+            {
+                row.OrganizationId,
+                row.Id
+            });
+
+        historicalImportRow
+            .HasOne(row => row.Batch)
+            .WithMany(batch => batch.Rows)
+            .HasForeignKey(row => new
+            {
+                row.OrganizationId,
+                row.BatchId
+            })
+            .HasPrincipalKey(batch => new
+            {
+                batch.OrganizationId,
+                batch.Id
+            })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        historicalImportRow
+            .HasOne(row => row.Account)
+            .WithMany()
+            .HasForeignKey(row => new
+            {
+                row.OrganizationId,
+                row.AccountId
+            })
+            .HasPrincipalKey(accountItem => new
+            {
+                accountItem.OrganizationId,
+                accountItem.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportRow
+            .HasOne(row =>
+                row.PostedTreasuryTransaction)
+            .WithMany()
+            .HasForeignKey(row =>
+                row.PostedTreasuryTransactionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportRow
+            .HasOne(row => row.LegalEntity)
+            .WithMany()
+            .HasForeignKey(row => new
+            {
+                row.OrganizationId,
+                row.LegalEntityId
+            })
+            .HasPrincipalKey(legalEntityItem => new
+            {
+                legalEntityItem.OrganizationId,
+                legalEntityItem.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportRow
+            .HasOne(row => row.BusinessUnit)
+            .WithMany()
+            .HasForeignKey(row => new
+            {
+                row.OrganizationId,
+                row.LegalEntityId,
+                row.BusinessUnitId
+            })
+            .HasPrincipalKey(businessUnitItem => new
+            {
+                businessUnitItem.OrganizationId,
+                businessUnitItem.LegalEntityId,
+                businessUnitItem.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportRow
+            .HasIndex(row => new
+            {
+                row.OrganizationId,
+                row.BatchId,
+                row.RowNumber
+            })
+            .IsUnique();
+
+        historicalImportRow
+            .HasIndex(row => new
+            {
+                row.OrganizationId,
+                row.Fingerprint
+            });
+
+        historicalImportRow
+            .HasIndex(row =>
+                row.PostedTreasuryTransactionId)
+            .IsUnique();
+
+        historicalImportRow
+            .Property(row =>
+                row.ExternalReference)
+            .HasMaxLength(100);
+
+        historicalImportRow
+            .Property(row =>
+                row.AccountNumber)
+            .HasMaxLength(100);
+
+        historicalImportRow
+            .Property(row =>
+                row.LegalEntityCode)
+            .HasMaxLength(50);
+
+        historicalImportRow
+            .Property(row =>
+                row.BusinessUnitCode)
+            .HasMaxLength(50);
+
+        historicalImportRow
+            .Property(row => row.Currency)
+            .HasMaxLength(3);
+
+        historicalImportRow
+            .Property(row => row.Direction)
+            .HasMaxLength(20);
+
+        historicalImportRow
+            .Property(row =>
+                row.TransactionType)
+            .HasMaxLength(100);
+
+        historicalImportRow
+            .Property(row => row.Description)
+            .HasMaxLength(500);
+
+        historicalImportRow
+            .Property(row => row.Category)
+            .HasMaxLength(100);
+
+        historicalImportRow
+            .Property(row =>
+                row.CounterpartyName)
+            .HasMaxLength(200);
+
+        historicalImportRow
+            .Property(row => row.Fingerprint)
+            .HasMaxLength(64);
+
+        historicalImportRow
+            .Property(row => row.RawDataJson)
+            .HasColumnType("jsonb");
+
+        historicalImportRow
+            .Property(row =>
+                row.ValidationErrorsJson)
+            .HasColumnType("jsonb");
+
+        historicalImportRow
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportRows_RowNumber",
+                    "\"RowNumber\" > 1");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportRows_Currency",
+                    "\"Currency\" IS NULL OR " +
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportRows_Direction",
+                    "\"Direction\" IS NULL OR " +
+                    "\"Direction\" IN ('Credit','Debit')");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportRows_Hash",
+                    "char_length(\"Fingerprint\") = 64");
+            });
+
+        var historicalImportDecision =
+            modelBuilder.Entity<
+                HistoricalTransactionImportDecision>();
+
+        historicalImportDecision
+            .HasOne(decision => decision.Batch)
+            .WithMany(batch => batch.Decisions)
+            .HasForeignKey(decision => new
+            {
+                decision.OrganizationId,
+                decision.BatchId
+            })
+            .HasPrincipalKey(batch => new
+            {
+                batch.OrganizationId,
+                batch.Id
+            })
+            .OnDelete(DeleteBehavior.Cascade);
+
+        historicalImportDecision
+            .HasOne(decision =>
+                decision.ApproverUser)
+            .WithMany()
+            .HasForeignKey(decision =>
+                decision.ApproverUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalImportDecision
+            .HasIndex(decision => new
+            {
+                decision.OrganizationId,
+                decision.BatchId,
+                decision.ApproverUserId
+            })
+            .IsUnique();
+
+        historicalImportDecision
+            .Property(decision =>
+                decision.ApproverRole)
+            .HasMaxLength(50);
+
+        historicalImportDecision
+            .Property(decision =>
+                decision.Decision)
+            .HasMaxLength(20);
+
+        historicalImportDecision
+            .Property(decision =>
+                decision.Comment)
+            .HasMaxLength(500);
+
+        historicalImportDecision
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportDecisions_Role",
+                    "\"ApproverRole\" IN " +
+                    "('Admin','FinanceManager','CFO')");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalImportDecisions_Decision",
+                    "\"Decision\" IN " +
+                    "('Approved','Rejected')");
+            });
+
+        var historicalTransactionRecord =
+            modelBuilder.Entity<
+                HistoricalTransactionRecord>();
+
+        historicalTransactionRecord
+            .HasOne(record => record.Batch)
+            .WithMany()
+            .HasForeignKey(record => new
+            {
+                record.OrganizationId,
+                record.BatchId
+            })
+            .HasPrincipalKey(batch => new
+            {
+                batch.OrganizationId,
+                batch.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalTransactionRecord
+            .HasOne(record => record.SourceRow)
+            .WithOne()
+            .HasForeignKey<
+                HistoricalTransactionRecord>(
+                    record => new
+                    {
+                        record.OrganizationId,
+                        record.SourceRowId
+                    })
+            .HasPrincipalKey<
+                HistoricalTransactionImportRow>(
+                    row => new
+                    {
+                        row.OrganizationId,
+                        row.Id
+                    })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalTransactionRecord
+            .HasOne(record => record.Account)
+            .WithMany()
+            .HasForeignKey(record => new
+            {
+                record.OrganizationId,
+                record.AccountId
+            })
+            .HasPrincipalKey(accountItem => new
+            {
+                accountItem.OrganizationId,
+                accountItem.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalTransactionRecord
+            .HasOne(record => record.LegalEntity)
+            .WithMany()
+            .HasForeignKey(record => new
+            {
+                record.OrganizationId,
+                record.LegalEntityId
+            })
+            .HasPrincipalKey(legalEntityItem => new
+            {
+                legalEntityItem.OrganizationId,
+                legalEntityItem.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalTransactionRecord
+            .HasOne(record => record.BusinessUnit)
+            .WithMany()
+            .HasForeignKey(record => new
+            {
+                record.OrganizationId,
+                record.LegalEntityId,
+                record.BusinessUnitId
+            })
+            .HasPrincipalKey(businessUnitItem => new
+            {
+                businessUnitItem.OrganizationId,
+                businessUnitItem.LegalEntityId,
+                businessUnitItem.Id
+            })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalTransactionRecord
+            .HasOne(record =>
+                record.CommittedByUser)
+            .WithMany()
+            .HasForeignKey(record =>
+                record.CommittedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        historicalTransactionRecord
+            .HasIndex(record => new
+            {
+                record.OrganizationId,
+                record.AccountId,
+                record.TransactionDateUtc
+            });
+
+        historicalTransactionRecord
+            .HasIndex(record => new
+            {
+                record.OrganizationId,
+                record.ExternalReference
+            });
+
+        historicalTransactionRecord
+            .Property(record =>
+                record.ExternalReference)
+            .HasMaxLength(100);
+
+        historicalTransactionRecord
+            .Property(record => record.Currency)
+            .HasMaxLength(3);
+
+        historicalTransactionRecord
+            .Property(record => record.Direction)
+            .HasMaxLength(20);
+
+        historicalTransactionRecord
+            .Property(record =>
+                record.TransactionType)
+            .HasMaxLength(100);
+
+        historicalTransactionRecord
+            .Property(record => record.Description)
+            .HasMaxLength(500);
+
+        historicalTransactionRecord
+            .Property(record => record.Category)
+            .HasMaxLength(100);
+
+        historicalTransactionRecord
+            .Property(record =>
+                record.CounterpartyName)
+            .HasMaxLength(200);
+
+        historicalTransactionRecord
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_HistoricalTransactionRecords_Amount",
+                    "\"Amount\" > 0");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalTransactionRecords_Currency",
+                    "char_length(\"Currency\") = 3");
+
+                table.HasCheckConstraint(
+                    "CK_HistoricalTransactionRecords_Direction",
+                    "\"Direction\" IN ('Credit','Debit')");
+            });
+
         var cashFlowForecastItem =
             modelBuilder.Entity<CashFlowForecastItem>();
 
@@ -2488,6 +3121,8 @@ public class TreasuryDbContext : DbContext
                 "'ReversalRequest','ApprovalPolicy'," +
                 "'ApprovalDecision','TreasuryTransaction'," +
                 "'BankStatementImport','BankStatementLine'," +
+                "'HistoricalTransactionImportBatch'," +
+                "'HistoricalTransactionRecord'," +
                 "'CashFlowForecastItem','FxRate'," +
                 "'TreasuryAlert','InvestmentPlacement'," +
                 "'InvestmentRolloverRequest','Counterparty'," +

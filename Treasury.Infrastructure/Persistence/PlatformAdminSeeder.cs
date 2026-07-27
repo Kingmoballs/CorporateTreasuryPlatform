@@ -127,6 +127,12 @@ public static class PlatformAdminSeeder
                         "is not in a valid state.");
                 }
 
+                await VerifyPlatformAdmin(
+                    context,
+                    platformOrganization.Id,
+                    platformAdminRole.Id,
+                    normalizedEmail);
+
                 // Bootstrap is idempotent. It never changes
                 // the password of an existing administrator.
                 return;
@@ -190,5 +196,52 @@ public static class PlatformAdminSeeder
         await context.Users.AddAsync(user);
 
         await context.SaveChangesAsync();
+
+        if (!BCrypt.Net.BCrypt.Verify(
+                options.Password,
+                user.PasswordHash))
+        {
+            throw new InvalidOperationException(
+                "The PlatformAdmin password could not be " +
+                "verified after creation.");
+        }
+
+        await VerifyPlatformAdmin(
+            context,
+            platformOrganization.Id,
+            platformAdminRole.Id,
+            normalizedEmail);
+    }
+
+    private static async Task VerifyPlatformAdmin(
+        TreasuryDbContext context,
+        Guid organizationId,
+        Guid roleId,
+        string normalizedEmail)
+    {
+        var isValid =
+            await context.OrganizationMemberships
+                .AsNoTracking()
+                .AnyAsync(membership =>
+                    membership.OrganizationId ==
+                        organizationId &&
+                    membership.RoleId == roleId &&
+                    membership.IsActive &&
+                    membership.IsDefault &&
+                    membership.User.IsActive &&
+                    membership.User
+                        .EmailVerifiedAtUtc
+                        .HasValue &&
+                    membership.User.Email ==
+                        normalizedEmail &&
+                    membership.User.RoleId ==
+                        roleId);
+
+        if (!isValid)
+        {
+            throw new InvalidOperationException(
+                "The PlatformAdmin account failed " +
+                "post-creation verification.");
+        }
     }
 }

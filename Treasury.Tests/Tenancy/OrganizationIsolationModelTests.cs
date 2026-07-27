@@ -24,7 +24,7 @@ public class OrganizationIsolationModelTests
                 .ToList();
 
         Assert.Equal(
-            28,
+            32,
             organizationOwnedTypes.Count);
 
         Assert.All(

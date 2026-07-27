@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Treasury.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Treasury.Infrastructure.Persistence;
 namespace Treasury.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TreasuryDbContext))]
-    partial class TreasuryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727153237_AddHistoricalTransactionImportStaging")]
+    partial class AddHistoricalTransactionImportStaging
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -330,7 +333,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_AuditLogs_Action", "\"Action\" IN ('Created','Updated','Deleted','Approved','Rejected','Resolved','Dismissed','Cancelled','Activated','Matured','Redeemed','Realized','Matched','Reconciled','Ignored','Expired','Imported','LoggedIn','RoleChanged','Suspended','Closed','DrawnDown','Repaid','Accrued','Reactivated')");
 
-                            t.HasCheckConstraint("CK_AuditLogs_EntityType", "\"EntityType\" IN ('User','Role','Organization','OrganizationApplication','LegalEntity','BusinessUnit','OrganizationMembership','UserInvitation','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','HistoricalTransactionImportBatch','HistoricalTransactionRecord','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','InvestmentRolloverRequest','Counterparty','InvestmentLimit','CreditFacility','CreditFacilityDrawdown','CreditFacilityRepayment','CreditFacilityInterestAccrualSnapshot','System')");
+                            t.HasCheckConstraint("CK_AuditLogs_EntityType", "\"EntityType\" IN ('User','Role','Organization','OrganizationApplication','LegalEntity','BusinessUnit','OrganizationMembership','UserInvitation','Account','AccountType','TransferRequest','PaymentRequest','ReversalRequest','ApprovalPolicy','ApprovalDecision','TreasuryTransaction','BankStatementImport','BankStatementLine','HistoricalTransactionImportBatch','CashFlowForecastItem','FxRate','TreasuryAlert','InvestmentPlacement','InvestmentRolloverRequest','Counterparty','InvestmentLimit','CreditFacility','CreditFacilityDrawdown','CreditFacilityRepayment','CreditFacilityInterestAccrualSnapshot','System')");
                         });
                 });
 
@@ -1607,18 +1610,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("ApprovalCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("ApprovedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("CommittedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CommittedByUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid>("ConcurrencyToken")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
@@ -1649,29 +1640,10 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("RejectedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("RejectedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("RejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int>("RequiredApprovalCount")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime?>("SubmittedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("SubmittedByUserId")
-                        .HasColumnType("uuid");
 
                     b.Property<int>("TotalRowCount")
                         .HasColumnType("integer");
@@ -1690,12 +1662,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CommittedByUserId");
-
-                    b.HasIndex("RejectedByUserId");
-
-                    b.HasIndex("SubmittedByUserId");
-
                     b.HasIndex("UploadedByUserId");
 
                     b.HasIndex("OrganizationId", "ImportKey")
@@ -1708,66 +1674,13 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.ToTable("HistoricalTransactionImportBatches", t =>
                         {
-                            t.HasCheckConstraint("CK_HistoricalImportBatches_ApprovalCounts", "\"RequiredApprovalCount\" >= 0 AND \"ApprovalCount\" >= 0 AND \"ApprovalCount\" <= \"RequiredApprovalCount\"");
-
                             t.HasCheckConstraint("CK_HistoricalImportBatches_Counts", "\"TotalRowCount\" > 0 AND \"ValidRowCount\" >= 0 AND \"InvalidRowCount\" >= 0 AND \"ValidRowCount\" + \"InvalidRowCount\" = \"TotalRowCount\"");
-
-                            t.HasCheckConstraint("CK_HistoricalImportBatches_FinalState", "(\"Status\" NOT IN ('Approved','Committed') OR \"ApprovedAtUtc\" IS NOT NULL) AND (\"Status\" <> 'Rejected' OR (\"RejectedByUserId\" IS NOT NULL AND \"RejectedAtUtc\" IS NOT NULL AND \"RejectionReason\" IS NOT NULL)) AND (\"Status\" <> 'Committed' OR (\"CommittedByUserId\" IS NOT NULL AND \"CommittedAtUtc\" IS NOT NULL))");
 
                             t.HasCheckConstraint("CK_HistoricalImportBatches_Hash", "char_length(\"FileHash\") = 64");
 
                             t.HasCheckConstraint("CK_HistoricalImportBatches_Mode", "\"Mode\" IN ('HistoricalTransactions','CutoverOpeningBalances')");
 
-                            t.HasCheckConstraint("CK_HistoricalImportBatches_ReviewState", "(\"Status\" IN ('Validated','ValidationFailed') AND \"SubmittedByUserId\" IS NULL AND \"SubmittedAtUtc\" IS NULL) OR (\"Status\" IN ('PendingApproval','Approved','Rejected','Committed') AND \"SubmittedByUserId\" IS NOT NULL AND \"SubmittedAtUtc\" IS NOT NULL AND \"RequiredApprovalCount\" > 0)");
-
-                            t.HasCheckConstraint("CK_HistoricalImportBatches_Status", "\"Status\" IN ('Validated','ValidationFailed','PendingApproval','Approved','Rejected','Committed')");
-                        });
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionImportDecision", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ApproverRole")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("ApproverUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("BatchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Comment")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Decision")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApproverUserId");
-
-                    b.HasIndex("OrganizationId", "BatchId", "ApproverUserId")
-                        .IsUnique();
-
-                    b.ToTable("HistoricalTransactionImportDecisions", t =>
-                        {
-                            t.HasCheckConstraint("CK_HistoricalImportDecisions_Decision", "\"Decision\" IN ('Approved','Rejected')");
-
-                            t.HasCheckConstraint("CK_HistoricalImportDecisions_Role", "\"ApproverRole\" IN ('Admin','FinanceManager','CFO')");
+                            t.HasCheckConstraint("CK_HistoricalImportBatches_Status", "\"Status\" IN ('Validated','ValidationFailed')");
                         });
                 });
 
@@ -1843,9 +1756,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("PostedTreasuryTransactionId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("RawDataJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -1869,9 +1779,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PostedTreasuryTransactionId")
-                        .IsUnique();
-
                     b.HasIndex("OrganizationId", "AccountId");
 
                     b.HasIndex("OrganizationId", "Fingerprint");
@@ -1890,103 +1797,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_HistoricalImportRows_Hash", "char_length(\"Fingerprint\") = 64");
 
                             t.HasCheckConstraint("CK_HistoricalImportRows_RowNumber", "\"RowNumber\" > 1");
-                        });
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AccountId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("BatchId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BusinessUnitId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("CommittedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CommittedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CounterpartyName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("Direction")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<string>("ExternalReference")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid?>("LegalEntityId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("SourceRowId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("TransactionDateUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("TransactionType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime?>("ValueDateUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CommittedByUserId");
-
-                    b.HasIndex("OrganizationId", "BatchId");
-
-                    b.HasIndex("OrganizationId", "ExternalReference");
-
-                    b.HasIndex("OrganizationId", "SourceRowId")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "AccountId", "TransactionDateUtc");
-
-                    b.HasIndex("OrganizationId", "LegalEntityId", "BusinessUnitId");
-
-                    b.ToTable("HistoricalTransactionRecords", t =>
-                        {
-                            t.HasCheckConstraint("CK_HistoricalTransactionRecords_Amount", "\"Amount\" > 0");
-
-                            t.HasCheckConstraint("CK_HistoricalTransactionRecords_Currency", "char_length(\"Currency\") = 3");
-
-                            t.HasCheckConstraint("CK_HistoricalTransactionRecords_Direction", "\"Direction\" IN ('Credit','Debit')");
                         });
                 });
 
@@ -4644,26 +4454,11 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionImportBatch", b =>
                 {
-                    b.HasOne("Treasury.Domain.Entities.User", "CommittedByUser")
-                        .WithMany()
-                        .HasForeignKey("CommittedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Treasury.Domain.Entities.Organization", null)
                         .WithMany()
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.User", "RejectedByUser")
-                        .WithMany()
-                        .HasForeignKey("RejectedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.User", "SubmittedByUser")
-                        .WithMany()
-                        .HasForeignKey("SubmittedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Treasury.Domain.Entities.User", "UploadedByUser")
                         .WithMany()
@@ -4671,39 +4466,7 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("CommittedByUser");
-
-                    b.Navigation("RejectedByUser");
-
-                    b.Navigation("SubmittedByUser");
-
                     b.Navigation("UploadedByUser");
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionImportDecision", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.User", "ApproverUser")
-                        .WithMany()
-                        .HasForeignKey("ApproverUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.HistoricalTransactionImportBatch", "Batch")
-                        .WithMany("Decisions")
-                        .HasForeignKey("OrganizationId", "BatchId")
-                        .HasPrincipalKey("OrganizationId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ApproverUser");
-
-                    b.Navigation("Batch");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionImportRow", b =>
@@ -4713,11 +4476,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.TreasuryTransaction", "PostedTreasuryTransaction")
-                        .WithMany()
-                        .HasForeignKey("PostedTreasuryTransactionId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Treasury.Domain.Entities.Account", "Account")
                         .WithMany()
@@ -4751,68 +4509,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
                     b.Navigation("BusinessUnit");
 
                     b.Navigation("LegalEntity");
-
-                    b.Navigation("PostedTreasuryTransaction");
-                });
-
-            modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionRecord", b =>
-                {
-                    b.HasOne("Treasury.Domain.Entities.User", "CommittedByUser")
-                        .WithMany()
-                        .HasForeignKey("CommittedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Organization", null)
-                        .WithMany()
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.Account", "Account")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId", "AccountId")
-                        .HasPrincipalKey("OrganizationId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.HistoricalTransactionImportBatch", "Batch")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId", "BatchId")
-                        .HasPrincipalKey("OrganizationId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.LegalEntity", "LegalEntity")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId", "LegalEntityId")
-                        .HasPrincipalKey("OrganizationId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Treasury.Domain.Entities.HistoricalTransactionImportRow", "SourceRow")
-                        .WithOne()
-                        .HasForeignKey("Treasury.Domain.Entities.HistoricalTransactionRecord", "OrganizationId", "SourceRowId")
-                        .HasPrincipalKey("Treasury.Domain.Entities.HistoricalTransactionImportRow", "OrganizationId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Treasury.Domain.Entities.BusinessUnit", "BusinessUnit")
-                        .WithMany()
-                        .HasForeignKey("OrganizationId", "LegalEntityId", "BusinessUnitId")
-                        .HasPrincipalKey("OrganizationId", "LegalEntityId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Account");
-
-                    b.Navigation("Batch");
-
-                    b.Navigation("BusinessUnit");
-
-                    b.Navigation("CommittedByUser");
-
-                    b.Navigation("LegalEntity");
-
-                    b.Navigation("SourceRow");
                 });
 
             modelBuilder.Entity("Treasury.Domain.Entities.InvestmentAccrualSnapshot", b =>
@@ -5493,8 +5189,6 @@ namespace Treasury.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Treasury.Domain.Entities.HistoricalTransactionImportBatch", b =>
                 {
-                    b.Navigation("Decisions");
-
                     b.Navigation("Rows");
                 });
 

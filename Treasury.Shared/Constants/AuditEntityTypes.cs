@@ -26,6 +26,10 @@ public static class AuditEntityTypes
     public const string TreasuryTransaction = "TreasuryTransaction";
     public const string BankStatementImport = "BankStatementImport";
     public const string BankStatementLine = "BankStatementLine";
+    public const string HistoricalTransactionImportBatch =
+        "HistoricalTransactionImportBatch";
+    public const string HistoricalTransactionRecord =
+        "HistoricalTransactionRecord";
     public const string CashFlowForecastItem = "CashFlowForecastItem";
     public const string FxRate = "FxRate";
     public const string TreasuryAlert = "TreasuryAlert";
