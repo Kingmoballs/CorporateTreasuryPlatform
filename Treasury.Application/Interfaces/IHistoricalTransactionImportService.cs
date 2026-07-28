@@ -14,6 +14,13 @@ public interface IHistoricalTransactionImportService
     Task<HistoricalImportBatchResponseDto> GetBatch(
         Guid batchId);
 
+    Task<PagedHistoricalImportBatchesResponseDto>
+        SearchBatches(
+            HistoricalImportBatchQueryDto query);
+
+    Task<HistoricalImportDashboardResponseDto>
+        GetDashboard();
+
     Task<PagedHistoricalImportRowsResponseDto> GetRows(
         Guid batchId,
         HistoricalImportRowsQueryDto query);
@@ -41,6 +48,28 @@ public interface IHistoricalTransactionImportService
     Task<PagedHistoricalTransactionRecordsResponseDto>
         GetCommittedRecords(
             HistoricalTransactionRecordQueryDto query);
+
+    Task<HistoricalTransactionRecordResponseDto>
+        GetCommittedRecord(Guid recordId);
+
+    Task<CsvExportDto> ExportCommittedRecords(
+        HistoricalTransactionRecordQueryDto query,
+        int maxRows);
+
+    Task<HistoricalImportApprovalReportResponseDto>
+        GetApprovalReport(Guid batchId);
+
+    Task<CsvExportDto> ExportApprovalReport(
+        Guid batchId);
+
+    Task<
+        OpeningBalanceReconciliationReportResponseDto>
+        GetOpeningBalanceReconciliation(
+            Guid batchId);
+
+    Task<CsvExportDto>
+        ExportOpeningBalanceReconciliation(
+            Guid batchId);
 
     Task<CsvExportDto> ExportErrors(
         Guid batchId);

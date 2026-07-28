@@ -949,6 +949,456 @@ public class HistoricalTransactionImportService
             };
     }
 
+    public async Task<
+        PagedHistoricalImportBatchesResponseDto>
+        SearchBatches(
+            HistoricalImportBatchQueryDto query)
+    {
+        ValidateDateRange(
+            query.FromUtc,
+            query.ToUtc);
+
+        query.Mode =
+            string.IsNullOrWhiteSpace(query.Mode)
+                ? null
+                : NormalizeMode(query.Mode);
+        query.Status =
+            string.IsNullOrWhiteSpace(query.Status)
+                ? null
+                : NormalizeStatus(query.Status);
+        query.Search = NormalizeOptional(query.Search);
+
+        if (query.Search?.Length > 255)
+        {
+            throw new RequestValidationException(
+                "Search cannot exceed 255 characters.");
+        }
+
+        query.Page = Math.Max(1, query.Page);
+        query.PageSize =
+            Math.Clamp(query.PageSize, 1, 200);
+
+        var result =
+            await _repository.SearchBatches(query);
+
+        return new PagedHistoricalImportBatchesResponseDto
+        {
+            Items = result.Items
+                .Select(batch =>
+                    MapBatch(
+                        batch,
+                        isIdempotentReplay: false))
+                .ToArray(),
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalCount = result.TotalCount,
+            TotalPages = (int)Math.Ceiling(
+                result.TotalCount /
+                (double)query.PageSize)
+        };
+    }
+
+    public async Task<
+        HistoricalImportDashboardResponseDto>
+        GetDashboard()
+    {
+        var dashboard =
+            await _repository.GetDashboardSummary();
+
+        dashboard.GeneratedAtUtc =
+            _timeProvider.GetUtcNow().UtcDateTime;
+
+        return dashboard;
+    }
+
+    public async Task<
+        HistoricalTransactionRecordResponseDto>
+        GetCommittedRecord(Guid recordId)
+    {
+        var record =
+            await _repository.GetCommittedRecord(
+                recordId);
+
+        return record is null
+            ? throw new ResourceNotFoundException(
+                "Historical transaction record " +
+                "not found.")
+            : MapHistoricalRecord(record);
+    }
+
+    public async Task<CsvExportDto>
+        ExportCommittedRecords(
+            HistoricalTransactionRecordQueryDto query,
+            int maxRows)
+    {
+        ValidateDateRange(
+            query.FromUtc,
+            query.ToUtc);
+        ValidateMaxRows(maxRows);
+
+        var exportQuery =
+            new HistoricalTransactionRecordQueryDto
+            {
+                AccountId = query.AccountId,
+                LegalEntityId = query.LegalEntityId,
+                BusinessUnitId =
+                    query.BusinessUnitId,
+                FromUtc = query.FromUtc,
+                ToUtc = query.ToUtc,
+                Page = 1,
+                PageSize = maxRows
+            };
+
+        var result =
+            await _repository.GetCommittedRecords(
+                exportQuery);
+        var builder = new StringBuilder();
+
+        builder.AppendLine(
+            "RecordId,BatchId,ExternalReference," +
+            "AccountId,AccountNumber,LegalEntityId," +
+            "BusinessUnitId,TransactionDateUtc," +
+            "ValueDateUtc,Amount,Currency,Direction," +
+            "TransactionType,Description,Category," +
+            "CounterpartyName,CommittedAtUtc," +
+            "CommittedByUserId");
+
+        foreach (var record in result.Items)
+        {
+            builder.AppendLine(
+                string.Join(
+                    ",",
+                    new[]
+                    {
+                        CsvExportHelper.Escape(record.Id),
+                        CsvExportHelper.Escape(
+                            record.BatchId),
+                        EscapeSafe(
+                            record.ExternalReference),
+                        CsvExportHelper.Escape(
+                            record.AccountId),
+                        EscapeSafe(
+                            record.Account.AccountNumber),
+                        CsvExportHelper.Escape(
+                            record.LegalEntityId),
+                        CsvExportHelper.Escape(
+                            record.BusinessUnitId),
+                        CsvExportHelper.Escape(
+                            record.TransactionDateUtc),
+                        CsvExportHelper.Escape(
+                            record.ValueDateUtc),
+                        CsvExportHelper.Escape(
+                            record.Amount),
+                        EscapeSafe(record.Currency),
+                        EscapeSafe(record.Direction),
+                        EscapeSafe(
+                            record.TransactionType),
+                        EscapeSafe(record.Description),
+                        EscapeSafe(record.Category),
+                        EscapeSafe(
+                            record.CounterpartyName),
+                        CsvExportHelper.Escape(
+                            record.CommittedAtUtc),
+                        CsvExportHelper.Escape(
+                            record.CommittedByUserId)
+                    }));
+        }
+
+        return CreateCsvExport(
+            $"historical-transaction-records-" +
+            $"{_timeProvider.GetUtcNow():yyyyMMddHHmmss}" +
+            ".csv",
+            builder);
+    }
+
+    public async Task<
+        HistoricalImportApprovalReportResponseDto>
+        GetApprovalReport(Guid batchId)
+    {
+        var batch =
+            await RequireBatchForReport(batchId);
+        var approvedDecisions =
+            batch.Decisions
+                .Where(decision =>
+                    decision.Decision ==
+                        ApprovalDecisionTypes
+                            .Approved)
+                .ToArray();
+
+        return new
+            HistoricalImportApprovalReportResponseDto
+            {
+                Batch = MapBatch(
+                    batch,
+                    isIdempotentReplay: false),
+                Decisions = batch.Decisions
+                    .OrderBy(decision =>
+                        decision.CreatedAtUtc)
+                    .Select(MapDecision)
+                    .ToArray(),
+                HasRequiredApprovals =
+                    HasRequiredApprovals(
+                        batch,
+                        approvedDecisions),
+                HasAdminApproval =
+                    HasApprovedRole(
+                        approvedDecisions,
+                        Roles.Admin),
+                HasFinanceManagerApproval =
+                    HasApprovedRole(
+                        approvedDecisions,
+                        Roles.FinanceManager),
+                HasCfoApproval =
+                    HasApprovedRole(
+                        approvedDecisions,
+                        Roles.CFO),
+                HasRejection =
+                    batch.Decisions.Any(decision =>
+                        decision.Decision ==
+                            ApprovalDecisionTypes
+                                .Rejected)
+            };
+    }
+
+    public async Task<CsvExportDto>
+        ExportApprovalReport(Guid batchId)
+    {
+        var report =
+            await GetApprovalReport(batchId);
+        var builder = new StringBuilder();
+
+        builder.AppendLine(
+            "BatchId,ImportKey,Mode,Status,FileName," +
+            "UploadedByUserId,UploadedAtUtc," +
+            "RequiredApprovalCount,ApprovalCount," +
+            "HasRequiredApprovals,HasAdminApproval," +
+            "HasFinanceManagerApproval,HasCfoApproval," +
+            "HasRejection,RejectionReason," +
+            "DecisionId,ApproverUserId,ApproverName," +
+            "ApproverRole,Decision,Comment," +
+            "DecisionAtUtc");
+
+        var decisions =
+            report.Decisions.Count == 0
+                ? new HistoricalImportDecisionResponseDto?[]
+                    {
+                        null
+                    }
+                : report.Decisions
+                    .Select(decision =>
+                        (HistoricalImportDecisionResponseDto?)
+                        decision)
+                    .ToArray();
+
+        foreach (var decision in decisions)
+        {
+            builder.AppendLine(
+                string.Join(
+                    ",",
+                    new[]
+                    {
+                        CsvExportHelper.Escape(
+                            report.Batch.Id),
+                        CsvExportHelper.Escape(
+                            report.Batch.ImportKey),
+                        EscapeSafe(report.Batch.Mode),
+                        EscapeSafe(report.Batch.Status),
+                        EscapeSafe(
+                            report.Batch.FileName),
+                        CsvExportHelper.Escape(
+                            report.Batch
+                                .UploadedByUserId),
+                        CsvExportHelper.Escape(
+                            report.Batch
+                                .UploadedAtUtc),
+                        CsvExportHelper.Escape(
+                            report.Batch
+                                .RequiredApprovalCount),
+                        CsvExportHelper.Escape(
+                            report.Batch
+                                .ApprovalCount),
+                        CsvExportHelper.Escape(
+                            report.HasRequiredApprovals),
+                        CsvExportHelper.Escape(
+                            report.HasAdminApproval),
+                        CsvExportHelper.Escape(
+                            report
+                                .HasFinanceManagerApproval),
+                        CsvExportHelper.Escape(
+                            report.HasCfoApproval),
+                        CsvExportHelper.Escape(
+                            report.HasRejection),
+                        EscapeSafe(
+                            report.Batch
+                                .RejectionReason),
+                        CsvExportHelper.Escape(
+                            decision?.Id),
+                        CsvExportHelper.Escape(
+                            decision?.ApproverUserId),
+                        EscapeSafe(
+                            decision?.ApproverName),
+                        EscapeSafe(
+                            decision?.ApproverRole),
+                        EscapeSafe(
+                            decision?.Decision),
+                        EscapeSafe(
+                            decision?.Comment),
+                        CsvExportHelper.Escape(
+                            decision?.CreatedAtUtc)
+                    }));
+        }
+
+        return CreateCsvExport(
+            $"historical-import-{batchId}-" +
+            "approval-evidence.csv",
+            builder);
+    }
+
+    public async Task<
+        OpeningBalanceReconciliationReportResponseDto>
+        GetOpeningBalanceReconciliation(
+            Guid batchId)
+    {
+        var batch =
+            await RequireBatchForReport(batchId);
+
+        if (batch.Mode !=
+            HistoricalImportModes
+                .CutoverOpeningBalances)
+        {
+            throw new RequestValidationException(
+                "Opening-balance reconciliation is " +
+                "only available for cutover opening " +
+                "balance batches.");
+        }
+
+        if (batch.Status !=
+            HistoricalImportStatuses.Committed)
+        {
+            throw new ConflictException(
+                "Opening-balance reconciliation is " +
+                "available after the batch has been " +
+                "committed.");
+        }
+
+        var rows = batch.Rows
+            .OrderBy(row => row.RowNumber)
+            .Select(
+                MapOpeningBalanceReconciliationRow)
+            .ToArray();
+        var reconciledCount =
+            rows.Count(row =>
+                row.IsPostingReconciled);
+        var balanceMatchCount =
+            rows.Count(row =>
+                row.CurrentBalanceMatchesOpening);
+
+        return new
+            OpeningBalanceReconciliationReportResponseDto
+            {
+                Batch = MapBatch(
+                    batch,
+                    isIdempotentReplay: false),
+                TotalRowCount = rows.Length,
+                ReconciledPostingCount =
+                    reconciledCount,
+                UnreconciledPostingCount =
+                    rows.Length - reconciledCount,
+                CurrentBalanceMatchCount =
+                    balanceMatchCount,
+                CurrentBalanceDriftCount =
+                    rows.Length - balanceMatchCount,
+                IsFullyPostingReconciled =
+                    rows.Length > 0 &&
+                    reconciledCount == rows.Length,
+                Rows = rows
+            };
+    }
+
+    public async Task<CsvExportDto>
+        ExportOpeningBalanceReconciliation(
+            Guid batchId)
+    {
+        var report =
+            await GetOpeningBalanceReconciliation(
+                batchId);
+        var builder = new StringBuilder();
+
+        builder.AppendLine(
+            "BatchId,RowNumber,AccountId,AccountNumber," +
+            "ExpectedOpeningBalance,Currency," +
+            "CurrentAccountBalance," +
+            "CurrentBalanceMatchesOpening," +
+            "TreasuryTransactionId," +
+            "TreasuryTransactionReference," +
+            "TreasuryTransactionStatus," +
+            "TreasuryTransactionAmount," +
+            "TreasuryTransactionCurrency,LedgerEntryId," +
+            "LedgerEntryType,LedgerEntryAmount," +
+            "TransactionMatchesImport," +
+            "LedgerMatchesImport,IsPostingReconciled," +
+            "Issues");
+
+        foreach (var row in report.Rows)
+        {
+            builder.AppendLine(
+                string.Join(
+                    ",",
+                    new[]
+                    {
+                        CsvExportHelper.Escape(
+                            report.Batch.Id),
+                        CsvExportHelper.Escape(
+                            row.RowNumber),
+                        CsvExportHelper.Escape(
+                            row.AccountId),
+                        EscapeSafe(row.AccountNumber),
+                        CsvExportHelper.Escape(
+                            row.ExpectedOpeningBalance),
+                        EscapeSafe(row.Currency),
+                        CsvExportHelper.Escape(
+                            row.CurrentAccountBalance),
+                        CsvExportHelper.Escape(
+                            row
+                                .CurrentBalanceMatchesOpening),
+                        CsvExportHelper.Escape(
+                            row.TreasuryTransactionId),
+                        EscapeSafe(
+                            row
+                                .TreasuryTransactionReference),
+                        EscapeSafe(
+                            row
+                                .TreasuryTransactionStatus),
+                        CsvExportHelper.Escape(
+                            row
+                                .TreasuryTransactionAmount),
+                        EscapeSafe(
+                            row
+                                .TreasuryTransactionCurrency),
+                        CsvExportHelper.Escape(
+                            row.LedgerEntryId),
+                        EscapeSafe(row.LedgerEntryType),
+                        CsvExportHelper.Escape(
+                            row.LedgerEntryAmount),
+                        CsvExportHelper.Escape(
+                            row.TransactionMatchesImport),
+                        CsvExportHelper.Escape(
+                            row.LedgerMatchesImport),
+                        CsvExportHelper.Escape(
+                            row.IsPostingReconciled),
+                        EscapeSafe(
+                            string.Join(
+                                " | ",
+                                row.Issues))
+                    }));
+        }
+
+        return CreateCsvExport(
+            $"historical-import-{batchId}-" +
+            "opening-balance-reconciliation.csv",
+            builder);
+    }
+
     public async Task<CsvExportDto> ExportErrors(
         Guid batchId)
     {
@@ -2380,12 +2830,225 @@ public class HistoricalTransactionImportService
             Array.Empty<string>();
     }
 
+    private static void ValidateDateRange(
+        DateTime? fromUtc,
+        DateTime? toUtc)
+    {
+        if (fromUtc.HasValue &&
+            toUtc.HasValue &&
+            fromUtc.Value >= toUtc.Value)
+        {
+            throw new RequestValidationException(
+                "FromUtc must be earlier than ToUtc.");
+        }
+    }
+
+    private static void ValidateMaxRows(int maxRows)
+    {
+        if (maxRows < 1 || maxRows > 50_000)
+        {
+            throw new RequestValidationException(
+                "MaxRows must be between 1 and 50000.");
+        }
+    }
+
+    private static bool HasApprovedRole(
+        IEnumerable<
+            HistoricalTransactionImportDecision>
+            decisions,
+        string role)
+    {
+        return decisions.Any(decision =>
+            string.Equals(
+                decision.ApproverRole,
+                role,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static
+        OpeningBalanceReconciliationRowResponseDto
+        MapOpeningBalanceReconciliationRow(
+            HistoricalTransactionImportRow row)
+    {
+        var issues = new List<string>();
+        var expectedAmount = row.Amount ?? 0;
+        var currency =
+            row.Currency ??
+            row.Account?.Currency ??
+            string.Empty;
+        var transaction =
+            row.PostedTreasuryTransaction;
+
+        if (!row.Amount.HasValue ||
+            row.Amount.Value <= 0)
+        {
+            issues.Add(
+                "The staged opening balance is missing " +
+                "or invalid.");
+        }
+
+        if (row.Account is null)
+        {
+            issues.Add(
+                "The imported account is unavailable.");
+        }
+
+        if (transaction is null)
+        {
+            issues.Add(
+                "The opening-balance treasury " +
+                "transaction is missing.");
+        }
+
+        var transactionMatches =
+            row.Amount.HasValue &&
+            row.Amount.Value > 0 &&
+            row.Account is not null &&
+            transaction is not null &&
+            row.PostedTreasuryTransactionId ==
+                transaction.Id &&
+            transaction.TransactionType ==
+                TransactionTypes.OpeningBalance &&
+            transaction.Status ==
+                TransactionStatuses.Completed &&
+            transaction.DestinationAccountId ==
+                row.AccountId &&
+            transaction.Amount == expectedAmount &&
+            string.Equals(
+                transaction.Currency,
+                currency,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (transaction is not null &&
+            !transactionMatches)
+        {
+            issues.Add(
+                "The treasury transaction does not " +
+                "match the imported account, amount, " +
+                "currency, type, or completed status.");
+        }
+
+        var ledgerEntries =
+            transaction?.LedgerEntries.ToArray() ??
+            Array.Empty<LedgerEntry>();
+        var ledgerEntry =
+            ledgerEntries.Length == 1
+                ? ledgerEntries[0]
+                : null;
+
+        var ledgerMatches =
+            transaction is not null &&
+            row.Account is not null &&
+            ledgerEntry is not null &&
+            ledgerEntry.TreasuryTransactionId ==
+                transaction.Id &&
+            ledgerEntry.AccountId == row.AccountId &&
+            ledgerEntry.Amount == expectedAmount &&
+            string.Equals(
+                ledgerEntry.EntryType,
+                "Debit",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (transaction is not null &&
+            !ledgerMatches)
+        {
+            issues.Add(
+                ledgerEntries.Length == 0
+                    ? "The opening-balance ledger entry " +
+                      "is missing."
+                    : ledgerEntries.Length > 1
+                        ? "The opening-balance transaction " +
+                          "has an unexpected number of " +
+                          "ledger entries."
+                        : "The ledger entry does not match " +
+                          "the imported account, amount, " +
+                          "or debit entry type.");
+        }
+
+        return new
+            OpeningBalanceReconciliationRowResponseDto
+            {
+                RowNumber = row.RowNumber,
+                AccountId = row.AccountId,
+                AccountNumber =
+                    row.Account?.AccountNumber ??
+                    row.AccountNumber,
+                ExpectedOpeningBalance =
+                    expectedAmount,
+                Currency = currency,
+                CurrentAccountBalance =
+                    row.Account?.Balance,
+                CurrentBalanceMatchesOpening =
+                    row.Account is not null &&
+                    row.Account.Balance ==
+                        expectedAmount,
+                TreasuryTransactionId =
+                    transaction?.Id ??
+                    row.PostedTreasuryTransactionId,
+                TreasuryTransactionReference =
+                    transaction?.Reference,
+                TreasuryTransactionStatus =
+                    transaction?.Status,
+                TreasuryTransactionAmount =
+                    transaction?.Amount,
+                TreasuryTransactionCurrency =
+                    transaction?.Currency,
+                LedgerEntryId = ledgerEntry?.Id,
+                LedgerEntryType =
+                    ledgerEntry?.EntryType,
+                LedgerEntryAmount =
+                    ledgerEntry?.Amount,
+                TransactionMatchesImport =
+                    transactionMatches,
+                LedgerMatchesImport =
+                    ledgerMatches,
+                IsPostingReconciled =
+                    transactionMatches &&
+                    ledgerMatches,
+                Issues = issues
+            };
+    }
+
+    private static string EscapeSafe(
+        string? value)
+    {
+        return CsvExportHelper.Escape(
+            NeutralizeSpreadsheetFormula(value));
+    }
+
+    private static CsvExportDto CreateCsvExport(
+        string fileName,
+        StringBuilder builder)
+    {
+        return new CsvExportDto
+        {
+            FileName = fileName,
+            ContentType =
+                "text/csv; charset=utf-8",
+            Content = CsvExportHelper.ToUtf8Bytes(
+                builder.ToString())
+        };
+    }
+
     private async Task<
         HistoricalTransactionImportBatch>
         RequireBatch(Guid batchId)
     {
         var batch =
             await _repository.GetBatch(batchId);
+
+        return batch ??
+            throw new ResourceNotFoundException(
+                "Historical import batch not found.");
+    }
+
+    private async Task<
+        HistoricalTransactionImportBatch>
+        RequireBatchForReport(Guid batchId)
+    {
+        var batch =
+            await _repository
+                .GetBatchForReport(batchId);
 
         return batch ??
             throw new ResourceNotFoundException(
@@ -2480,6 +3143,34 @@ public class HistoricalTransactionImportService
             "Mode must be either " +
             $"'{"HistoricalTransactions"}' or " +
             $"'{"CutoverOpeningBalances"}'.");
+    }
+
+    private static string NormalizeStatus(
+        string? status)
+    {
+        var statuses = new[]
+        {
+            HistoricalImportStatuses.Validated,
+            HistoricalImportStatuses
+                .ValidationFailed,
+            HistoricalImportStatuses
+                .PendingApproval,
+            HistoricalImportStatuses.Approved,
+            HistoricalImportStatuses.Rejected,
+            HistoricalImportStatuses.Committed
+        };
+
+        var normalized = statuses.FirstOrDefault(
+            value => string.Equals(
+                value,
+                status,
+                StringComparison.OrdinalIgnoreCase));
+
+        return normalized ??
+            throw new RequestValidationException(
+                "Status must be one of: Validated, " +
+                "ValidationFailed, PendingApproval, " +
+                "Approved, Rejected, or Committed.");
     }
 
     private static IReadOnlyList<string> GetHeaders(

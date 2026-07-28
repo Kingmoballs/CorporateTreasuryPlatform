@@ -489,6 +489,81 @@ public class HistoricalTransactionImportIntegrationTests
                 .HistoricalTransactionRecords
                 .ToListAsync());
 
+        var reconciliation =
+            await adminService
+                .GetOpeningBalanceReconciliation(
+                    dryRun.Id);
+        var reconciliationRow =
+            Assert.Single(reconciliation.Rows);
+
+        Assert.True(
+            reconciliation
+                .IsFullyPostingReconciled);
+        Assert.True(
+            reconciliationRow
+                .TransactionMatchesImport);
+        Assert.True(
+            reconciliationRow.LedgerMatchesImport);
+        Assert.True(
+            reconciliationRow
+                .CurrentBalanceMatchesOpening);
+        Assert.Equal(
+            transaction.Reference,
+            reconciliationRow
+                .TreasuryTransactionReference);
+
+        var approvalReport =
+            await adminService.GetApprovalReport(
+                dryRun.Id);
+
+        Assert.True(
+            approvalReport.HasRequiredApprovals);
+        Assert.True(
+            approvalReport.HasAdminApproval);
+        Assert.True(
+            approvalReport.HasCfoApproval);
+
+        var search =
+            await adminService.SearchBatches(
+                new HistoricalImportBatchQueryDto
+                {
+                    Mode =
+                        HistoricalImportModes
+                            .CutoverOpeningBalances,
+                    Status =
+                        HistoricalImportStatuses
+                            .Committed,
+                    Search = "cutover.csv"
+                });
+
+        Assert.Contains(
+            search.Items,
+            item => item.Id == dryRun.Id);
+
+        var dashboard =
+            await adminService.GetDashboard();
+
+        Assert.True(dashboard.CommittedCount >= 1);
+        Assert.True(
+            dashboard.OpeningBalancePostingCount >= 1);
+
+        var reconciliationCsv =
+            await adminService
+                .ExportOpeningBalanceReconciliation(
+                    dryRun.Id);
+        var approvalCsv =
+            await adminService.ExportApprovalReport(
+                dryRun.Id);
+
+        Assert.Contains(
+            transaction.Reference,
+            Encoding.UTF8.GetString(
+                reconciliationCsv.Content));
+        Assert.Contains(
+            Roles.Admin,
+            Encoding.UTF8.GetString(
+                approvalCsv.Content));
+
         await Assert.ThrowsAsync<ConflictException>(
             () => adminService.Commit(
                 dryRun.Id,

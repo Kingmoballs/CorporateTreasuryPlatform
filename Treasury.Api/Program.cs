@@ -21,10 +21,28 @@ using Treasury.Api.Models;
 using Treasury.Api.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Net;
+using Treasury.Api.Configuration;
+using Treasury.Api.HealthChecks;
 
 
 // Create a builder for the web application
 var builder = WebApplication.CreateBuilder(args);
+
+var deploymentReadinessSettings =
+    builder.Configuration
+        .GetSection(
+            DeploymentReadinessOptions.SectionName)
+        .Get<DeploymentReadinessOptions>() ??
+    new DeploymentReadinessOptions();
+
+ProductionConfigurationValidator.Validate(
+    builder.Configuration,
+    builder.Environment,
+    deploymentReadinessSettings);
 
 var bootstrapPlatformAdminOnly =
     builder.Configuration.GetValue<bool>(
@@ -40,10 +58,117 @@ builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddHttpContextAccessor();
 
-builder.Services
+var dataProtectionBuilder = builder.Services
     .AddDataProtection()
     .SetApplicationName(
         "CorporateTreasuryPlatform");
+
+if (!string.IsNullOrWhiteSpace(
+        deploymentReadinessSettings
+            .DataProtectionKeysPath))
+{
+    var configuredPath =
+        deploymentReadinessSettings
+            .DataProtectionKeysPath.Trim();
+    var keysPath = Path.IsPathRooted(configuredPath)
+        ? configuredPath
+        : Path.Combine(
+            builder.Environment.ContentRootPath,
+            configuredPath);
+
+    dataProtectionBuilder.PersistKeysToFileSystem(
+        new DirectoryInfo(keysPath));
+}
+
+builder.Services
+    .AddOptions<DeploymentReadinessOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            DeploymentReadinessOptions.SectionName))
+    .Validate(
+        options =>
+            options.ForwardLimit is >= 1 and <= 5,
+        "ForwardLimit must be between 1 and 5.")
+    .Validate(
+        options =>
+            options.HstsMaxAgeDays
+                is >= 1 and <= 730,
+        "HSTS max age must be between 1 and 730 days.")
+    .Validate(
+        options =>
+            options.GetNormalizedAllowedOrigins()
+                .All(origin =>
+                    Uri.TryCreate(
+                        origin,
+                        UriKind.Absolute,
+                        out var uri) &&
+                    uri.Scheme is "http" or "https" &&
+                    string.IsNullOrEmpty(uri.UserInfo) &&
+                    uri.AbsolutePath == "/" &&
+                    string.IsNullOrEmpty(uri.Query) &&
+                    string.IsNullOrEmpty(
+                        uri.Fragment)),
+        "CORS origins must be absolute HTTP or HTTPS " +
+        "origins without paths, queries, fragments, " +
+        "or credentials.")
+    .Validate(
+        options =>
+            !options.UseForwardedHeaders ||
+            (options.GetNormalizedTrustedProxies()
+                 .Count > 0 &&
+             options.GetNormalizedTrustedProxies()
+                 .All(proxy =>
+                     IPAddress.TryParse(
+                         proxy,
+                         out _))),
+        "Forwarded headers require valid trusted " +
+        "proxy IP addresses.")
+    .ValidateOnStart();
+
+builder.Services.AddTreasuryCors(
+    deploymentReadinessSettings);
+
+builder.Services.Configure<
+    ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+    options.ForwardLimit =
+        deploymentReadinessSettings.ForwardLimit;
+
+    foreach (var proxy in
+             deploymentReadinessSettings
+                 .GetNormalizedTrustedProxies())
+    {
+        if (IPAddress.TryParse(
+                proxy,
+                out var address))
+        {
+            options.KnownProxies.Add(address);
+        }
+    }
+});
+
+builder.Services.AddHsts(options =>
+{
+    options.IncludeSubDomains =
+        deploymentReadinessSettings
+            .HstsIncludeSubDomains;
+    options.Preload =
+        deploymentReadinessSettings.HstsPreload;
+    options.MaxAge = TimeSpan.FromDays(
+        deploymentReadinessSettings
+            .HstsMaxAgeDays);
+});
+
+builder.Services
+    .AddHealthChecks()
+    .AddCheck<DatabaseReadinessHealthCheck>(
+        "database",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: new[] { "ready" });
 
 var authenticationSecuritySettings =
     builder.Configuration
@@ -928,11 +1053,29 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+if (deploymentReadinessSettings
+        .UseForwardedHeaders)
+{
+    app.UseForwardedHeaders();
+}
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+app.UseMiddleware<CorrelationIdMiddleware>();
+
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 app.UseHttpsRedirection();
 
 app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseRouting();
+
+app.UseCors(
+    DeploymentReadinessOptions.CorsPolicyName);
 
 app.UseRateLimiter();
 
@@ -941,6 +1084,27 @@ app.UseAuthentication();
 app.UseMiddleware<ActiveUserMiddleware>();
 
 app.UseAuthorization();
+
+app.MapHealthChecks(
+        "/health/live",
+        new HealthCheckOptions
+        {
+            Predicate = _ => false,
+            ResponseWriter =
+                HealthCheckResponseWriter.Write
+        })
+    .AllowAnonymous();
+
+app.MapHealthChecks(
+        "/health/ready",
+        new HealthCheckOptions
+        {
+            Predicate = registration =>
+                registration.Tags.Contains("ready"),
+            ResponseWriter =
+                HealthCheckResponseWriter.Write
+        })
+    .AllowAnonymous();
 
 app.MapControllers();
 

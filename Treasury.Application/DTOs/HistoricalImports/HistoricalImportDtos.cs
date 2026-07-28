@@ -70,6 +70,73 @@ public class HistoricalImportBatchResponseDto
         string.Empty;
 }
 
+public class HistoricalImportBatchQueryDto
+{
+    public string? Mode { get; set; }
+
+    public string? Status { get; set; }
+
+    public Guid? UploadedByUserId { get; set; }
+
+    public DateTime? FromUtc { get; set; }
+
+    public DateTime? ToUtc { get; set; }
+
+    public string? Search { get; set; }
+
+    public int Page { get; set; } = 1;
+
+    public int PageSize { get; set; } = 50;
+}
+
+public class PagedHistoricalImportBatchesResponseDto
+{
+    public IReadOnlyList<HistoricalImportBatchResponseDto>
+        Items { get; set; } =
+            Array.Empty<
+                HistoricalImportBatchResponseDto>();
+
+    public int Page { get; set; }
+
+    public int PageSize { get; set; }
+
+    public int TotalCount { get; set; }
+
+    public int TotalPages { get; set; }
+}
+
+public class HistoricalImportDashboardResponseDto
+{
+    public DateTime GeneratedAtUtc { get; set; }
+
+    public int TotalBatchCount { get; set; }
+
+    public int ValidationFailedCount { get; set; }
+
+    public int ValidatedCount { get; set; }
+
+    public int PendingApprovalCount { get; set; }
+
+    public int ApprovedAwaitingCommitCount
+        { get; set; }
+
+    public int RejectedCount { get; set; }
+
+    public int CommittedCount { get; set; }
+
+    public int HistoricalTransactionBatchCount
+        { get; set; }
+
+    public int CutoverOpeningBalanceBatchCount
+        { get; set; }
+
+    public int HistoricalTransactionRecordCount
+        { get; set; }
+
+    public int OpeningBalancePostingCount
+        { get; set; }
+}
+
 public class HistoricalImportRowResponseDto
 {
     public Guid Id { get; set; }
@@ -186,6 +253,29 @@ public class HistoricalImportDecisionResponseDto
     public DateTime CreatedAtUtc { get; set; }
 }
 
+public class HistoricalImportApprovalReportResponseDto
+{
+    public HistoricalImportBatchResponseDto Batch
+        { get; set; } = new();
+
+    public IReadOnlyList<
+        HistoricalImportDecisionResponseDto>
+        Decisions { get; set; } =
+            Array.Empty<
+                HistoricalImportDecisionResponseDto>();
+
+    public bool HasRequiredApprovals { get; set; }
+
+    public bool HasAdminApproval { get; set; }
+
+    public bool HasFinanceManagerApproval
+        { get; set; }
+
+    public bool HasCfoApproval { get; set; }
+
+    public bool HasRejection { get; set; }
+}
+
 public class HistoricalImportCommitResponseDto
 {
     public HistoricalImportBatchResponseDto Batch
@@ -278,4 +368,83 @@ public class PagedHistoricalTransactionRecordsResponseDto
     public int TotalCount { get; set; }
 
     public int TotalPages { get; set; }
+}
+
+public class OpeningBalanceReconciliationRowResponseDto
+{
+    public int RowNumber { get; set; }
+
+    public Guid? AccountId { get; set; }
+
+    public string AccountNumber { get; set; } =
+        string.Empty;
+
+    public decimal ExpectedOpeningBalance
+        { get; set; }
+
+    public string Currency { get; set; } =
+        string.Empty;
+
+    public decimal? CurrentAccountBalance
+        { get; set; }
+
+    public bool CurrentBalanceMatchesOpening
+        { get; set; }
+
+    public Guid? TreasuryTransactionId
+        { get; set; }
+
+    public string? TreasuryTransactionReference
+        { get; set; }
+
+    public string? TreasuryTransactionStatus
+        { get; set; }
+
+    public decimal? TreasuryTransactionAmount
+        { get; set; }
+
+    public string? TreasuryTransactionCurrency
+        { get; set; }
+
+    public Guid? LedgerEntryId { get; set; }
+
+    public string? LedgerEntryType { get; set; }
+
+    public decimal? LedgerEntryAmount
+        { get; set; }
+
+    public bool TransactionMatchesImport
+        { get; set; }
+
+    public bool LedgerMatchesImport { get; set; }
+
+    public bool IsPostingReconciled { get; set; }
+
+    public IReadOnlyList<string> Issues
+        { get; set; } = Array.Empty<string>();
+}
+
+public class OpeningBalanceReconciliationReportResponseDto
+{
+    public HistoricalImportBatchResponseDto Batch
+        { get; set; } = new();
+
+    public int TotalRowCount { get; set; }
+
+    public int ReconciledPostingCount { get; set; }
+
+    public int UnreconciledPostingCount { get; set; }
+
+    public int CurrentBalanceMatchCount { get; set; }
+
+    public int CurrentBalanceDriftCount { get; set; }
+
+    public bool IsFullyPostingReconciled
+        { get; set; }
+
+    public IReadOnlyList<
+        OpeningBalanceReconciliationRowResponseDto>
+        Rows { get; set; } =
+            Array.Empty<
+                OpeningBalanceReconciliationRowResponseDto>();
 }

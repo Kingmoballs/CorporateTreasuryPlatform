@@ -56,6 +56,21 @@ public class HistoricalImportsController
             template.FileName);
     }
 
+    [HttpGet]
+    public async Task<IActionResult> SearchBatches(
+        [FromQuery] HistoricalImportBatchQueryDto query)
+    {
+        return Ok(
+            await _service.SearchBatches(query));
+    }
+
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> GetDashboard()
+    {
+        return Ok(
+            await _service.GetDashboard());
+    }
+
     [HttpPost("dry-run")]
     [Consumes("multipart/form-data")]
     [Authorize(Roles = UploadRoles)]
@@ -217,6 +232,58 @@ public class HistoricalImportsController
             await _service.GetDecisions(batchId));
     }
 
+    [HttpGet("{batchId:guid}/approval-report")]
+    public async Task<IActionResult> GetApprovalReport(
+        Guid batchId)
+    {
+        return Ok(
+            await _service.GetApprovalReport(batchId));
+    }
+
+    [HttpGet(
+        "{batchId:guid}/approval-report/export/csv")]
+    public async Task<IActionResult>
+        ExportApprovalReport(Guid batchId)
+    {
+        var export =
+            await _service.ExportApprovalReport(
+                batchId);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
+
+    [HttpGet(
+        "{batchId:guid}/opening-balance-reconciliation")]
+    public async Task<IActionResult>
+        GetOpeningBalanceReconciliation(
+            Guid batchId)
+    {
+        return Ok(
+            await _service
+                .GetOpeningBalanceReconciliation(
+                    batchId));
+    }
+
+    [HttpGet(
+        "{batchId:guid}/opening-balance-reconciliation/export/csv")]
+    public async Task<IActionResult>
+        ExportOpeningBalanceReconciliation(
+            Guid batchId)
+    {
+        var export =
+            await _service
+                .ExportOpeningBalanceReconciliation(
+                    batchId);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
+    }
+
     [HttpPost("{batchId:guid}/commit")]
     [Authorize(Roles = Roles.Admin)]
     public async Task<IActionResult> Commit(
@@ -236,5 +303,32 @@ public class HistoricalImportsController
     {
         return Ok(
             await _service.GetCommittedRecords(query));
+    }
+
+    [HttpGet("records/{recordId:guid}")]
+    public async Task<IActionResult> GetCommittedRecord(
+        Guid recordId)
+    {
+        return Ok(
+            await _service.GetCommittedRecord(
+                recordId));
+    }
+
+    [HttpGet("records/export/csv")]
+    public async Task<IActionResult>
+        ExportCommittedRecords(
+            [FromQuery]
+                HistoricalTransactionRecordQueryDto query,
+            [FromQuery] int maxRows = 5000)
+    {
+        var export =
+            await _service.ExportCommittedRecords(
+                query,
+                maxRows);
+
+        return File(
+            export.Content,
+            export.ContentType,
+            export.FileName);
     }
 }

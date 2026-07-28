@@ -61,6 +61,190 @@ public class HistoricalTransactionImportRepository
                 batch.Id == batchId);
     }
 
+    public Task<HistoricalTransactionImportBatch?>
+        GetBatchForReport(Guid batchId)
+    {
+        return _context
+            .HistoricalTransactionImportBatches
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(batch => batch.Rows)
+                .ThenInclude(row => row.Account)
+            .Include(batch => batch.Rows)
+                .ThenInclude(row =>
+                    row.PostedTreasuryTransaction)
+                .ThenInclude(transaction =>
+                    transaction!.LedgerEntries)
+            .Include(batch => batch.Decisions)
+                .ThenInclude(decision =>
+                    decision.ApproverUser)
+            .FirstOrDefaultAsync(batch =>
+                batch.Id == batchId);
+    }
+
+    public async Task<(IReadOnlyList<
+        HistoricalTransactionImportBatch> Items,
+        int TotalCount)> SearchBatches(
+            HistoricalImportBatchQueryDto query)
+    {
+        var batches = BatchQuery();
+
+        if (!string.IsNullOrWhiteSpace(query.Mode))
+        {
+            batches = batches.Where(batch =>
+                batch.Mode == query.Mode);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Status))
+        {
+            batches = batches.Where(batch =>
+                batch.Status == query.Status);
+        }
+
+        if (query.UploadedByUserId.HasValue)
+        {
+            batches = batches.Where(batch =>
+                batch.UploadedByUserId ==
+                    query.UploadedByUserId.Value);
+        }
+
+        if (query.FromUtc.HasValue)
+        {
+            batches = batches.Where(batch =>
+                batch.UploadedAtUtc >=
+                    query.FromUtc.Value);
+        }
+
+        if (query.ToUtc.HasValue)
+        {
+            batches = batches.Where(batch =>
+                batch.UploadedAtUtc <
+                    query.ToUtc.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term =
+                query.Search.Trim().ToUpper();
+            var isImportKey =
+                Guid.TryParse(
+                    query.Search,
+                    out var importKey);
+
+            batches = batches.Where(batch =>
+                batch.FileName.ToUpper().Contains(term) ||
+                batch.FileHash.ToUpper().Contains(term) ||
+                (isImportKey &&
+                 batch.ImportKey == importKey));
+        }
+
+        var totalCount = await batches.CountAsync();
+
+        var items = await batches
+            .OrderByDescending(batch =>
+                batch.UploadedAtUtc)
+            .ThenByDescending(batch => batch.Id)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .ToListAsync();
+
+        return (items, totalCount);
+    }
+
+    public async Task<HistoricalImportDashboardResponseDto>
+        GetDashboardSummary()
+    {
+        var batches =
+            _context.HistoricalTransactionImportBatches
+                .AsNoTracking();
+
+        var statusCounts = await batches
+            .GroupBy(batch => batch.Status)
+            .Select(group => new
+            {
+                Status = group.Key,
+                Count = group.Count()
+            })
+            .ToDictionaryAsync(
+                item => item.Status,
+                item => item.Count);
+
+        var modeCounts = await batches
+            .GroupBy(batch => batch.Mode)
+            .Select(group => new
+            {
+                Mode = group.Key,
+                Count = group.Count()
+            })
+            .ToDictionaryAsync(
+                item => item.Mode,
+                item => item.Count);
+
+        return new HistoricalImportDashboardResponseDto
+        {
+            TotalBatchCount =
+                statusCounts.Values.Sum(),
+            ValidationFailedCount =
+                GetCount(
+                    statusCounts,
+                    HistoricalImportStatuses
+                        .ValidationFailed),
+            ValidatedCount =
+                GetCount(
+                    statusCounts,
+                    HistoricalImportStatuses
+                        .Validated),
+            PendingApprovalCount =
+                GetCount(
+                    statusCounts,
+                    HistoricalImportStatuses
+                        .PendingApproval),
+            ApprovedAwaitingCommitCount =
+                GetCount(
+                    statusCounts,
+                    HistoricalImportStatuses
+                        .Approved),
+            RejectedCount =
+                GetCount(
+                    statusCounts,
+                    HistoricalImportStatuses
+                        .Rejected),
+            CommittedCount =
+                GetCount(
+                    statusCounts,
+                    HistoricalImportStatuses
+                        .Committed),
+            HistoricalTransactionBatchCount =
+                GetCount(
+                    modeCounts,
+                    HistoricalImportModes
+                        .HistoricalTransactions),
+            CutoverOpeningBalanceBatchCount =
+                GetCount(
+                    modeCounts,
+                    HistoricalImportModes
+                        .CutoverOpeningBalances),
+            HistoricalTransactionRecordCount =
+                await _context
+                    .HistoricalTransactionRecords
+                    .AsNoTracking()
+                    .CountAsync(),
+            OpeningBalancePostingCount =
+                await _context
+                    .HistoricalTransactionImportRows
+                    .AsNoTracking()
+                    .CountAsync(row =>
+                        row.Batch.Mode ==
+                            HistoricalImportModes
+                                .CutoverOpeningBalances &&
+                        row.Batch.Status ==
+                            HistoricalImportStatuses
+                                .Committed &&
+                        row.PostedTreasuryTransactionId
+                            .HasValue)
+        };
+    }
+
     public async Task<IReadOnlyList<
         HistoricalTransactionImportDecision>>
         GetDecisions(Guid batchId)
@@ -361,6 +545,16 @@ public class HistoricalTransactionImportRepository
         return (items, totalCount);
     }
 
+    public Task<HistoricalTransactionRecord?>
+        GetCommittedRecord(Guid recordId)
+    {
+        return _context.HistoricalTransactionRecords
+            .AsNoTracking()
+            .Include(record => record.Account)
+            .FirstOrDefaultAsync(record =>
+                record.Id == recordId);
+    }
+
     public void SetOriginalConcurrencyToken(
         HistoricalTransactionImportBatch batch,
         Guid concurrencyToken)
@@ -434,5 +628,14 @@ public class HistoricalTransactionImportRepository
         return _context
             .HistoricalTransactionImportBatches
             .AsNoTracking();
+    }
+
+    private static int GetCount(
+        IReadOnlyDictionary<string, int> counts,
+        string key)
+    {
+        return counts.TryGetValue(key, out var count)
+            ? count
+            : 0;
     }
 }

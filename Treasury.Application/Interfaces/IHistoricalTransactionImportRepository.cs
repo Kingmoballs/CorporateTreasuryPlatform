@@ -17,6 +17,17 @@ public interface IHistoricalTransactionImportRepository
     Task<HistoricalTransactionImportBatch?>
         GetBatchForUpdate(Guid batchId);
 
+    Task<HistoricalTransactionImportBatch?>
+        GetBatchForReport(Guid batchId);
+
+    Task<(IReadOnlyList<
+        HistoricalTransactionImportBatch> Items,
+        int TotalCount)> SearchBatches(
+            HistoricalImportBatchQueryDto query);
+
+    Task<HistoricalImportDashboardResponseDto>
+        GetDashboardSummary();
+
     Task<IReadOnlyList<
         HistoricalTransactionImportDecision>>
         GetDecisions(Guid batchId);
@@ -70,6 +81,9 @@ public interface IHistoricalTransactionImportRepository
         HistoricalTransactionRecord> Items,
         int TotalCount)> GetCommittedRecords(
             HistoricalTransactionRecordQueryDto query);
+
+    Task<HistoricalTransactionRecord?>
+        GetCommittedRecord(Guid recordId);
 
     void SetOriginalConcurrencyToken(
         HistoricalTransactionImportBatch batch,
