@@ -7,7 +7,9 @@ public static class ProductionConfigurationValidator
     public static void Validate(
         IConfiguration configuration,
         IHostEnvironment environment,
-        DeploymentReadinessOptions options)
+        DeploymentReadinessOptions options,
+        RefreshTokenCookieOptions
+            refreshTokenCookieOptions)
     {
         if (!environment.IsProduction())
         {
@@ -29,6 +31,9 @@ public static class ProductionConfigurationValidator
             configuration,
             errors);
         ValidateOrigins(options, errors);
+        ValidateRefreshTokenCookie(
+            refreshTokenCookieOptions,
+            errors);
         ValidateForwardedHeaders(options, errors);
         ValidateDataProtection(options, errors);
         ValidateEmailDelivery(
@@ -55,6 +60,18 @@ public static class ProductionConfigurationValidator
             "Production configuration validation " +
             "failed: " +
             string.Join(" ", errors));
+    }
+
+    private static void ValidateRefreshTokenCookie(
+        RefreshTokenCookieOptions options,
+        ICollection<string> errors)
+    {
+        if (!options.Secure)
+        {
+            errors.Add(
+                "The production refresh-token cookie " +
+                "must use the Secure attribute.");
+        }
     }
 
     private static void RequireDatabaseConnection(

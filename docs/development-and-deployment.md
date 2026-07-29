@@ -47,6 +47,11 @@ development-only manual-link configuration or by enabling a
 local/test SMTP server. Do not enable manual invitation URLs in
 Production.
 
+`Treasury.Api/appsettings.Development.json` is intentionally
+ignored because it can contain local settings. Start from
+`Treasury.Api/appsettings.Development.example.json` when creating
+or refreshing that file.
+
 ## Database migrations
 
 Create a migration after changing the EF model:
@@ -102,6 +107,13 @@ Development URLs:
 - Swagger: `https://localhost:7126/swagger`
 - Liveness: `https://localhost:7126/health/live`
 - Readiness: `https://localhost:7126/health/ready`
+
+The React development server will use port `5173`. Configure its
+Vite `/api` proxy to forward to the HTTPS API. The Development
+example disables `Secure` only for this local, same-origin proxy
+workflow; Production startup rejects a non-Secure refresh-token
+cookie. Never use the Development override in a deployed
+environment.
 
 Trust the ASP.NET Core development certificate if the browser or
 frontend rejects the local HTTPS certificate:
@@ -185,6 +197,8 @@ environment variables. Required values include:
 | `AllowedHosts` | Explicit API host names, never `*` |
 | `DeploymentReadiness__AllowedOrigins__0` | First HTTPS frontend origin |
 | `DeploymentReadiness__DataProtectionKeysPath` | Persistent shared key storage |
+| `RefreshTokenCookie__Secure` | Must remain `true` |
+| `RefreshTokenCookie__SameSite` | `Strict` for same-site deployment; `None` only when cross-site hosting is required |
 | `UserInvitations__AcceptanceUrl` | HTTPS frontend invitation route |
 | `PasswordRecovery__ResetUrl` | HTTPS frontend password-reset route |
 
@@ -255,4 +269,3 @@ The current backend does not itself provide:
 
 These are deployment or future integration workstreams, not
 hidden API endpoints.
-

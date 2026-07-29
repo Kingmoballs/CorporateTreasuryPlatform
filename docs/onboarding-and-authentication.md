@@ -122,10 +122,12 @@ Initial login:
 }
 ```
 
-When MFA is not enabled, the response contains access and refresh
-tokens. When MFA is enabled, `mfaRequired` is `true` and the
-response contains an expiring challenge token instead of an
-authenticated session.
+When MFA is not enabled, the response contains the access token
+and the API writes the rotating refresh token to a Secure,
+HttpOnly cookie. The refresh token is never included in JSON and
+must never be read or stored by frontend code. When MFA is
+enabled, `mfaRequired` is `true` and the response contains an
+expiring challenge token instead of an authenticated session.
 
 MFA login:
 
@@ -140,7 +142,7 @@ sequenceDiagram
     API-->>Client: MFA challenge token
     User->>Client: Enter authenticator code
     Client->>API: POST /mfa/challenges/verify
-    API-->>Client: Access token + refresh token
+    API-->>Client: Access token + HttpOnly refresh cookie
 ```
 
 Enrollment endpoints:
@@ -156,7 +158,8 @@ offline. A recovery code is consumed through
 
 ## 5. Sessions and refresh
 
-- `POST /api/v1/auth/refresh` rotates the refresh token.
+- `POST /api/v1/auth/refresh` reads and rotates the HttpOnly
+  refresh-token cookie.
 - `GET /api/v1/auth/sessions` lists active sessions.
 - `DELETE /api/v1/auth/sessions/{sessionId}` revokes one owned
   session.
@@ -164,15 +167,25 @@ offline. A recovery code is consumed through
 - `POST /api/v1/auth/logout-others` revokes other sessions.
 - `POST /api/v1/auth/logout-all` revokes all sessions.
 
-The client must replace the stored refresh token after every
-successful refresh. Reusing an older token can revoke the token
-family as a security response.
+The browser client must send authentication requests with
+credentials enabled. Refresh requests have no JSON body and must
+include `X-Treasury-Client: web`; this forces cross-origin
+browser callers through the configured CORS preflight. The API
+replaces the cookie after every successful refresh.
+
+Keep the access token in application memory only. On a browser
+reload, call the refresh endpoint once to restore the access
+token. Do not copy refresh cookies into local storage, session
+storage, application state, logs, analytics, or error reports.
+Reusing an older refresh token can revoke the token family as a
+security response.
 
 ## 6. Multiple organizations
 
 - `GET /api/v1/auth/organizations` lists active memberships.
 - `POST /api/v1/auth/organizations/switch` selects another
-  membership and returns a new token pair.
+  membership, returns a new access token, and replaces the
+  HttpOnly refresh cookie.
 
 After switching, clear tenant-specific client state. Never reuse
 accounts, dashboards, IDs, or cached responses from the previous

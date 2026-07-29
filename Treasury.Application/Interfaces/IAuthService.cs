@@ -8,7 +8,7 @@ public interface IAuthService
         Login(LoginDto dto);
 
     Task<AuthResponseDto> Refresh(
-        RefreshTokenDto dto);
+        string rawRefreshToken);
 
     Task Logout();
 

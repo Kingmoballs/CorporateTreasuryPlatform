@@ -124,7 +124,7 @@ public class MultiFactorAuthenticationServiceTests
             response.AccessToken);
         Assert.Equal(
             "refresh",
-            response.RefreshToken);
+            response.RefreshTokenForCookie);
     }
 
     [Fact]

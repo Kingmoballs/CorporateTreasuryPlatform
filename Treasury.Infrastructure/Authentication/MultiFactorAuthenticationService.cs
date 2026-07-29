@@ -464,7 +464,8 @@ public class MultiFactorAuthenticationService
         {
             MfaRequired = false,
             AccessToken = tokens.AccessToken,
-            RefreshToken = tokens.RefreshToken,
+            RefreshTokenForCookie =
+                tokens.RefreshToken,
             AccessTokenExpiresAtUtc =
                 tokens.AccessTokenExpiresAtUtc,
             RefreshTokenExpiresAtUtc =

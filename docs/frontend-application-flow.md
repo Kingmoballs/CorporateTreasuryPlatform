@@ -68,6 +68,11 @@ flowchart TD
 - Alerts
 - Reports
 
+Secondary navigation available to every authenticated role:
+
+- Help and guide
+- About the platform
+
 ### Admin navigation
 
 - Organization profile
@@ -87,6 +92,24 @@ flowchart TD
 - Approved applications
 - Rejected applications
 - Admin invitation delivery/resend
+
+## Help and about
+
+The frontend includes:
+
+- `/help` for a searchable, role-aware user guide covering
+  navigation, daily operations, approvals, reconciliation,
+  reports, security, and common error recovery;
+- contextual help links from complex forms and workflow pages;
+- `/about` for the platform purpose, release/build version,
+  support contact, privacy/security information, and applicable
+  legal notices.
+
+The About screen describes the product rather than an individual
+developer. Personal or team credits may be included only when
+they are appropriate for the organization operating the system.
+Neither page may expose internal configuration, tokens, secrets,
+or sensitive deployment details.
 
 ## First-Admin setup checklist
 
@@ -136,8 +159,9 @@ For any non-success response:
 
 1. Read `code`, `message`, `errors`, and `traceId`.
 2. Map validation errors to fields.
-3. On `401`, attempt one safe refresh if a current refresh token
-   exists; otherwise return to login.
+3. On `401`, attempt one coordinated cookie-based refresh, then
+   retry the original safe request once; otherwise return to
+   login.
 4. On `403`, show an access message without retrying.
 5. On `409`, refresh the record and explain that its state
    changed.

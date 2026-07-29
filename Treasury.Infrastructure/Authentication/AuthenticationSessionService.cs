@@ -472,7 +472,8 @@ public class AuthenticationSessionService
         return new AuthResponseDto
         {
             AccessToken = tokens.AccessToken,
-            RefreshToken = tokens.RefreshToken,
+            RefreshTokenForCookie =
+                tokens.RefreshToken,
             AccessTokenExpiresAtUtc =
                 tokens.AccessTokenExpiresAtUtc,
             RefreshTokenExpiresAtUtc =

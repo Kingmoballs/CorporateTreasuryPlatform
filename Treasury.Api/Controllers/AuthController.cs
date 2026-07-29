@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Treasury.Api.Models;
 using Treasury.Api.Security;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
@@ -15,10 +16,17 @@ public class AuthController : ControllerBase
     private readonly IAuthService
         _authService;
 
+    private readonly IRefreshTokenCookieService
+        _refreshTokenCookieService;
+
     public AuthController(
-        IAuthService authService)
+        IAuthService authService,
+        IRefreshTokenCookieService
+            refreshTokenCookieService)
     {
         _authService = authService;
+        _refreshTokenCookieService =
+            refreshTokenCookieService;
     }
 
     [HttpPost("login")]
@@ -31,19 +39,47 @@ public class AuthController : ControllerBase
             await _authService
                 .Login(dto);
 
-        return Ok(result);
+        return AuthenticationResponse(result);
     }
 
     [HttpPost("refresh")]
     [EnableRateLimiting(
         AuthenticationRateLimitPolicies.Refresh)]
     public async Task<IActionResult>
-        Refresh(RefreshTokenDto dto)
+        Refresh(
+            [FromHeader(
+                Name = RefreshTokenCookieService
+                    .ClientRequestHeaderName)]
+            string? clientRequestHeader)
     {
-        var result =
-            await _authService.Refresh(dto);
+        try
+        {
+            var refreshToken =
+                _refreshTokenCookieService
+                    .GetRequiredToken(
+                        Request,
+                        clientRequestHeader);
 
-        return Ok(result);
+            var result =
+                await _authService.Refresh(
+                    refreshToken);
+
+            return AuthenticationResponse(result);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            _refreshTokenCookieService.Delete(
+                Response);
+
+            return Unauthorized(
+                new ApiErrorResponse
+                {
+                    Code = "authentication_failed",
+                    Message = exception.Message,
+                    TraceId =
+                        HttpContext.TraceIdentifier
+                });
+        }
     }
 
     [Authorize]
@@ -51,6 +87,9 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Logout()
     {
         await _authService.Logout();
+
+        _refreshTokenCookieService.Delete(
+            Response);
 
         return NoContent();
     }
@@ -60,6 +99,9 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> LogoutAll()
     {
         await _authService.LogoutAll();
+
+        _refreshTokenCookieService.Delete(
+            Response);
 
         return NoContent();
     }
@@ -135,7 +177,7 @@ public class AuthController : ControllerBase
             await organizationAccessService
                 .SwitchOrganization(dto);
 
-        return Ok(result);
+        return AuthenticationResponse(result);
     }
 
     [HttpPost("invitations/accept")]
@@ -184,6 +226,9 @@ public class AuthController : ControllerBase
         await passwordRecoveryService
             .ResetPassword(dto);
 
+        _refreshTokenCookieService.Delete(
+            Response);
+
         return NoContent();
     }
 
@@ -202,7 +247,7 @@ public class AuthController : ControllerBase
             await multiFactorService
                 .VerifyChallenge(dto);
 
-        return Ok(result);
+        return AuthenticationResponse(result);
     }
 
     [HttpPost("mfa/challenges/recovery-code")]
@@ -220,7 +265,7 @@ public class AuthController : ControllerBase
             await multiFactorService
                 .UseRecoveryCode(dto);
 
-        return Ok(result);
+        return AuthenticationResponse(result);
     }
 
     [Authorize]
@@ -320,5 +365,26 @@ public class AuthController : ControllerBase
     public IActionResult AdminOnly()
     {
         return Ok("Admin Access Granted");
+    }
+
+    private IActionResult AuthenticationResponse(
+        AuthResponseDto result)
+    {
+        if (result.MfaRequired ||
+            string.IsNullOrWhiteSpace(
+                result.RefreshTokenForCookie))
+        {
+            _refreshTokenCookieService.Delete(
+                Response);
+        }
+        else
+        {
+            _refreshTokenCookieService.Append(
+                Response,
+                result.RefreshTokenForCookie,
+                result.RefreshTokenExpiresAtUtc);
+        }
+
+        return Ok(result);
     }
 }

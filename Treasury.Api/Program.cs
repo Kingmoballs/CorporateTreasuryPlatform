@@ -39,10 +39,18 @@ var deploymentReadinessSettings =
         .Get<DeploymentReadinessOptions>() ??
     new DeploymentReadinessOptions();
 
+var refreshTokenCookieSettings =
+    builder.Configuration
+        .GetSection(
+            RefreshTokenCookieOptions.SectionName)
+        .Get<RefreshTokenCookieOptions>() ??
+    new RefreshTokenCookieOptions();
+
 ProductionConfigurationValidator.Validate(
     builder.Configuration,
     builder.Environment,
-    deploymentReadinessSettings);
+    deploymentReadinessSettings,
+    refreshTokenCookieSettings);
 
 var bootstrapPlatformAdminOnly =
     builder.Configuration.GetValue<bool>(
@@ -127,6 +135,39 @@ builder.Services
 
 builder.Services.AddTreasuryCors(
     deploymentReadinessSettings);
+
+builder.Services
+    .AddOptions<RefreshTokenCookieOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            RefreshTokenCookieOptions.SectionName))
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(options.Name) &&
+            options.Name.Length <= 128,
+        "The refresh-token cookie name is required " +
+        "and cannot exceed 128 characters.")
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(options.Path) &&
+            options.Path.StartsWith('/'),
+        "The refresh-token cookie path must be an " +
+        "absolute request path.")
+    .Validate(
+        options =>
+            Enum.IsDefined(options.SameSite),
+        "The refresh-token SameSite value is invalid.")
+    .Validate(
+        options =>
+            options.SameSite != SameSiteMode.None ||
+            options.Secure,
+        "A SameSite=None refresh-token cookie must " +
+        "also be Secure.")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<
+    IRefreshTokenCookieService,
+    RefreshTokenCookieService>();
 
 builder.Services.Configure<
     ForwardedHeadersOptions>(options =>

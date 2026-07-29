@@ -121,9 +121,10 @@ public class AuthenticationSessionServiceTests
         Assert.NotNull(replacement);
         Assert.NotEqual(
             rawToken,
-            result.RefreshToken);
+            result.RefreshTokenForCookie);
         Assert.Equal(
-            HashToken(result.RefreshToken),
+            HashToken(
+                result.RefreshTokenForCookie),
             replacement.TokenHash);
         Assert.Equal(
             "access-token",

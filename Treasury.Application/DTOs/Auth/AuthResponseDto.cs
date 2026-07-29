@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Treasury.Application.DTOs.Auth;
 
 public class AuthResponseDto
@@ -12,7 +14,8 @@ public class AuthResponseDto
 
     public string AccessToken { get; set; } = string.Empty;
 
-    public string RefreshToken { get; set; } =
+    [JsonIgnore]
+    public string RefreshTokenForCookie { get; set; } =
         string.Empty;
 
     public DateTime AccessTokenExpiresAtUtc

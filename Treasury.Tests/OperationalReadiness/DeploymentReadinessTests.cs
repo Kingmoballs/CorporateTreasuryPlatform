@@ -186,6 +186,7 @@ public class DeploymentReadinessTests
                     deniedContext,
                     policy)
                 .IsOriginAllowed);
+        Assert.True(policy.SupportsCredentials);
     }
 
     [Fact]
@@ -229,7 +230,11 @@ public class DeploymentReadinessTests
                             configuration,
                             CreateEnvironment(
                                 Environments.Production),
-                            options));
+                            options,
+                            new RefreshTokenCookieOptions
+                            {
+                                Secure = false
+                            }));
 
         Assert.Contains(
             "DefaultConnection",
@@ -250,6 +255,10 @@ public class DeploymentReadinessTests
         Assert.Contains(
             "Manual invitation",
             exception.Message);
+        Assert.Contains(
+            "refresh-token cookie",
+            exception.Message,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -304,7 +313,8 @@ public class DeploymentReadinessTests
             configuration,
             CreateEnvironment(
                 Environments.Production),
-            options);
+            options,
+            new RefreshTokenCookieOptions());
     }
 
     [Fact]
@@ -318,7 +328,11 @@ public class DeploymentReadinessTests
             configuration,
             CreateEnvironment(
                 Environments.Development),
-            new DeploymentReadinessOptions());
+            new DeploymentReadinessOptions(),
+            new RefreshTokenCookieOptions
+            {
+                Secure = false
+            });
     }
 
     [Fact]

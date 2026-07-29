@@ -22,6 +22,10 @@ to these production-only checks.
   entries for every HTTPS frontend origin
 - `DeploymentReadiness__DataProtectionKeysPath` pointing to
   persistent storage shared by all API instances
+- `RefreshTokenCookie__Secure=true`
+- `RefreshTokenCookie__SameSite=Strict` for the recommended
+  same-site frontend/API deployment. Use `None` only when the
+  frontend is genuinely cross-site; `Secure` remains mandatory.
 - `UserInvitations__AcceptanceUrl`
 - `PasswordRecovery__ResetUrl`
 

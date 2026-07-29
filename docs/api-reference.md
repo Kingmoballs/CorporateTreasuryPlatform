@@ -9,6 +9,10 @@ response schemas in Development.
 - All routes are relative to the API host.
 - Protected routes require
   `Authorization: Bearer <access-token>`.
+- Login, MFA verification, refresh, and organization switching
+  write the rotating refresh token only as an HttpOnly cookie.
+- Browser calls to authentication endpoints must enable
+  credentials. Refresh tokens never appear in response JSON.
 - `{id}`, `{batchId}`, and similar segments are resource
   identifiers.
 - Query parameters are omitted below for readability.
@@ -42,7 +46,7 @@ response schemas in Development.
 | Method | Route | Access/purpose |
 |---|---|---|
 | POST | `/api/v1/auth/login` | Public login |
-| POST | `/api/v1/auth/refresh` | Public token refresh |
+| POST | `/api/v1/auth/refresh` | Cookie-based token refresh; no body; requires `X-Treasury-Client: web` |
 | POST | `/api/v1/auth/invitations/accept` | Public invitation acceptance |
 | POST | `/api/v1/auth/password/forgot` | Public password-reset request |
 | POST | `/api/v1/auth/password/reset` | Public password reset |
@@ -54,7 +58,7 @@ response schemas in Development.
 | GET | `/api/v1/auth/sessions` | List active owned sessions |
 | DELETE | `/api/v1/auth/sessions/{sessionId}` | Revoke one owned session |
 | GET | `/api/v1/auth/organizations` | List active memberships |
-| POST | `/api/v1/auth/organizations/switch` | Switch membership and issue a new token pair |
+| POST | `/api/v1/auth/organizations/switch` | Switch membership, issue an access token, and replace the refresh cookie |
 | POST | `/api/v1/auth/mfa/enrollment/start` | Start TOTP enrollment |
 | POST | `/api/v1/auth/mfa/enrollment/confirm` | Confirm TOTP enrollment |
 | POST | `/api/v1/auth/mfa/recovery-codes/regenerate` | Replace recovery codes |
@@ -306,4 +310,3 @@ Rollover:
   use the standard error shape described in
   [Architecture and security](architecture-and-security.md).
 - Every response includes `X-Correlation-ID`.
-

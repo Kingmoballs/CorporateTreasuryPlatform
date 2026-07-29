@@ -29,7 +29,8 @@ Start with the [documentation index](docs/README.md).
 - .NET 10 and ASP.NET Core Web API
 - Entity Framework Core 10
 - PostgreSQL
-- JWT access tokens and rotating refresh-token sessions
+- In-memory JWT access tokens and rotating Secure, HttpOnly
+  refresh-token cookies
 - TOTP multi-factor authentication
 - FluentValidation
 - xUnit, Moq, and PostgreSQL Testcontainers

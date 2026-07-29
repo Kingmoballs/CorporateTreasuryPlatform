@@ -212,7 +212,7 @@ public class OrganizationAuthenticationTests
             response.AccessToken);
         Assert.Equal(
             "refresh",
-            response.RefreshToken);
+            response.RefreshTokenForCookie);
         Assert.Equal(
             organization.Id,
             response.OrganizationId);

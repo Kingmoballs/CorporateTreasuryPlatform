@@ -232,10 +232,10 @@ public class AuthService : IAuthService
     }
 
     public Task<AuthResponseDto> Refresh(
-        RefreshTokenDto dto)
+        string rawRefreshToken)
     {
         return _sessionService.Refresh(
-            dto.RefreshToken);
+            rawRefreshToken);
     }
 
     public async Task Logout()
@@ -284,7 +284,8 @@ public class AuthService : IAuthService
         return new AuthResponseDto
         {
             AccessToken = tokens.AccessToken,
-            RefreshToken = tokens.RefreshToken,
+            RefreshTokenForCookie =
+                tokens.RefreshToken,
             AccessTokenExpiresAtUtc =
                 tokens.AccessTokenExpiresAtUtc,
             RefreshTokenExpiresAtUtc =

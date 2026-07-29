@@ -54,8 +54,10 @@ sequenceDiagram
 
 An authenticated user can only switch to another organization
 when an active membership exists there. Switching issues a new
-organization-scoped token pair. A client must replace both its
-access and refresh tokens after a successful switch.
+organization-scoped access token and replaces the rotating
+HttpOnly refresh-token cookie. A client must replace its
+in-memory access token and discard all tenant-specific cached
+data after a successful switch.
 
 `PlatformAdmin` is deliberately separate. It uses the reserved
 platform organization for organization-application review and
@@ -66,8 +68,11 @@ organizations.
 
 - Passwords are stored as hashes, never plaintext.
 - JWT access tokens are short-lived.
-- Refresh tokens are stored as revocable sessions and rotate
-  during refresh.
+- Refresh tokens are stored server-side as hashes, delivered
+  only through Secure, HttpOnly cookies, and rotate during
+  refresh.
+- Browser clients keep access tokens in memory and never store
+  refresh-token values.
 - Reuse of a rotated refresh token is treated as a security
   event.
 - Users can view and revoke their sessions, sign out everywhere,
@@ -121,7 +126,10 @@ incomplete beyond their configured period.
 
 - Role authorization is applied at controller and operation
   level.
-- Production uses an explicit CORS allow-list.
+- Production uses an explicit credentialed CORS allow-list; no
+  wildcard origin is permitted.
+- Cookie-based refresh requires `X-Treasury-Client: web`, which
+  forces cross-origin browsers through CORS preflight.
 - Forwarded headers are accepted only from configured proxy IPs.
 - HSTS and restrictive response headers are enabled in
   production.

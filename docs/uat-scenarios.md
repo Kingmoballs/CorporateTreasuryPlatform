@@ -54,9 +54,11 @@ challenge succeeds; the recovery code cannot be reused.
 
 ### UAT-04: Sessions and refresh rotation
 
-Log in from two clients, list sessions, refresh one session,
-attempt to reuse its older refresh token, revoke another session,
-and test logout-all.
+Log in from two controlled API clients with independent cookie
+jars, list sessions, refresh one session, capture and attempt to
+reuse its older cookie value in the test harness, revoke another
+session, and test logout-all. Confirm that normal browser
+application code cannot read the HttpOnly cookie.
 
 Expected: refresh rotates; reuse triggers the configured security
 response; revoked sessions cannot refresh.
@@ -74,8 +76,9 @@ deactivated membership cannot access organization data.
 
 Create distinct accounts and transactions in two organizations.
 Try to retrieve organization A identifiers with organization B
-tokens. For a multi-membership user, switch organization and
-replace both tokens.
+tokens. For a multi-membership user, switch organization,
+replace the in-memory access token, and verify that the API
+replaces the HttpOnly refresh cookie.
 
 Expected: cross-tenant resources are not returned; after
 switching, all data belongs to the selected organization.
@@ -232,9 +235,10 @@ trace or secrets.
 ### UAT-23: Production readiness
 
 Deploy the release candidate with production-like settings.
-Check liveness, readiness, CORS from the allowed frontend,
-rejection of an unlisted origin, HTTPS behavior, forwarded
-headers through the trusted proxy, email delivery, and persistent
+Check liveness, readiness, credentialed CORS from the allowed
+frontend, rejection of an unlisted origin, Secure/HttpOnly
+refresh-cookie behavior, HTTPS behavior, forwarded headers
+through the trusted proxy, email delivery, and persistent
 data-protection keys across an application restart.
 
 Expected: readiness is healthy only when PostgreSQL is
@@ -251,4 +255,3 @@ reachable; unsafe Production configuration prevents startup.
 - Business owners sign off the onboarding, payment approval,
   cutover, reconciliation, investment, credit, and reporting
   evidence.
-
