@@ -12,6 +12,38 @@ public class AccountOrganizationDimensionTests
 {
     [Fact]
     public async Task
+        GetAccountTypes_ReturnsAvailableTypes()
+    {
+        var setup = CreateSetup();
+        var accountTypes =
+            new List<AccountType>
+            {
+                new()
+                {
+                    Id = setup.AccountTypeId,
+                    Name = "Operating"
+                }
+            };
+
+        setup.AccountTypes
+            .Setup(item => item.GetAll())
+            .ReturnsAsync(accountTypes);
+
+        var result =
+            await setup.Service.GetAccountTypes();
+
+        var accountType = Assert.Single(result);
+
+        Assert.Equal(
+            setup.AccountTypeId,
+            accountType.Id);
+        Assert.Equal(
+            "Operating",
+            accountType.Name);
+    }
+
+    [Fact]
+    public async Task
         CreateAccount_AssignsSelectedOrganizationDimensions()
     {
         var setup = CreateSetup();
@@ -265,6 +297,7 @@ public class AccountOrganizationDimensionTests
         return new ServiceSetup(
             service,
             accounts,
+            accountTypes,
             organizationStructure,
             auditLogs,
             organizationId,
@@ -319,6 +352,7 @@ public class AccountOrganizationDimensionTests
     private sealed record ServiceSetup(
         AccountService Service,
         Mock<IAccountRepository> Accounts,
+        Mock<IAccountTypeRepository> AccountTypes,
         Mock<IOrganizationStructureRepository>
             OrganizationStructure,
         Mock<IAuditLogService> AuditLogs,

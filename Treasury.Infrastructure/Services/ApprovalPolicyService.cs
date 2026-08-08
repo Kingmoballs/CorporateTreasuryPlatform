@@ -363,6 +363,26 @@ public class ApprovalPolicyService
                 .InvestmentEarlyRedemption;
         }
 
+        if (string.Equals(
+                operationType,
+                ApprovalOperationTypes
+                    .InvestmentRollover,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return ApprovalOperationTypes
+                .InvestmentRollover;
+        }
+
+        if (string.Equals(
+                operationType,
+                ApprovalOperationTypes
+                    .CreditFacilityActivation,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return ApprovalOperationTypes
+                .CreditFacilityActivation;
+        }
+
         throw new RequestValidationException(
             "Unsupported approval operation type.");
     }

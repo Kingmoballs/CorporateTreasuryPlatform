@@ -63,8 +63,10 @@ public class InvestmentRolloverRequestRepository
 
         return BaseQuery()
             .Where(request =>
-                request.Status ==
-                    InvestmentRolloverStatuses.Pending &&
+                (request.Status ==
+                    InvestmentRolloverStatuses.Pending ||
+                 request.Status ==
+                    InvestmentRolloverStatuses.Approved) &&
                 request.ExpiresAtUtc > nowUtc)
             .OrderBy(request =>
                 request.ExpiresAtUtc)

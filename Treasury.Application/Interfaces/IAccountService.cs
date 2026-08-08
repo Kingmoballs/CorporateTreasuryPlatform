@@ -3,6 +3,9 @@ using Treasury.Application.DTOs.Ledger;
 
 public interface IAccountService
 {
+    Task<List<AccountTypeResponseDto>>
+        GetAccountTypes();
+
     Task<AccountResponseDto>
         CreateAccount(
             CreateAccountDto dto);

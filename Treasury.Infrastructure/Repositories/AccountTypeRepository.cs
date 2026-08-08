@@ -14,6 +14,15 @@ public class AccountTypeRepository
         _context = context;
     }
 
+    public async Task<List<AccountType>>
+        GetAll()
+    {
+        return await _context.AccountTypes
+            .AsNoTracking()
+            .OrderBy(item => item.Name)
+            .ToListAsync();
+    }
+
     public async Task<AccountType?>
         GetById(Guid id)
     {

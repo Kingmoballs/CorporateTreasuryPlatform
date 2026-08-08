@@ -51,8 +51,10 @@ public class InvestmentEarlyRedemptionRequestRepository
 
         return BaseQuery()
             .Where(request =>
-                request.Status ==
-                    InvestmentEarlyRedemptionStatuses.Pending &&
+                (request.Status ==
+                    InvestmentEarlyRedemptionStatuses.Pending ||
+                 request.Status ==
+                    InvestmentEarlyRedemptionStatuses.Approved) &&
                 request.ExpiresAtUtc > nowUtc)
             .OrderBy(request =>
                 request.ExpiresAtUtc)

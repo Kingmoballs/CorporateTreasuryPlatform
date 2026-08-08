@@ -112,6 +112,22 @@ public class AccountService : IAccountService
         }
     }
 
+    public async Task<List<AccountTypeResponseDto>>
+        GetAccountTypes()
+    {
+        var accountTypes =
+            await _accountTypeRepository.GetAll();
+
+        return accountTypes
+            .Select(item =>
+                new AccountTypeResponseDto
+                {
+                    Id = item.Id,
+                    Name = item.Name
+                })
+            .ToList();
+    }
+
     public async Task<AccountResponseDto>
         CreateAccount(CreateAccountDto dto)
     {

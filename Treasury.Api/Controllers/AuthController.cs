@@ -345,18 +345,48 @@ public class AuthController : ControllerBase
     [Authorize]
 
     [HttpGet("me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(
+        [FromServices]
+        ICurrentUserService currentUserService,
+        [FromServices]
+        IUserRepository userRepository)
     {
-        return Ok(new
-        {
-            User = User.Identity!.Name,
+        var user = await userRepository
+            .GetById(currentUserService.UserId);
 
-            Claims = User.Claims.Select(x =>
-                new
-                {
-                    x.Type,
-                    x.Value
-                })
+        if (user is null)
+        {
+            throw new UnauthorizedAccessException(
+                "The authenticated user account could " +
+                "not be found.");
+        }
+
+        return Ok(new CurrentUserDto
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = currentUserService.Email,
+            Role = currentUserService.Role,
+            OrganizationId =
+                currentUserService.OrganizationId,
+            OrganizationMembershipId =
+                currentUserService
+                    .OrganizationMembershipId,
+            AuthenticationSessionId =
+                currentUserService
+                    .AuthenticationSessionId,
+            OrganizationCode =
+                currentUserService.OrganizationCode,
+            MfaEnabled =
+                user.MfaEnabledAtUtc.HasValue,
+            MfaEnabledAtUtc =
+                user.MfaEnabledAtUtc,
+            EmailVerifiedAtUtc =
+                user.EmailVerifiedAtUtc,
+            PasswordChangedAtUtc =
+                user.PasswordChangedAtUtc,
+            CreatedAtUtc = user.CreatedAt
         });
     }
 

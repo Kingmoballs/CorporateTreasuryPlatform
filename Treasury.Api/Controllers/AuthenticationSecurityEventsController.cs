@@ -9,11 +9,7 @@ namespace Treasury.Api.Controllers;
 [ApiController]
 [Route(
     "api/v1/admin/authentication-security-events")]
-[Authorize(
-    Roles =
-        Roles.Admin + "," +
-        Roles.CFO + "," +
-        Roles.FinanceManager)]
+[Authorize(Roles = Roles.Admin)]
 public class AuthenticationSecurityEventsController
     : ControllerBase
 {

@@ -6,6 +6,7 @@ using Treasury.Api.Models;
 using Treasury.Api.Security;
 using Treasury.Application.DTOs.Auth;
 using Treasury.Application.Interfaces;
+using Treasury.Domain.Entities;
 
 namespace Treasury.Tests.Authentication;
 
@@ -161,6 +162,93 @@ public class AuthControllerCookieTests
                 service.Delete(
                     It.IsAny<HttpResponse>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Me_ReturnsProfileAndMfaState()
+    {
+        var setup = CreateSetup();
+        var userId = Guid.NewGuid();
+        var organizationId = Guid.NewGuid();
+        var membershipId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var mfaEnabledAtUtc =
+            new DateTime(
+                2026,
+                8,
+                1,
+                12,
+                0,
+                0,
+                DateTimeKind.Utc);
+        var currentUserService =
+            new Mock<ICurrentUserService>();
+        var userRepository =
+            new Mock<IUserRepository>();
+
+        currentUserService
+            .SetupGet(service => service.UserId)
+            .Returns(userId);
+        currentUserService
+            .SetupGet(service => service.Email)
+            .Returns("ada@example.com");
+        currentUserService
+            .SetupGet(service => service.Role)
+            .Returns("CFO");
+        currentUserService
+            .SetupGet(service =>
+                service.OrganizationId)
+            .Returns(organizationId);
+        currentUserService
+            .SetupGet(service =>
+                service.OrganizationMembershipId)
+            .Returns(membershipId);
+        currentUserService
+            .SetupGet(service =>
+                service.AuthenticationSessionId)
+            .Returns(sessionId);
+        currentUserService
+            .SetupGet(service =>
+                service.OrganizationCode)
+            .Returns("MOBALLS");
+        userRepository
+            .Setup(repository =>
+                repository.GetById(userId))
+            .ReturnsAsync(
+                new User
+                {
+                    Id = userId,
+                    FirstName = "Ada",
+                    LastName = "Okafor",
+                    Email = "ada@example.com",
+                    MfaEnabledAtUtc =
+                        mfaEnabledAtUtc
+                });
+
+        var result = await setup.Controller.Me(
+            currentUserService.Object,
+            userRepository.Object);
+
+        var ok = Assert.IsType<OkObjectResult>(
+            result);
+        var response =
+            Assert.IsType<CurrentUserDto>(
+                ok.Value);
+
+        Assert.Equal(userId, response.Id);
+        Assert.Equal("Ada", response.FirstName);
+        Assert.Equal("Okafor", response.LastName);
+        Assert.Equal("CFO", response.Role);
+        Assert.Equal(
+            membershipId,
+            response.OrganizationMembershipId);
+        Assert.Equal(
+            sessionId,
+            response.AuthenticationSessionId);
+        Assert.True(response.MfaEnabled);
+        Assert.Equal(
+            mfaEnabledAtUtc,
+            response.MfaEnabledAtUtc);
     }
 
     private static ControllerSetup CreateSetup()

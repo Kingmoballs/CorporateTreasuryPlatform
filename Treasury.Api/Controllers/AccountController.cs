@@ -24,6 +24,17 @@ public class AccountsController : ControllerBase
         _accountService = accountService;
     }
 
+    [HttpGet("types")]
+    public async Task<IActionResult>
+        GetAccountTypes()
+    {
+        var result =
+            await _accountService
+                .GetAccountTypes();
+
+        return Ok(result);
+    }
+
     [HttpPost]
     [Authorize(Roles = AccountManagerRoles)]
     public async Task<IActionResult>
