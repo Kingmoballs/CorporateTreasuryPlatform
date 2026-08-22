@@ -288,6 +288,12 @@ public class DeploymentReadinessTests
                             "api.example.com",
                         ["EmailDelivery:Enabled"] =
                             "true",
+                        ["EmailDelivery:Provider"] =
+                            "Resend",
+                        ["EmailDelivery:ResendApiKey"] =
+                            "re_test_production_key",
+                        ["EmailDelivery:FromAddress"] =
+                            "no-reply@example.com",
                         ["UserInvitations:AcceptanceUrl"] =
                             "https://app.example.com/invite",
                         ["PasswordRecovery:ResetUrl"] =
@@ -305,8 +311,8 @@ public class DeploymentReadinessTests
                 UseForwardedHeaders = true,
                 TrustedProxies =
                     new[] { "10.0.0.10" },
-                DataProtectionKeysPath =
-                    "/persistent/keys"
+                PersistDataProtectionKeysToDatabase =
+                    true
             };
 
         ProductionConfigurationValidator.Validate(
@@ -315,6 +321,101 @@ public class DeploymentReadinessTests
                 Environments.Production),
             options,
             new RefreshTokenCookieOptions());
+    }
+
+    [Fact]
+    public void
+        ProductionValidation_AcceptsManagedPlatformProxy()
+    {
+        var options =
+            new DeploymentReadinessOptions
+            {
+                AllowedOrigins =
+                    new[]
+                    {
+                        "https://app.example.com"
+                    },
+                UseForwardedHeaders = true,
+                TrustForwardedHeadersFromAnyProxy = true,
+                PersistDataProtectionKeysToDatabase = true
+            };
+
+        ProductionConfigurationValidator.Validate(
+            CreateCompleteProductionConfiguration(),
+            CreateEnvironment(
+                Environments.Production),
+            options,
+            new RefreshTokenCookieOptions());
+    }
+
+    [Fact]
+    public void
+        ProductionValidation_RejectsPlaceholderResendKey()
+    {
+        var configuration =
+            CreateCompleteProductionConfiguration();
+        configuration["EmailDelivery:ResendApiKey"] =
+            "CONFIGURE_WITH_EmailDelivery__ResendApiKey";
+
+        var options =
+            new DeploymentReadinessOptions
+            {
+                AllowedOrigins =
+                    new[]
+                    {
+                        "https://app.example.com"
+                    },
+                PersistDataProtectionKeysToDatabase =
+                    true
+            };
+
+        var exception =
+            Assert.Throws<InvalidOperationException>(
+                () =>
+                    ProductionConfigurationValidator
+                        .Validate(
+                            configuration,
+                            CreateEnvironment(
+                                Environments.Production),
+                            options,
+                            new RefreshTokenCookieOptions()));
+
+        Assert.Contains(
+            "ResendApiKey",
+            exception.Message);
+    }
+
+    [Fact]
+    public void
+        ProductionValidation_RejectsAmbiguousKeyStorage()
+    {
+        var options =
+            new DeploymentReadinessOptions
+            {
+                AllowedOrigins =
+                    new[]
+                    {
+                        "https://app.example.com"
+                    },
+                PersistDataProtectionKeysToDatabase = true,
+                DataProtectionKeysPath = "/persistent/keys"
+            };
+
+        var exception =
+            Assert.Throws<InvalidOperationException>(
+                () =>
+                    ProductionConfigurationValidator
+                        .Validate(
+                            CreateCompleteProductionConfiguration(),
+                            CreateEnvironment(
+                                Environments.Production),
+                            options,
+                            new RefreshTokenCookieOptions()));
+
+        Assert.Contains(
+            "not both",
+            exception.Message,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -425,5 +526,44 @@ public class DeploymentReadinessTests
             .SetupGet(item => item.EnvironmentName)
             .Returns(name);
         return environment.Object;
+    }
+
+    private static IConfiguration
+        CreateCompleteProductionConfiguration()
+    {
+        var secret =
+            Convert.ToHexString(
+                Guid.NewGuid().ToByteArray()) +
+            Convert.ToHexString(
+                Guid.NewGuid().ToByteArray());
+
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:" +
+                     "DefaultConnection"] =
+                        "Host=db;Database=treasury",
+                    ["JwtSettings:SecretKey"] = secret,
+                    ["JwtSettings:Issuer"] =
+                        "https://api.example.com",
+                    ["JwtSettings:Audience"] =
+                        "treasury-clients",
+                    ["AllowedHosts"] =
+                        "api.example.com",
+                    ["EmailDelivery:Enabled"] =
+                        "true",
+                    ["EmailDelivery:Provider"] =
+                        "Resend",
+                    ["EmailDelivery:ResendApiKey"] =
+                        "re_test_production_key",
+                    ["EmailDelivery:FromAddress"] =
+                        "no-reply@example.com",
+                    ["UserInvitations:AcceptanceUrl"] =
+                        "https://app.example.com/invite",
+                    ["PasswordRecovery:ResetUrl"] =
+                        "https://app.example.com/reset"
+                })
+            .Build();
     }
 }

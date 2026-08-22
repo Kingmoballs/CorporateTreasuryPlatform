@@ -22,6 +22,7 @@ Start with the [documentation index](docs/README.md).
 - [Alerts, audit, and reporting](docs/alerts-audit-and-reporting.md)
 - [API reference](docs/api-reference.md)
 - [Development and deployment](docs/development-and-deployment.md)
+- [Render presentation deployment](docs/render-presentation-deployment.md)
 - [UAT scenarios](docs/uat-scenarios.md)
 
 ## Technology
@@ -58,6 +59,19 @@ Start with the [documentation index](docs/README.md).
 
 See [Development and deployment](docs/development-and-deployment.md)
 for complete configuration and testing instructions.
+
+## Continuous integration
+
+The `Backend CI` GitHub Actions workflow runs on every pull
+request and every push to `main`. It restores and builds the
+solution with warnings treated as errors, runs the complete xUnit
+suite against PostgreSQL Testcontainers, audits direct and
+transitive NuGet packages, and retains the verification reports
+for 14 days.
+
+Dependabot checks NuGet packages and GitHub Actions weekly. Treat
+the CI workflow as a required branch-protection check before
+merging into `main`.
 
 ## Health endpoints
 

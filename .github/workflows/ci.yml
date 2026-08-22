@@ -1,0 +1,72 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, test, and audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_NOLOGO: true
+      NUGET_XMLDOC_MODE: skip
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore TreasuryManagementSystem.slnx
+
+      - name: Build with warnings treated as errors
+        run: dotnet build TreasuryManagementSystem.slnx --configuration Release --no-restore -warnaserror
+
+      - name: Verify Docker for PostgreSQL integration tests
+        run: docker info
+
+      - name: Run complete test suite
+        run: >-
+          dotnet test TreasuryManagementSystem.slnx
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=backend-tests.trx"
+          --results-directory artifacts/test-results
+
+      - name: Audit direct and transitive NuGet packages
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet list TreasuryManagementSystem.slnx package --vulnerable --include-transitive | tee artifacts/nuget-vulnerability-report.txt
+
+          if grep -q "has the following vulnerable packages" artifacts/nuget-vulnerability-report.txt; then
+            echo "Vulnerable NuGet packages were detected."
+            exit 1
+          fi
+
+      - name: Upload backend verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-verification-reports
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14

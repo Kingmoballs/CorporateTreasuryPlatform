@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 using Treasury.Application.Interfaces;
@@ -6,7 +7,8 @@ using Treasury.Shared.Constants;
 
 namespace Treasury.Infrastructure.Persistence;
 
-public class TreasuryDbContext : DbContext
+public class TreasuryDbContext
+    : DbContext, IDataProtectionKeyContext
 {
     private readonly IOrganizationContext?
         _organizationContext;
@@ -32,6 +34,9 @@ public class TreasuryDbContext : DbContext
         _organizationContext.IsSystemScope;
 
     public DbSet<User> Users { get; set; }
+
+    public DbSet<DataProtectionKey> DataProtectionKeys
+        { get; set; }
 
     public DbSet<Role> Roles { get; set; }
 

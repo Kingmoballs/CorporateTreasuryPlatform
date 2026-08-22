@@ -1,4 +1,5 @@
 using System.Net;
+using Treasury.Infrastructure.Services;
 
 namespace Treasury.Api.Configuration;
 
@@ -207,6 +208,19 @@ public static class ProductionConfigurationValidator
 
         if (!options.UseForwardedHeaders)
         {
+            if (options.TrustForwardedHeadersFromAnyProxy)
+            {
+                errors.Add(
+                    "TrustForwardedHeadersFromAnyProxy " +
+                    "requires forwarded headers to be " +
+                    "enabled.");
+            }
+
+            return;
+        }
+
+        if (options.TrustForwardedHeadersFromAnyProxy)
+        {
             return;
         }
 
@@ -234,13 +248,26 @@ public static class ProductionConfigurationValidator
                 "730 days.");
         }
 
-        if (options
-                .RequirePersistentDataProtectionKeysInProduction &&
-            string.IsNullOrWhiteSpace(
-                options.DataProtectionKeysPath))
+        var persistsToDatabase =
+            options.PersistDataProtectionKeysToDatabase;
+        var persistsToFileSystem =
+            !string.IsNullOrWhiteSpace(
+                options.DataProtectionKeysPath);
+
+        if (persistsToDatabase && persistsToFileSystem)
         {
             errors.Add(
-                "A persistent data-protection key path " +
+                "Configure either database or file-system " +
+                "data-protection key persistence, not both.");
+        }
+
+        if (options
+                .RequirePersistentDataProtectionKeysInProduction &&
+            !persistsToDatabase &&
+            !persistsToFileSystem)
+        {
+            errors.Add(
+                "Persistent data-protection key storage " +
                 "is required in production.");
         }
     }
@@ -250,14 +277,94 @@ public static class ProductionConfigurationValidator
         DeploymentReadinessOptions options,
         ICollection<string> errors)
     {
+        var isEnabled = configuration.GetValue<bool>(
+            "EmailDelivery:Enabled");
+
         if (options
                 .RequireEmailDeliveryInProduction &&
-            !configuration.GetValue<bool>(
-                "EmailDelivery:Enabled"))
+            !isEnabled)
         {
             errors.Add(
                 "Email delivery must be enabled in " +
                 "production.");
+        }
+
+        if (!isEnabled)
+        {
+            return;
+        }
+
+        var providerValue =
+            configuration["EmailDelivery:Provider"] ??
+            nameof(EmailDeliveryProvider.Smtp);
+        var fromAddress =
+            configuration["EmailDelivery:FromAddress"];
+
+        if (!Enum.TryParse<EmailDeliveryProvider>(
+                providerValue,
+                true,
+                out var provider) ||
+            !Enum.IsDefined(provider))
+        {
+            errors.Add(
+                "EmailDelivery:Provider must be " +
+                "either Smtp or Resend.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(fromAddress) ||
+            LooksLikePlaceholder(fromAddress))
+        {
+            errors.Add(
+                "EmailDelivery:FromAddress must be a " +
+                "non-placeholder sender address.");
+        }
+
+        if (provider == EmailDeliveryProvider.Resend)
+        {
+            ValidateResendConfiguration(
+                configuration,
+                errors);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                configuration["EmailDelivery:Host"]))
+        {
+            errors.Add(
+                "The SMTP email provider requires " +
+                "EmailDelivery:Host.");
+        }
+    }
+
+    private static void ValidateResendConfiguration(
+        IConfiguration configuration,
+        ICollection<string> errors)
+    {
+        var apiKey =
+            configuration["EmailDelivery:ResendApiKey"];
+        var apiBaseUrl =
+            configuration[
+                "EmailDelivery:ResendApiBaseUrl"] ??
+            "https://api.resend.com";
+
+        if (string.IsNullOrWhiteSpace(apiKey) ||
+            LooksLikePlaceholder(apiKey))
+        {
+            errors.Add(
+                "EmailDelivery:ResendApiKey must be a " +
+                "non-placeholder secret.");
+        }
+
+        if (!Uri.TryCreate(
+                apiBaseUrl,
+                UriKind.Absolute,
+                out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps)
+        {
+            errors.Add(
+                "EmailDelivery:ResendApiBaseUrl must " +
+                "be an HTTPS URL.");
         }
     }
 

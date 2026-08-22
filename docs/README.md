@@ -18,7 +18,8 @@ support teams.
 9. [Alerts, audit, and reporting](alerts-audit-and-reporting.md)
 10. [API reference](api-reference.md)
 11. [Development and deployment](development-and-deployment.md)
-12. [UAT scenarios](uat-scenarios.md)
+12. [Render presentation deployment](render-presentation-deployment.md)
+13. [UAT scenarios](uat-scenarios.md)
 
 ## Documentation conventions
 

@@ -1,0 +1,66 @@
+services:
+  - type: web
+    name: corporate-treasury-platform-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/live
+    autoDeployTrigger: commit
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: PORT
+        value: "8080"
+      - key: AllowedHosts
+        sync: false
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: JwtSettings__SecretKey
+        generateValue: true
+      - key: JwtSettings__Issuer
+        sync: false
+      - key: JwtSettings__Audience
+        value: corporate-treasury-frontend
+      - key: RefreshTokenCookie__Secure
+        value: "true"
+      - key: RefreshTokenCookie__SameSite
+        value: None
+      - key: DeploymentReadiness__AllowedOrigins__0
+        sync: false
+      - key: DeploymentReadiness__UseForwardedHeaders
+        value: "true"
+      - key: DeploymentReadiness__TrustForwardedHeadersFromAnyProxy
+        value: "true"
+      - key: DeploymentReadiness__PersistDataProtectionKeysToDatabase
+        value: "true"
+      - key: DeploymentReadiness__MigrateDatabaseOnStartup
+        value: "true"
+      - key: DeploymentReadiness__RequireEmailDeliveryInProduction
+        value: "true"
+      - key: UserInvitations__AcceptanceUrl
+        sync: false
+      - key: PasswordRecovery__ResetUrl
+        sync: false
+      - key: EmailDelivery__Enabled
+        value: "true"
+      - key: EmailDelivery__Provider
+        value: Resend
+      - key: EmailDelivery__ResendApiKey
+        sync: false
+      - key: EmailDelivery__ResendApiBaseUrl
+        value: https://api.resend.com
+      - key: EmailDelivery__FromAddress
+        sync: false
+      - key: EmailDelivery__FromName
+        value: Corporate Treasury Platform
+      - key: OrganizationOnboarding__ReturnManualInvitationUrlWhenEmailDisabled
+        value: "false"
+      - key: BootstrapPlatformAdminOnly
+        value: "false"
+      - key: PlatformAdminBootstrap__Enabled
+        value: "false"
+      - key: TreasuryAlertMonitoring__RunOnceOnStartup
+        value: "false"

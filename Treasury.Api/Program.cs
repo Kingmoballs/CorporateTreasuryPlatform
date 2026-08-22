@@ -20,6 +20,7 @@ using System.Threading.RateLimiting;
 using Treasury.Api.Models;
 using Treasury.Api.Security;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -71,7 +72,13 @@ var dataProtectionBuilder = builder.Services
     .SetApplicationName(
         "CorporateTreasuryPlatform");
 
-if (!string.IsNullOrWhiteSpace(
+if (deploymentReadinessSettings
+        .PersistDataProtectionKeysToDatabase)
+{
+    dataProtectionBuilder
+        .PersistKeysToDbContext<TreasuryDbContext>();
+}
+else if (!string.IsNullOrWhiteSpace(
         deploymentReadinessSettings
             .DataProtectionKeysPath))
 {
@@ -122,6 +129,7 @@ builder.Services
     .Validate(
         options =>
             !options.UseForwardedHeaders ||
+            options.TrustForwardedHeadersFromAnyProxy ||
             (options.GetNormalizedTrustedProxies()
                  .Count > 0 &&
              options.GetNormalizedTrustedProxies()
@@ -178,6 +186,13 @@ builder.Services.Configure<
         ForwardedHeaders.XForwardedHost;
     options.ForwardLimit =
         deploymentReadinessSettings.ForwardLimit;
+
+    if (deploymentReadinessSettings
+            .TrustForwardedHeadersFromAnyProxy)
+    {
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
 
     foreach (var proxy in
              deploymentReadinessSettings
@@ -472,9 +487,24 @@ builder.Services.AddScoped<
     IOrganizationOnboardingService,
     OrganizationOnboardingService>();
 
-builder.Services.AddScoped<
-    IEmailSender,
-    SmtpEmailSender>();
+builder.Services.AddScoped<SmtpEmailSender>();
+builder.Services.AddHttpClient<ResendEmailSender>();
+builder.Services.AddScoped<IEmailSender>(serviceProvider =>
+{
+    var options = serviceProvider
+        .GetRequiredService<
+            IOptions<EmailDeliveryOptions>>()
+        .Value;
+
+    return options.Provider switch
+    {
+        EmailDeliveryProvider.Resend =>
+            serviceProvider.GetRequiredService<
+                ResendEmailSender>(),
+        _ => serviceProvider.GetRequiredService<
+            SmtpEmailSender>()
+    };
+});
 
 builder.Services.AddSingleton(
     TimeProvider.System);
@@ -674,13 +704,34 @@ builder.Services
     .Validate(
         options =>
             !options.Enabled ||
+            !string.IsNullOrWhiteSpace(
+                options.FromAddress),
+        "Enabled email delivery requires a sender " +
+        "address.")
+    .Validate(
+        options =>
+            !options.Enabled ||
+            options.Provider !=
+                EmailDeliveryProvider.Smtp ||
             (!string.IsNullOrWhiteSpace(
                  options.Host) &&
-             !string.IsNullOrWhiteSpace(
-                 options.FromAddress) &&
              options.Port is >= 1 and <= 65535),
-        "Enabled email delivery requires an SMTP " +
-        "host, sender address and valid port.")
+        "The SMTP email provider requires a host " +
+        "and valid port.")
+    .Validate(
+        options =>
+            !options.Enabled ||
+            options.Provider !=
+                EmailDeliveryProvider.Resend ||
+            (!string.IsNullOrWhiteSpace(
+                 options.ResendApiKey) &&
+             Uri.TryCreate(
+                 options.ResendApiBaseUrl,
+                 UriKind.Absolute,
+                 out var uri) &&
+             uri.Scheme == Uri.UriSchemeHttps),
+        "The Resend email provider requires an API " +
+        "key and an HTTPS API base URL.")
     .ValidateOnStart();
 
 builder.Services.AddScoped<
@@ -1155,6 +1206,12 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider
             .GetRequiredService<
                 TreasuryDbContext>();
+
+    if (deploymentReadinessSettings
+            .MigrateDatabaseOnStartup)
+    {
+        await context.Database.MigrateAsync();
+    }
 
     await RoleSeeder.SeedRoles(context);
 

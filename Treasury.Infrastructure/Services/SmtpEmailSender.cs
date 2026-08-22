@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Mail;
-using System.Text.Encodings.Web;
 using Microsoft.Extensions.Options;
 using Treasury.Application.Common.Exceptions;
 using Treasury.Application.Interfaces;
@@ -19,6 +18,8 @@ public class SmtpEmailSender : IEmailSender
 
     public bool IsConfigured =>
         _options.Enabled &&
+        _options.Provider ==
+            EmailDeliveryProvider.Smtp &&
         !string.IsNullOrWhiteSpace(
             _options.Host) &&
         !string.IsNullOrWhiteSpace(
@@ -30,8 +31,9 @@ public class SmtpEmailSender : IEmailSender
         {
             throw new BusinessRuleException(
                 "Email delivery is not configured. " +
-                "Enable EmailDelivery and provide SMTP " +
-                "settings before sending account emails.");
+                "Enable the SMTP email provider and " +
+                "provide its settings before sending " +
+                "account emails.");
         }
     }
 
@@ -44,57 +46,13 @@ public class SmtpEmailSender : IEmailSender
     {
         EnsureConfigured();
 
-        var encoder = HtmlEncoder.Default;
-
-        var safeName =
-            encoder.Encode(recipientName);
-
-        var safeOrganization =
-            encoder.Encode(organizationName);
-
-        var safeUrl =
-            encoder.Encode(acceptanceUrl);
-
-        using var message = new MailMessage
-        {
-            From = new MailAddress(
-                _options.FromAddress,
-                _options.FromName),
-            Subject =
-                $"Invitation to {organizationName}",
-            IsBodyHtml = true,
-            Body =
-                $"<p>Hello {safeName},</p>" +
-                $"<p>You have been invited to join " +
-                $"{safeOrganization} in the Corporate " +
-                "Treasury Platform.</p>" +
-                $"<p><a href=\"{safeUrl}\">Accept " +
-                "invitation</a></p>" +
-                $"<p>This invitation expires at " +
-                $"{expiresAtUtc:yyyy-MM-dd HH:mm} UTC." +
-                "</p>"
-        };
-
-        message.To.Add(recipientEmail);
-
-        using var client =
-            new SmtpClient(
-                _options.Host,
-                _options.Port)
-            {
-                EnableSsl = _options.UseSsl
-            };
-
-        if (!string.IsNullOrWhiteSpace(
-                _options.Username))
-        {
-            client.Credentials =
-                new NetworkCredential(
-                    _options.Username,
-                    _options.Password);
-        }
-
-        await client.SendMailAsync(message);
+        await Send(
+            EmailMessageFactory.CreateUserInvitation(
+                recipientEmail,
+                recipientName,
+                organizationName,
+                acceptanceUrl,
+                expiresAtUtc));
     }
 
     public async Task SendPasswordReset(
@@ -105,36 +63,27 @@ public class SmtpEmailSender : IEmailSender
     {
         EnsureConfigured();
 
-        var encoder = HtmlEncoder.Default;
+        await Send(
+            EmailMessageFactory.CreatePasswordReset(
+                recipientEmail,
+                recipientName,
+                resetUrl,
+                expiresAtUtc));
+    }
 
-        var safeName =
-            encoder.Encode(recipientName);
-
-        var safeUrl =
-            encoder.Encode(resetUrl);
-
+    private async Task Send(EmailMessage email)
+    {
         using var message = new MailMessage
         {
             From = new MailAddress(
                 _options.FromAddress,
                 _options.FromName),
-            Subject = "Reset your password",
+            Subject = email.Subject,
             IsBodyHtml = true,
-            Body =
-                $"<p>Hello {safeName},</p>" +
-                "<p>A password reset was requested for " +
-                "your Corporate Treasury Platform " +
-                "account.</p>" +
-                $"<p><a href=\"{safeUrl}\">Reset " +
-                "password</a></p>" +
-                $"<p>This link expires at " +
-                $"{expiresAtUtc:yyyy-MM-dd HH:mm} UTC." +
-                "</p>" +
-                "<p>If you did not request this, you can " +
-                "ignore this email.</p>"
+            Body = email.HtmlBody
         };
 
-        message.To.Add(recipientEmail);
+        message.To.Add(email.RecipientEmail);
 
         using var client =
             new SmtpClient(

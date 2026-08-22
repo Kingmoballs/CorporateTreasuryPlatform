@@ -41,10 +41,10 @@ The default development issuer and audience are in
 `Treasury.Api/appsettings.json`. Override them if the client
 environment requires different values.
 
-SMTP can remain disabled during development. Invitation and
+Email can remain disabled during development. Invitation and
 password-reset delivery must then be tested through an approved
-development-only manual-link configuration or by enabling a
-local/test SMTP server. Do not enable manual invitation URLs in
+development-only manual-link configuration, a local/test SMTP server,
+or the Resend HTTPS provider. Do not enable manual invitation URLs in
 Production.
 
 `Treasury.Api/appsettings.Development.json` is intentionally
@@ -202,17 +202,18 @@ environment variables. Required values include:
 | `UserInvitations__AcceptanceUrl` | HTTPS frontend invitation route |
 | `PasswordRecovery__ResetUrl` | HTTPS frontend password-reset route |
 
-Production SMTP is required by default:
+Production email delivery is required by default. Render Free uses the
+Resend HTTPS provider because it blocks outbound SMTP ports:
 
 | Setting | Requirement |
 |---|---|
 | `EmailDelivery__Enabled` | `true` |
-| `EmailDelivery__Host` | Provider SMTP host |
-| `EmailDelivery__Port` | Provider port |
-| `EmailDelivery__UseSsl` | Provider TLS requirement |
-| `EmailDelivery__Username` | Secret-managed credential |
-| `EmailDelivery__Password` | Secret-managed credential |
+| `EmailDelivery__Provider` | `Resend` on Render Free; `Smtp` where SMTP is allowed |
+| `EmailDelivery__ResendApiKey` | Secret-managed Resend API key when `Provider=Resend` |
 | `EmailDelivery__FromAddress` | Verified sender address |
+
+The SMTP provider instead requires `Host`, `Port`, and any provider
+credentials.
 
 When behind a reverse proxy:
 
@@ -245,7 +246,7 @@ Recommended release gates:
 2. automated suite passes;
 3. migration script reviewed;
 4. backup and rollback procedure verified;
-5. secrets, allowed origins, hosts, proxy IPs, URLs, SMTP, and
+5. secrets, allowed origins, hosts, proxy IPs, URLs, email, and
    data-protection storage verified;
 6. liveness and readiness return healthy;
 7. invitation, login, MFA, organization scoping, one financial

@@ -86,13 +86,14 @@ and invitation creation occur atomically.
 
 ## 3. First Admin invitation
 
-Production sends the acceptance link by SMTP. If delivery fails,
-the application remains approved and the `PlatformAdmin` can use:
+Production sends the acceptance link through the configured email
+provider. If delivery fails, the application remains approved and the
+`PlatformAdmin` can use:
 
 `POST /api/platform/organization-applications/{applicationId}/admin-invitation/resend`
 
-Development can explicitly return a manual invitation URL while
-SMTP is disabled. Production validation prevents that behavior.
+Development can explicitly return a manual invitation URL while email
+delivery is disabled. Production validation prevents that behavior.
 
 The invited person calls:
 
@@ -210,5 +211,5 @@ excluded from assignable organization roles.
 - `POST /api/v1/auth/password/reset`
 
 Forgot-password responses do not reveal whether the email exists.
-Production SMTP is required so genuine users can receive the
+Production email delivery is required so genuine users can receive the
 reset link.

@@ -13,6 +13,9 @@ public class DeploymentReadinessOptions
 
     public bool UseForwardedHeaders { get; set; }
 
+    public bool TrustForwardedHeadersFromAnyProxy
+        { get; set; }
+
     public string[] TrustedProxies { get; set; } =
         Array.Empty<string>();
 
@@ -33,6 +36,11 @@ public class DeploymentReadinessOptions
 
     public string DataProtectionKeysPath
         { get; set; } = string.Empty;
+
+    public bool PersistDataProtectionKeysToDatabase
+        { get; set; }
+
+    public bool MigrateDatabaseOnStartup { get; set; }
 
     public IReadOnlyList<string>
         GetNormalizedAllowedOrigins()
