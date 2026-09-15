@@ -128,7 +128,15 @@ public class UserInvitationService
                 "for this email address.");
         }
 
-        _emailSender.EnsureConfigured();
+        var useManualDemoDelivery =
+            ShouldUseManualDemoDelivery(
+                organization,
+                role);
+
+        if (!useManualDemoDelivery)
+        {
+            _emailSender.EnsureConfigured();
+        }
 
         var now = GetUtcNow();
         var rawToken = GenerateToken();
@@ -157,16 +165,24 @@ public class UserInvitationService
 
         await _invitationRepository.SaveChanges();
 
-        await SendInvitation(
-            invitation,
-            rawToken);
+        var manualAcceptanceUrl =
+            await DeliverInvitation(
+                invitation,
+                rawToken,
+                useManualDemoDelivery);
 
         await RecordAudit(
             invitation,
             AuditActionTypes.Created,
-            "User invitation created.");
+            useManualDemoDelivery
+                ? "TreasuryOfficer demo invitation " +
+                  "created for manual link delivery."
+                : "User invitation created.");
 
-        return Map(invitation, now);
+        return Map(
+            invitation,
+            now,
+            manualAcceptanceUrl);
     }
 
     public async Task<List<
@@ -212,7 +228,15 @@ public class UserInvitationService
                 "resent.");
         }
 
-        _emailSender.EnsureConfigured();
+        var useManualDemoDelivery =
+            ShouldUseManualDemoDelivery(
+                invitation.Organization,
+                invitation.Role);
+
+        if (!useManualDemoDelivery)
+        {
+            _emailSender.EnsureConfigured();
+        }
 
         var now = GetUtcNow();
         var rawToken = GenerateToken();
@@ -229,16 +253,24 @@ public class UserInvitationService
 
         await _invitationRepository.SaveChanges();
 
-        await SendInvitation(
-            invitation,
-            rawToken);
+        var manualAcceptanceUrl =
+            await DeliverInvitation(
+                invitation,
+                rawToken,
+                useManualDemoDelivery);
 
         await RecordAudit(
             invitation,
             AuditActionTypes.Updated,
-            "User invitation resent.");
+            useManualDemoDelivery
+                ? "TreasuryOfficer demo invitation " +
+                  "link regenerated for manual delivery."
+                : "User invitation resent.");
 
-        return Map(invitation, now);
+        return Map(
+            invitation,
+            now,
+            manualAcceptanceUrl);
     }
 
     public async Task Revoke(Guid invitationId)
@@ -416,12 +448,18 @@ public class UserInvitationService
         return invitation;
     }
 
-    private async Task SendInvitation(
+    private async Task<string?> DeliverInvitation(
         UserInvitation invitation,
-        string rawToken)
+        string rawToken,
+        bool useManualDemoDelivery)
     {
         var acceptanceUrl =
             BuildAcceptanceUrl(rawToken);
+
+        if (useManualDemoDelivery)
+        {
+            return acceptanceUrl;
+        }
 
         await _emailSender.SendUserInvitation(
             invitation.Email,
@@ -430,6 +468,8 @@ public class UserInvitationService
             invitation.Organization.Name,
             acceptanceUrl,
             invitation.ExpiresAtUtc);
+
+        return null;
     }
 
     private async Task RecordAudit(
@@ -465,6 +505,25 @@ public class UserInvitationService
             .BuildAcceptanceUrl(
                 _options.AcceptanceUrl,
                 rawToken);
+    }
+
+    private bool ShouldUseManualDemoDelivery(
+        Organization organization,
+        Role role)
+    {
+        return
+            _options.ManualDemoDeliveryEnabled &&
+            !string.IsNullOrWhiteSpace(
+                _options.ManualDemoOrganizationCode) &&
+            string.Equals(
+                organization.Code,
+                _options.ManualDemoOrganizationCode
+                    .Trim(),
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                role.Name,
+                Roles.TreasuryOfficer,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private Guid GetRequiredOrganizationId()
@@ -510,7 +569,8 @@ public class UserInvitationService
 
     private static UserInvitationResponseDto Map(
         UserInvitation invitation,
-        DateTime now)
+        DateTime now,
+        string? manualAcceptanceUrl = null)
     {
         var status =
             invitation.AcceptedAtUtc.HasValue
@@ -533,7 +593,9 @@ public class UserInvitationService
             ExpiresAtUtc =
                 invitation.ExpiresAtUtc,
             CreatedAtUtc =
-                invitation.CreatedAtUtc
+                invitation.CreatedAtUtc,
+            ManualAcceptanceUrl =
+                manualAcceptanceUrl
         };
     }
 }

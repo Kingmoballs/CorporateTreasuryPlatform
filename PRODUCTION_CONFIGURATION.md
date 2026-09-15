@@ -60,6 +60,26 @@ The backend also supports `Provider=Smtp` for environments that allow
 SMTP. That provider additionally requires host and port settings, plus
 credentials when required by the SMTP service.
 
+### Temporary fictional-demo invitation delivery
+
+A portfolio deployment whose database contains only fictional data can
+temporarily return a `TreasuryOfficer` invitation link directly to the
+authenticated organization Admin instead of emailing it. This exception is
+restricted to one organization code and is disabled by default:
+
+- `UserInvitations__ManualDemoDeliveryEnabled=true`
+- `UserInvitations__ManualDemoOrganizationCode=NORTHSTAR-DEMO`
+
+The configured organization code must match the active organization exactly,
+ignoring letter case. The exception never applies to `Admin`, `CFO`,
+`FinanceManager`, or `PlatformAdmin` roles. The one-time URL appears only in
+the create or resend response as `manualAcceptanceUrl`; invitation-list
+responses never contain it.
+
+Keep email delivery configured because password recovery and every non-demo
+invitation still depend on it. Disable this exception after creating the demo
+account, and never enable it for an organization containing real data.
+
 ## Platform health
 
 - `GET /health/live` confirms that the API process is running.

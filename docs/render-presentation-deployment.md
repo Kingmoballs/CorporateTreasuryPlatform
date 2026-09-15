@@ -60,6 +60,14 @@ To email any user, add a domain you own to Resend, publish the supplied
 DNS records, wait for verification, and use an address on that domain,
 for example `no-reply@mail.example.com`.
 
+For the isolated fictional recruiter demo only, the API also supports a
+temporary manual `TreasuryOfficer` invitation link. Set
+`UserInvitations__ManualDemoDeliveryEnabled=true` and
+`UserInvitations__ManualDemoOrganizationCode` to the exact demo organization
+code. The create/resend response returns `manualAcceptanceUrl` once. Disable
+the flag immediately after accepting the demo invitation; do not use this mode
+for real organizations.
+
 Save the API key when it is shown. It will be entered once in Render and
 must never be committed.
 

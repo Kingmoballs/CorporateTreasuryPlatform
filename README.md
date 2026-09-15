@@ -7,9 +7,19 @@ access management, cash operations, approval workflows,
 reconciliation, forecasting, foreign exchange, investments,
 credit facilities, alerts, audit evidence, and reporting.
 
+## Live demonstration
+
+- [Open the deployed frontend](https://corporatetreasuryplatform-frontend.mobolajiadebola.workers.dev/)
+- The hosted environment contains fictional demonstration data only.
+- Public recruiter credentials should belong to a dedicated, non-admin demo
+  user and must never be committed to this repository.
+
 ## Documentation
 
 Start with the [documentation index](docs/README.md).
+
+- [Engineering case study](CASE_STUDY.md)
+- [Recruiter demo setup](docs/recruiter-demo.md)
 
 - [Architecture and security](docs/architecture-and-security.md)
 - [Roles and access](docs/roles-and-access.md)

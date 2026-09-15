@@ -95,6 +95,12 @@ Organization profile and structure reads are available to the
 organization roles; writes and user/policy administration
 require `Admin`.
 
+When temporary manual demo delivery is explicitly enabled for the active
+fictional organization, creating or resending a `TreasuryOfficer` invitation
+adds `manualAcceptanceUrl` to that single response. The URL is one-time,
+expires with the invitation, and is omitted from `GET /api/admin/invitations`.
+All other roles and organizations continue using configured email delivery.
+
 ## Accounts, cash, and transactions
 
 | Method | Route |

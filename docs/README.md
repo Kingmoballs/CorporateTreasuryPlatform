@@ -5,6 +5,10 @@ current backend. It is intended for business stakeholders,
 frontend developers, backend developers, testers, operators, and
 support teams.
 
+For a portfolio overview, read the
+[engineering case study](../CASE_STUDY.md). Before sharing public
+credentials, follow the [recruiter demo setup](recruiter-demo.md).
+
 ## Suggested reading order
 
 1. [Architecture and security](architecture-and-security.md)

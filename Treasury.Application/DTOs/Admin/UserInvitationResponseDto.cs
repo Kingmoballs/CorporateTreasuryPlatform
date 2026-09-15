@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Treasury.Application.DTOs.Admin;
 
 public class UserInvitationResponseDto
@@ -24,4 +26,8 @@ public class UserInvitationResponseDto
     public DateTime ExpiresAtUtc { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }
+
+    [JsonIgnore(
+        Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ManualAcceptanceUrl { get; set; }
 }

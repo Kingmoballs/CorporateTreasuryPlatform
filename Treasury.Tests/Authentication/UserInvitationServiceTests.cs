@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Moq;
 using Treasury.Application.Common.Exceptions;
@@ -125,6 +126,234 @@ public class UserInvitationServiceTests
                 property.Name.Contains(
                     "Token",
                     StringComparison.OrdinalIgnoreCase));
+
+        Assert.Null(response.ManualAcceptanceUrl);
+    }
+
+    [Fact]
+    public async Task
+        Invite_ManualDemoDelivery_ReturnsUrlOnceAndSkipsEmail()
+    {
+        var setup = CreateSetup(options =>
+        {
+            options.ManualDemoDeliveryEnabled = true;
+            options.ManualDemoOrganizationCode =
+                "MOBALLS";
+        });
+
+        UserInvitation? storedInvitation = null;
+
+        setup.InvitationRepository
+            .Setup(repository =>
+                repository.Add(
+                    It.IsAny<UserInvitation>()))
+            .Callback<UserInvitation>(invitation =>
+                storedInvitation = invitation)
+            .Returns(Task.CompletedTask);
+
+        var response =
+            await setup.Service.Invite(
+                new CreateUserInvitationDto
+                {
+                    FirstName = "Demo",
+                    LastName = "Recruiter",
+                    Email = "recruiter@example.com",
+                    RoleId = setup.Role.Id
+                });
+
+        Assert.NotNull(storedInvitation);
+        Assert.NotNull(response.ManualAcceptanceUrl);
+
+        var rawToken = GetTokenFromUrl(
+            response.ManualAcceptanceUrl);
+
+        Assert.Equal(
+            HashToken(rawToken),
+            storedInvitation.TokenHash);
+
+        setup.EmailSender.Verify(
+            sender => sender.EnsureConfigured(),
+            Times.Never);
+
+        setup.EmailSender.Verify(
+            sender => sender.SendUserInvitation(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateTime>()),
+            Times.Never);
+
+        setup.InvitationRepository
+            .Setup(repository =>
+                repository.GetPending(
+                    setup.Organization.Id))
+            .ReturnsAsync(
+                new List<UserInvitation>
+                {
+                    storedInvitation
+                });
+
+        var pendingInvitations =
+            await setup.Service.GetPending();
+
+        Assert.Null(
+            Assert.Single(pendingInvitations)
+                .ManualAcceptanceUrl);
+
+        var pendingJson = JsonSerializer.Serialize(
+            pendingInvitations);
+
+        Assert.DoesNotContain(
+            "ManualAcceptanceUrl",
+            pendingJson,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task
+        Invite_ManualDemoDelivery_RequiresConfiguredOrganization()
+    {
+        var setup = CreateSetup(options =>
+        {
+            options.ManualDemoDeliveryEnabled = true;
+            options.ManualDemoOrganizationCode =
+                "ANOTHER-ORGANIZATION";
+        });
+
+        setup.EmailSender
+            .Setup(sender =>
+                sender.SendUserInvitation(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<DateTime>()))
+            .Returns(Task.CompletedTask);
+
+        var response =
+            await setup.Service.Invite(
+                new CreateUserInvitationDto
+                {
+                    FirstName = "Ada",
+                    LastName = "Okafor",
+                    Email = "ada@example.com",
+                    RoleId = setup.Role.Id
+                });
+
+        Assert.Null(response.ManualAcceptanceUrl);
+
+        setup.EmailSender.Verify(
+            sender => sender.EnsureConfigured(),
+            Times.Once);
+
+        setup.EmailSender.Verify(
+            sender => sender.SendUserInvitation(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateTime>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task
+        Invite_ManualDemoDelivery_RequiresTreasuryOfficerRole()
+    {
+        var setup = CreateSetup(options =>
+        {
+            options.ManualDemoDeliveryEnabled = true;
+            options.ManualDemoOrganizationCode =
+                "MOBALLS";
+        });
+
+        setup.Role.Name = Roles.Admin;
+
+        setup.EmailSender
+            .Setup(sender =>
+                sender.SendUserInvitation(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<DateTime>()))
+            .Returns(Task.CompletedTask);
+
+        var response =
+            await setup.Service.Invite(
+                new CreateUserInvitationDto
+                {
+                    FirstName = "Organization",
+                    LastName = "Administrator",
+                    Email = "admin@example.com",
+                    RoleId = setup.Role.Id
+                });
+
+        Assert.Null(response.ManualAcceptanceUrl);
+
+        setup.EmailSender.Verify(
+            sender => sender.EnsureConfigured(),
+            Times.Once);
+
+        setup.EmailSender.Verify(
+            sender => sender.SendUserInvitation(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateTime>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task
+        Resend_ManualDemoDelivery_RegeneratesAndReturnsUrl()
+    {
+        var setup = CreateSetup(options =>
+        {
+            options.ManualDemoDeliveryEnabled = true;
+            options.ManualDemoOrganizationCode =
+                "MOBALLS";
+        });
+
+        var oldToken = "previous-invitation-token";
+        var invitation = CreateInvitation(
+            setup,
+            oldToken,
+            Now.AddHours(1).UtcDateTime);
+
+        setup.InvitationRepository
+            .Setup(repository => repository.GetById(
+                setup.Organization.Id,
+                invitation.Id))
+            .ReturnsAsync(invitation);
+
+        var response =
+            await setup.Service.Resend(invitation.Id);
+
+        Assert.NotNull(response.ManualAcceptanceUrl);
+
+        var newToken = GetTokenFromUrl(
+            response.ManualAcceptanceUrl);
+
+        Assert.NotEqual(oldToken, newToken);
+        Assert.Equal(
+            HashToken(newToken),
+            invitation.TokenHash);
+
+        setup.EmailSender.Verify(
+            sender => sender.EnsureConfigured(),
+            Times.Never);
+
+        setup.EmailSender.Verify(
+            sender => sender.SendUserInvitation(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateTime>()),
+            Times.Never);
     }
 
     [Fact]
@@ -342,7 +571,9 @@ public class UserInvitationServiceTests
             Times.Never);
     }
 
-    private static ServiceSetup CreateSetup()
+    private static ServiceSetup CreateSetup(
+        Action<UserInvitationOptions>?
+            configureOptions = null)
     {
         var organization = new Organization
         {
@@ -426,6 +657,17 @@ public class UserInvitationServiceTests
                             .CreateAuditLogDto>()))
             .Returns(Task.CompletedTask);
 
+        var invitationOptions =
+            new UserInvitationOptions
+            {
+                ExpiryHours = 24,
+                AcceptanceUrl =
+                    "https://treasury.example/" +
+                    "accept-invitation"
+            };
+
+        configureOptions?.Invoke(invitationOptions);
+
         var service =
             new UserInvitationService(
                 invitationRepository.Object,
@@ -435,14 +677,7 @@ public class UserInvitationServiceTests
                 currentUserService.Object,
                 emailSender.Object,
                 auditLogService.Object,
-                Options.Create(
-                    new UserInvitationOptions
-                    {
-                        ExpiryHours = 24,
-                        AcceptanceUrl =
-                            "https://treasury.example/" +
-                            "accept-invitation"
-                    }),
+                Options.Create(invitationOptions),
                 new FixedTimeProvider(Now));
 
         return new ServiceSetup(

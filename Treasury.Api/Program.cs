@@ -623,6 +623,16 @@ builder.Services
                 out _),
         "Invitation acceptance URL must be an " +
         "absolute URL.")
+    .Validate(
+        options =>
+            !options.ManualDemoDeliveryEnabled ||
+            (!string.IsNullOrWhiteSpace(
+                 options.ManualDemoOrganizationCode) &&
+             options.ManualDemoOrganizationCode
+                 .Trim().Length <= 50),
+        "Manual demo invitation delivery requires " +
+        "a demo organization code of no more than " +
+        "50 characters.")
     .ValidateOnStart();
 
 builder.Services
